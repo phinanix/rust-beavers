@@ -102,7 +102,7 @@ impl<S: TapeSymbol> Tape<S> {
   fn simulate_from_start(
     machine: &impl Turing<S>,
     num_steps: u32,
-  ) -> (Either<(u8, S), u8>, u32, Tape<S>) {
+  ) -> (Either<(u8, S), u8>, u32, Self) {
     let mut tape = Self::new();
     let (new_state, num_steps) = tape.simulate(machine, 1, num_steps);
     (new_state, num_steps, tape)
@@ -174,6 +174,7 @@ impl<S: TapeSymbol> ExpTape<S> {
     }
   }
 
+  //todo: these 3 functions are duplicated, some chance we want to dedub with Tape, not sure
   fn step(&mut self, state: u8, t: &impl Turing<S>) -> Either<(u8, S), u8> {
     let Trans { state, symbol, dir } = match t.step(state, self.head) {
       Some(trans) => trans,
@@ -183,6 +184,54 @@ impl<S: TapeSymbol> ExpTape<S> {
     self.move_dir(dir);
     Right(state)
   }
+
+  fn simulate(
+    &mut self,
+    machine: &impl Turing<S>,
+    mut state: u8,
+    num_steps: u32,
+  ) -> (Either<(u8, S), u8>, u32) {
+    /* return:
+    0: from step
+    1: the number of steps executed
+     */
+    for step in 1..num_steps + 1 {
+      state = match self.step(state, machine) {
+        Left((state, head)) => return (Left((state, head)), step),
+        Right(0) => return (Right(0), step),
+        Right(state) => state,
+      };
+      // dbg!(&self, state);
+    }
+    (Right(state), num_steps)
+  }
+
+  fn simulate_from_start(
+    machine: &impl Turing<S>,
+    num_steps: u32,
+  ) -> (Either<(u8, S), u8>, u32, Self) {
+    let mut tape = Self::new();
+    let (new_state, num_steps) = tape.simulate(machine, 1, num_steps);
+    (new_state, num_steps, tape)
+  }
+
+  fn splat(rle_vec: &Vec<(S, u32)>) -> Vec<S> {
+    let mut out = vec![];
+    for &(symbol, count) in rle_vec {
+      for _ in 0..count {
+        out.push(symbol);
+      }
+    }
+    out
+  }
+
+  fn to_tape(ExpTape { left, head, right }: &ExpTape<S>) -> Tape<S> {
+    Tape {
+      left: Self::splat(left),
+      head: *head,
+      right: Self::splat(right),
+    }
+  }
 }
 
 mod test {
@@ -190,11 +239,25 @@ mod test {
   use crate::turing::get_machine;
 
   #[test]
+  fn exptape_to_tape() {
+    let e_tape = ExpTape {
+      left: vec![(true, 2), (false, 1)],
+      head: false,
+      right: vec![(true, 1), (false, 3), (true, 1)],
+    };
+    let tape = Tape {
+      left: vec![true, true, false],
+      head: false,
+      right: vec![true, false, false, false, true],
+    };
+    assert_eq!(ExpTape::to_tape(&e_tape), tape)
+  }
+  #[test]
   fn sim_bb2() {
     let bb2 = get_machine("bb2");
-    let (new_state, num_steps, tape) = Tape::simulate_from_start(&bb2, 10);
+    let (state, num_steps, tape) = Tape::simulate_from_start(&bb2, 10);
     dbg!(&tape);
-    assert_eq!(new_state, Right(0));
+    assert_eq!(state, Right(0));
     assert_eq!(num_steps, 6);
     assert_eq!(
       tape,
@@ -203,14 +266,19 @@ mod test {
         head: true,
         right: vec![true]
       }
-    )
+    );
+    let (e_state, e_steps, e_tape) = ExpTape::simulate_from_start(&bb2, 10);
+    assert_eq!(
+      (e_state, e_steps, ExpTape::to_tape(&e_tape)),
+      (state, num_steps, tape)
+    );
   }
   #[test]
   fn sim_bb3() {
     let bb3 = get_machine("bb3");
-    let (new_state, num_steps, tape) = Tape::simulate_from_start(&bb3, 30);
+    let (state, num_steps, tape) = Tape::simulate_from_start(&bb3, 30);
     dbg!(&tape);
-    assert_eq!(new_state, Right(0));
+    assert_eq!(state, Right(0));
     assert_eq!(num_steps, 14);
     assert_eq!(
       tape,
@@ -219,6 +287,11 @@ mod test {
         head: true,
         right: vec![true, true]
       }
+    );
+    let (e_state, e_steps, e_tape) = ExpTape::simulate_from_start(&bb3, 30);
+    assert_eq!(
+      (e_state, e_steps, ExpTape::to_tape(&e_tape)),
+      (state, num_steps, tape)
     );
   }
   //todo: simulate bb4 to further sanity check
