@@ -3,14 +3,14 @@
 use smallvec::{SmallVec, smallvec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Dir {L, R}
+pub enum Dir {L, R}
 use Dir::*;
 
 // by convention, state 0 is halting. you can theoretically do anything when you halt but the
 // convention is to go R and write a 1. 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct Trans<S> {
-  state: u8, symbol: S, dir: Dir
+pub struct Trans<S> {
+  pub state: u8, pub symbol: S, pub dir: Dir
 }
 
 const AB: &str = "ZABCDEFG";
@@ -61,7 +61,7 @@ impl Trans<bool> {
 
 }
 // S = symbol
-trait Turing<S> {
+pub trait Turing<S> {
   fn step(&self, state: u8, symbol: S) -> Option<Trans<S>>;
 }
 
