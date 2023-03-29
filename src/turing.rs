@@ -1,3 +1,4 @@
+#[allow(unused)]
 
 use smallvec::{SmallVec, smallvec};
 
@@ -5,12 +6,14 @@ use smallvec::{SmallVec, smallvec};
 enum Dir {L, R}
 use Dir::*;
 
+// by convention, state 0 is halting. you can theoretically do anything when you halt but the
+// convention is to go R and write a 1. 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Trans<S> {
   state: u8, symbol: S, dir: Dir
 }
 
-const AB: &str = "ABCDEFG";
+const AB: &str = "ZABCDEFG";
 
 impl Trans<bool> {
   fn from_compact_format(inp: &str) -> Option<Self> {
@@ -31,8 +34,7 @@ impl Trans<bool> {
           'R' => R, 
           _ => panic!("{} is not a valid direction", dir),
         };
-        //A is 0 and so on
-        // let ab = "ABCDEFG";
+        //Z is 0 for halt, and then A is 1 and so on
         let state: u8 = AB.find(state as char).expect("state was not a letter").try_into().unwrap();
         return Some(Trans{state, symbol, dir});
       }, 
@@ -69,6 +71,8 @@ struct SmallBinMachine{num_states: u8, table: SmallVec<[Option<Trans<bool>>; 14]
 
 impl Turing<bool> for SmallBinMachine {
   fn step(&self, state: u8, symbol: bool) -> Option<Trans<bool>> {
+    assert_ne!(state, 0); // you can't make progress from a halt state
+    let state = state - 1; // the table has no entries for halting states ofc
     assert!(state < self.num_states);
     *self.table.get((state*2 + if symbol {1} else {0}) as usize).unwrap()
   }
@@ -91,7 +95,17 @@ impl SmallBinMachine {
   }
 
   fn to_compact_format(&self) -> String {
-    todo!()
+    let mut out = String::new();
+    for (i, &trans) in self.table.iter().enumerate() {
+      match trans {
+        None => out.push_str("---"),
+        Some(trans) => out.push_str(&trans.to_compact_format()),
+      }
+      if i % 2 == 1 && i+1 != (self.num_states*2).into() {
+        out.push('_');
+      }
+    }
+    out
   }
 }
 
@@ -101,7 +115,7 @@ mod test {
 
   #[test]
   fn trans_from_string() {
-    let trans = Trans {state: 2, dir: L, symbol: true};
+    let trans = Trans {state: 3, dir: L, symbol: true};
     let trans_str = "1LC";
     assert_eq!(Some(trans), Trans::from_compact_format(trans_str));
     assert_eq!(trans_str, Trans::to_compact_format(&trans));
@@ -112,13 +126,14 @@ mod test {
     let machine_str = "1RB0RB_1LA---";
     let num_states = 2;
     let table = smallvec!
-      [ Some(Trans{state: 1, dir: R, symbol: true})
-      , Some(Trans{state: 1, dir: R, symbol: false})
-      , Some(Trans{state: 0, dir: L, symbol: true})
+      [ Some(Trans{state: 2, dir: R, symbol: true})
+      , Some(Trans{state: 2, dir: R, symbol: false})
+      , Some(Trans{state: 1, dir: L, symbol: true})
       , None
       ];
     let machine = SmallBinMachine{num_states, table};
     assert_eq!(machine, SmallBinMachine::from_compact_format(&machine_str));
+    assert_eq!(machine.to_compact_format(), machine_str)
   }
 
 }
