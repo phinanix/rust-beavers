@@ -1,7 +1,18 @@
+#[allow(unused)]
 use either::Either::{self, Left, Right};
-use std::fmt::Debug;
+use std::{fmt::Debug, vec};
 
 use crate::turing::{Dir, Trans, Turing};
+
+trait TapeSymbol: Copy + Eq + Debug {
+  fn empty() -> Self;
+}
+
+impl TapeSymbol for bool {
+  fn empty() -> Self {
+    false
+  }
+}
 
 // tape has two stacks and a symbol the machine is currently reading
 // since these are array-backed vectors, the "front" is actually at the end
@@ -15,16 +26,6 @@ struct Tape<S> {
   left: Vec<S>,
   head: S,
   right: Vec<S>,
-}
-
-trait TapeSymbol: Copy + Eq + Debug {
-  fn empty() -> Self;
-}
-
-impl TapeSymbol for bool {
-  fn empty() -> Self {
-    false
-  }
 }
 
 impl<S: TapeSymbol> Tape<S> {
@@ -66,6 +67,7 @@ impl<S: TapeSymbol> Tape<S> {
   }
 
   // mutably updates self; returns new state
+  // return either final state (Right) or the input state+var that the machine couldn't handle (Left)
   fn step(&mut self, state: u8, t: &impl Turing<S>) -> Either<(u8, S), u8> {
     let Trans { state, symbol, dir } = match t.step(state, self.head) {
       Some(trans) => trans,
@@ -83,7 +85,7 @@ impl<S: TapeSymbol> Tape<S> {
     num_steps: u32,
   ) -> (Either<(u8, S), u8>, u32) {
     /* return:
-    0: either final state (Right) or the input state+var that the machine couldn't handle (Left)
+    0: from step
     1: the number of steps executed
      */
     for step in 1..num_steps + 1 {
@@ -107,10 +109,85 @@ impl<S: TapeSymbol> Tape<S> {
   }
 }
 
-mod test {
-  use crate::turing::get_machine;
+struct ExpTape<S> {
+  left: Vec<(S, u32)>,
+  head: S,
+  right: Vec<(S, u32)>,
+}
 
+impl<S: TapeSymbol> ExpTape<S> {
+  fn new() -> Self {
+    ExpTape {
+      left: vec![],
+      head: TapeSymbol::empty(),
+      right: vec![],
+    }
+  }
+
+  fn push_rle(stack: &mut Vec<(S, u32)>, item: S) {
+    match stack.last_mut() {
+      // if the stack is empty and the symbol we're pushing is empty, then we can just drop the
+      // symbol on the ground since we're adding an empty to the infinite empty stack
+      None => {
+        if item != TapeSymbol::empty() {
+          stack.push((item, 1))
+        }
+      }
+      Some((s, count)) => {
+        if item == *s {
+          *count += 1;
+        } else {
+          stack.push((item, 1));
+        }
+      }
+    }
+  }
+
+  fn pop_rle(stack: &mut Vec<(S, u32)>) -> S {
+    let ans = match stack.last_mut() {
+      None => return TapeSymbol::empty(),
+      Some((s, count)) => {
+        *count -= 1;
+        *s
+      }
+    };
+    if let Some((_s, 0)) = stack.last() {
+      stack.pop();
+    }
+    return ans;
+  }
+
+  fn move_right(&mut self) {
+    Self::push_rle(&mut self.left, self.head);
+    self.head = Self::pop_rle(&mut self.right);
+  }
+
+  fn move_left(&mut self) {
+    Self::push_rle(&mut self.right, self.head);
+    self.head = Self::pop_rle(&mut self.left);
+  }
+
+  fn move_dir(&mut self, d: Dir) {
+    match d {
+      Dir::L => self.move_left(),
+      Dir::R => self.move_right(),
+    }
+  }
+
+  fn step(&mut self, state: u8, t: &impl Turing<S>) -> Either<(u8, S), u8> {
+    let Trans { state, symbol, dir } = match t.step(state, self.head) {
+      Some(trans) => trans,
+      None => return Left((state, self.head)),
+    };
+    self.head = symbol;
+    self.move_dir(dir);
+    Right(state)
+  }
+}
+
+mod test {
   use super::*;
+  use crate::turing::get_machine;
 
   #[test]
   fn sim_bb2() {

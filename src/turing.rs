@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-
-#[allow(unused)]
 use smallvec::{smallvec, SmallVec};
+#[allow(unused)]
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Dir {
