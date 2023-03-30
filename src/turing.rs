@@ -9,11 +9,20 @@ pub enum Dir {
 }
 use Dir::*;
 
+// the state a machine is in. 0 is Halt
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct State(pub u8);
+
+// the input to a TM's transition function
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Edge<S>(pub State, pub S);
+
+// the output of a TM's transition function
 // by convention, state 0 is halting. you can theoretically do anything when you halt but the
 // convention is to go R and write a 1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Trans<S> {
-  pub state: u8,
+  pub state: State,
   pub symbol: S,
   pub dir: Dir,
 }
@@ -45,7 +54,11 @@ impl Trans<bool> {
           .expect("state was not a letter")
           .try_into()
           .unwrap();
-        return Some(Trans { state, symbol, dir });
+        return Some(Trans {
+          state: State(state),
+          symbol,
+          dir,
+        });
       }
       _ => panic!("{} is not a valid trans", inp),
     }
@@ -53,7 +66,11 @@ impl Trans<bool> {
 
   fn to_compact_format(&self) -> String {
     match self {
-      &Trans { state, symbol, dir } => {
+      &Trans {
+        state: State(state),
+        symbol,
+        dir,
+      } => {
         let symbol_chr = if symbol { '1' } else { '0' };
         //todo factor this into dir
         let dir_chr = if dir == L { 'L' } else { 'R' };
@@ -70,7 +87,7 @@ impl Trans<bool> {
 }
 // S = symbol
 pub trait Turing<S> {
-  fn step(&self, state: u8, symbol: S) -> Option<Trans<S>>;
+  fn step(&self, edge: Edge<S>) -> Option<Trans<S>>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -80,7 +97,7 @@ pub struct SmallBinMachine {
 }
 
 impl Turing<bool> for SmallBinMachine {
-  fn step(&self, state: u8, symbol: bool) -> Option<Trans<bool>> {
+  fn step(&self, Edge(State(state), symbol): Edge<bool>) -> Option<Trans<bool>> {
     assert_ne!(state, 0); // you can't make progress from a halt state
     let state = state - 1; // the table has no entries for halting states ofc
     assert!(state < self.num_states);
@@ -142,7 +159,7 @@ mod test {
   #[test]
   fn trans_from_string() {
     let trans = Trans {
-      state: 3,
+      state: State(3),
       dir: L,
       symbol: true,
     };
@@ -157,17 +174,17 @@ mod test {
     let num_states = 2;
     let table = smallvec![
       Some(Trans {
-        state: 2,
+        state: State(2),
         dir: R,
         symbol: true
       }),
       Some(Trans {
-        state: 2,
+        state: State(2),
         dir: R,
         symbol: false
       }),
       Some(Trans {
-        state: 1,
+        state: State(1),
         dir: L,
         symbol: true
       }),
