@@ -197,7 +197,7 @@ impl SmallBinMachine {
     out
   }
 
-  fn from_compact_format(inp: &str) -> Self {
+  pub fn from_compact_format(inp: &str) -> Self {
     // example compact format
     // 1RB0RD_1LB1LC_1RC1LD_1RE0LD_1RA---
     // groups of 3 make a transition, underscores between pairs, triple --- for undefined
@@ -215,7 +215,7 @@ impl SmallBinMachine {
     }
   }
 
-  fn to_compact_format(&self) -> String {
+  pub fn to_compact_format(&self) -> String {
     let mut out = String::new();
     for (i, &trans) in self.table.iter().enumerate() {
       match trans {
