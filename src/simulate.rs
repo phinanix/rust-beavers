@@ -237,7 +237,7 @@ impl<S: TapeSymbol> ExpTape<S> {
   }
 }
 
-fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<SmallBinMachine> {
+pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<SmallBinMachine> {
   let mut out = vec![];
 
   struct TnfState {

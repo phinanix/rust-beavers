@@ -188,7 +188,7 @@ impl SmallBinMachine {
       None => self.num_states - 1,
     };
 
-    let possible_trans = Trans::possible_trans(max_state_index+1);
+    let possible_trans = Trans::possible_trans(max_state_index + 1);
     for trans in possible_trans {
       let mut new_machine = self.clone();
       new_machine.table[edge_index] = Some(trans);
