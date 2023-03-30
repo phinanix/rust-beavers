@@ -2,7 +2,7 @@
 use either::Either::{self, Left, Right};
 use std::{fmt::Debug, vec};
 
-use crate::turing::{Dir, Edge, State, Trans, Turing};
+use crate::turing::{Dir, Edge, SmallBinMachine, State, Trans, Turing, HALT, START};
 
 trait TapeSymbol: Copy + Eq + Debug {
   fn empty() -> Self;
@@ -21,7 +21,7 @@ impl TapeSymbol for bool {
 // so the turing tape 100 >1< 1110 would be
 // vec![1, 0, 0] 1 vec![0, 1, 1, 1]
 // the infinite stack of empty symbols is represented implicitly
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct Tape<S> {
   left: Vec<S>,
   head: S,
@@ -92,7 +92,7 @@ impl<S: TapeSymbol> Tape<S> {
     for step in 1..num_steps + 1 {
       state = match self.step(state, machine) {
         Left(edge) => return (Left(edge), step),
-        Right(State(0)) => return (Right(State(0)), step),
+        Right(HALT) => return (Right(HALT), step),
         Right(state) => state,
       };
       // dbg!(&self, state);
@@ -105,11 +105,12 @@ impl<S: TapeSymbol> Tape<S> {
     num_steps: u32,
   ) -> (Either<Edge<S>, State>, u32, Self) {
     let mut tape = Self::new();
-    let (new_state, num_steps) = tape.simulate(machine, State(1), num_steps);
+    let (new_state, num_steps) = tape.simulate(machine, START, num_steps);
     (new_state, num_steps, tape)
   }
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct ExpTape<S> {
   left: Vec<(S, u32)>,
   head: S,
@@ -200,7 +201,7 @@ impl<S: TapeSymbol> ExpTape<S> {
     for step in 1..num_steps + 1 {
       state = match self.step(state, machine) {
         Left(edge) => return (Left(edge), step),
-        Right(State(0)) => return (Right(State(0)), step),
+        Right(HALT) => return (Right(HALT), step),
         Right(state) => state,
       };
       // dbg!(&self, state);
@@ -213,7 +214,7 @@ impl<S: TapeSymbol> ExpTape<S> {
     num_steps: u32,
   ) -> (Either<Edge<S>, State>, u32, Self) {
     let mut tape = Self::new();
-    let (new_state, num_steps) = tape.simulate(machine, State(1), num_steps);
+    let (new_state, num_steps) = tape.simulate(machine, START, num_steps);
     (new_state, num_steps, tape)
   }
 
@@ -236,9 +237,53 @@ impl<S: TapeSymbol> ExpTape<S> {
   }
 }
 
+fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<SmallBinMachine> {
+  let mut out = vec![];
+
+  struct TnfState {
+    machine: SmallBinMachine,
+    state: State,
+    tape: Tape<bool>,
+    num_steps: u32,
+  }
+
+  let mut stack = vec![TnfState {
+    machine: inp_machine,
+    state: START,
+    tape: Tape::new(),
+    num_steps: 0,
+  }];
+  while let Some(TnfState {
+    machine,
+    state,
+    mut tape,
+    num_steps,
+  }) = stack.pop()
+  {
+    match tape.simulate(&machine, state, total_steps - num_steps) {
+      (Right(_state), _simulated_steps) => out.push(machine),
+      (Left(edge), simulated_steps) => {
+        let new_state = edge.0;
+        let new_step_total = simulated_steps + num_steps;
+        let new_machines = machine.branch_on_edge(edge);
+        for machine in new_machines {
+          stack.push(TnfState {
+            machine,
+            state: new_state,
+            tape: tape.clone(),
+            num_steps: new_step_total,
+          });
+        }
+      }
+    }
+  }
+
+  out
+}
+
 mod test {
   use super::*;
-  use crate::turing::get_machine;
+  use crate::turing::{get_machine, HALT};
 
   #[test]
   fn exptape_to_tape() {
@@ -259,7 +304,7 @@ mod test {
     let bb2 = get_machine("bb2");
     let (state, num_steps, tape) = Tape::simulate_from_start(&bb2, 10);
     dbg!(&tape);
-    assert_eq!(state, Right(State(0)));
+    assert_eq!(state, Right(HALT));
     assert_eq!(num_steps, 6);
     assert_eq!(
       tape,
@@ -280,7 +325,7 @@ mod test {
     let bb3 = get_machine("bb3");
     let (state, num_steps, tape) = Tape::simulate_from_start(&bb3, 30);
     dbg!(&tape);
-    assert_eq!(state, Right(State(0)));
+    assert_eq!(state, Right(HALT));
     assert_eq!(num_steps, 14);
     assert_eq!(
       tape,
@@ -297,4 +342,6 @@ mod test {
     );
   }
   //todo: simulate bb4 to further sanity check
+
+  //tests to write: bb4, tnf_simulate
 }
