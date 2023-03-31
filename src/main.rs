@@ -4,6 +4,7 @@ use turing::SmallBinMachine;
 
 mod simulate;
 mod turing;
+mod linrecur;
 /*
 high level todo:
 - branch simulation on undefined transition
