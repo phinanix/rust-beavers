@@ -9,6 +9,14 @@ pub enum Dir {
 }
 use Dir::*;
 
+impl Dir {
+  pub fn to_displacement(&self) -> i32 {
+    match self {
+      L => -1, 
+      R => 1,
+    }
+  }
+}
 // the state a machine is in. 0 is Halt
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct State(pub u8);

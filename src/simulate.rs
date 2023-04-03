@@ -4,7 +4,7 @@ use std::{fmt::Debug, vec};
 
 use crate::turing::{Dir, Edge, SmallBinMachine, State, Trans, Turing, HALT, START};
 
-trait TapeSymbol: Copy + Eq + Debug {
+pub trait TapeSymbol: Copy + Eq + Debug {
   fn empty() -> Self;
 }
 
@@ -22,20 +22,33 @@ impl TapeSymbol for bool {
 // vec![1, 0, 0] 1 vec![0, 1, 1, 1]
 // the infinite stack of empty symbols is represented implicitly
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-struct Tape<S> {
-  left: Vec<S>,
+pub struct Tape<S> {
+  left: Vec<S>, //todo: VecDeque?
   head: S,
   right: Vec<S>,
 }
 
 impl<S: TapeSymbol> Tape<S> {
-  fn new() -> Self {
+  pub fn new() -> Self {
     Tape {
       left: vec![],
       head: TapeSymbol::empty(),
       right: vec![],
     }
   }
+
+  pub fn get_slice(&self, leftwards: usize, rightwards: usize) -> (&'_[S], S, &'_[S]) {
+    let left = &self.left[0..leftwards];
+    let right = &self.right[0..rightwards];
+    return (left, self.head, right)
+  }
+
+  pub fn get_displaced_slice(&self, left: i32, right: i32, displacement: i32) -> (&'_[S], S, &'_[S]) {
+    let left_slice = left.abs_diff(displacement).try_into().unwrap();
+    let right_slice = right.abs_diff(displacement).try_into().unwrap();
+    self.get_slice(left_slice, right_slice)
+  }
+
 
   fn move_right(&mut self) {
     // if the left side is empty and the bit we're moving off is empty, then we can just drop the
@@ -67,8 +80,9 @@ impl<S: TapeSymbol> Tape<S> {
   }
 
   // mutably updates self; returns new state
-  // return either final state (Right) or the Edge that the machine couldn't handle (Left)
-  fn step(&mut self, state: State, t: &impl Turing<S>) -> Either<Edge<S>, State> {
+  // return either new state and the dir we went to get there (Right) 
+  // or the Edge that the machine couldn't handle (Left)
+  pub fn step_dir(&mut self, state: State, t: &impl Turing<S>) -> Either<Edge<S>, (State, Dir)> {
     let edge = Edge(state, self.head);
     let Trans { state, symbol, dir } = match t.step(edge) {
       Some(trans) => trans,
@@ -76,10 +90,18 @@ impl<S: TapeSymbol> Tape<S> {
     };
     self.head = symbol;
     self.move_dir(dir);
-    Right(state)
+    Right((state, dir))
+  }
+  
+  // return either new state (Right) or the Edge that the machine couldn't handle (Left)
+  pub fn step(&mut self, state: State, t: &impl Turing<S>) -> Either<Edge<S>, State> {
+    match self.step_dir(state, t) {
+        Left(e) => Left(e),
+        Right((s, _d)) => Right(s),
+    }
   }
 
-  fn simulate(
+  pub fn simulate(
     &mut self,
     machine: &impl Turing<S>,
     mut state: State,
@@ -100,7 +122,7 @@ impl<S: TapeSymbol> Tape<S> {
     (Right(state), num_steps)
   }
 
-  fn simulate_from_start(
+  pub fn simulate_from_start(
     machine: &impl Turing<S>,
     num_steps: u32,
   ) -> (Either<Edge<S>, State>, u32, Self) {
