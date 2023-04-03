@@ -16,7 +16,7 @@ high level todo:
 - bit packed tape?
 */
 fn main() {
-  let first_machine = SmallBinMachine::start_machine(3, true);
+  let first_machine = SmallBinMachine::start_machine(4, true);
   let num_steps = 130;
   let machines = tnf_simulate(first_machine, num_steps);
   dbg!(machines.len());

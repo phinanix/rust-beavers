@@ -16,6 +16,7 @@ use LRResult::*;
 
 pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> LRResult
  where Tape<S> : std::fmt::Display {
+  let to_print = false;
   let mut tape: Tape<S> = Tape::new();
   let mut state = START;
   let mut cur_displacement = 0;
@@ -40,8 +41,9 @@ pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> L
         },
     };
     steps_taken += 1;
-    // println!("steps: {} state: {:?} tape: {}", steps_taken, state, &tape);
-
+    if to_print {
+      println!("steps: {} state: {:?} tape: {}", steps_taken, state, &tape);
+    }
     // cycle check 
     if state == state_to_check && tape == tape_to_check {
       let start_step = num_at_which_we_check;
@@ -57,24 +59,30 @@ pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> L
     if state == state_to_check {
       let shift = cur_displacement - displacement_to_check;
       // todo: this is duplicating some work with all the indexing stuff
-      let start_left = leftmost.abs_diff(displacement_to_check).try_into().unwrap();
-      let start_right = rightmost.abs_diff(displacement_to_check).try_into().unwrap();
-      let end_left = (leftmost + shift).abs_diff(cur_displacement).try_into().unwrap();
-      let end_right = (rightmost + shift).abs_diff(cur_displacement).try_into().unwrap();
-      let index_left = tape.left_length().min(end_left);
-      let index_right = tape.right_length().min(end_right);
-      // dbg!(shift, cur_displacement, displacement_to_check, leftmost, rightmost);
-      // dbg!(start_left, start_right, end_left, end_right, index_left, index_right);
-      if index_left <= start_left && index_right <= start_right {
+      let start_left: i32 = leftmost.abs_diff(displacement_to_check).try_into().unwrap();
+      let start_right: i32 = rightmost.abs_diff(displacement_to_check).try_into().unwrap();
+      let end_left: i32 = (leftmost + shift).abs_diff(cur_displacement).try_into().unwrap();
+      let end_right: i32 = (rightmost + shift).abs_diff(cur_displacement).try_into().unwrap();
+      let index_left: i32 = (tape.left_length() as i32).min(end_left);
+      let index_right: i32 = (tape.right_length() as i32).min(end_right);
+      if to_print{
+      dbg!(shift, cur_displacement, displacement_to_check, leftmost, rightmost);
+      dbg!(start_left, start_right, end_left, end_right, index_left, index_right);
+      }
+      if index_left <= start_left + shift && index_right <= start_right - shift {
         let start_tape_slice = tape_to_check.get_displaced_slice(leftmost, rightmost, displacement_to_check);
         let cur_tape_slice = tape.get_displaced_slice(leftmost+shift, rightmost+shift, cur_displacement);
-        // dbg!(start_tape_slice, cur_tape_slice);
-        // println!("tape: {} tape_to_check: {}", tape, tape_to_check);
+        if to_print {
+          dbg!(start_tape_slice, cur_tape_slice);
+          println!("tape: {} tape_to_check: {}", tape, tape_to_check);
+        }
         if start_tape_slice == cur_tape_slice {
           return LR { start_step: steps_taken, period: steps_taken - num_at_which_we_check }
         }
       }
-      // println!()
+      if to_print {
+        println!()
+      }
     }
 
     // update power of two
@@ -120,10 +128,16 @@ mod test {
   }
 
   #[test]
-  fn lr_not_find_counter() {
-    let m_str = "0LB0RA_1LC1LH_1RA1LC"; //"1RB---_1RB---";
-    let m = SmallBinMachine::from_compact_format(m_str);
-    let lr_res = lr_simulate(&m, 200);
-    assert_eq!(lr_res, Inconclusive {steps_simulated: 200})
+  fn lr_not_find_not_lr() {
+    let m_strs = [
+      "0LB0RA_1LC1LH_1RA1LC", 
+      "1RB0LC_0LC1RA_1LH1LA", 
+      "1RB---_0LC0RB_1LC1LA"]; //"1RB---_1RB---";
+    for m_str in m_strs {
+      dbg!(m_str);
+      let m = SmallBinMachine::from_compact_format(m_str);
+      let lr_res = lr_simulate(&m, 200);
+      assert_eq!(lr_res, Inconclusive {steps_simulated: 200})
+    }
   }
 }
