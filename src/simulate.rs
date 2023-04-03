@@ -1,6 +1,6 @@
 #[allow(unused)]
 use either::Either::{self, Left, Right};
-use std::{fmt::Debug, vec};
+use std::{fmt::{Debug, Display, Write}, vec};
 
 use crate::turing::{Dir, Edge, SmallBinMachine, State, Trans, Turing, HALT, START};
 
@@ -11,6 +11,14 @@ pub trait TapeSymbol: Copy + Eq + Debug {
 impl TapeSymbol for bool {
   fn empty() -> Self {
     false
+  }
+}
+
+fn disp_bool(b: bool) -> char {
+  if b {
+    'T'
+  } else {
+    'F'
   }
 }
 
@@ -36,7 +44,15 @@ impl<S: TapeSymbol> Tape<S> {
       right: vec![],
     }
   }
-
+  
+  pub fn left_length(&self) -> usize {
+    self.left.len()
+  }
+  
+  pub fn right_length(&self) -> usize {
+    self.right.len()
+  }
+  
   pub fn get_slice(&self, leftwards: usize, rightwards: usize) -> (&'_[S], S, &'_[S]) {
     let left = &self.left[0..leftwards];
     let right = &self.right[0..rightwards];
@@ -44,9 +60,9 @@ impl<S: TapeSymbol> Tape<S> {
   }
 
   pub fn get_displaced_slice(&self, left: i32, right: i32, displacement: i32) -> (&'_[S], S, &'_[S]) {
-    let left_slice = left.abs_diff(displacement).try_into().unwrap();
-    let right_slice = right.abs_diff(displacement).try_into().unwrap();
-    self.get_slice(left_slice, right_slice)
+    let left_slice: usize = left.abs_diff(displacement).try_into().unwrap();
+    let right_slice: usize = right.abs_diff(displacement).try_into().unwrap();
+    self.get_slice(left_slice.min(self.left_length()), right_slice.min(self.right_length()))
   }
 
 
@@ -130,6 +146,22 @@ impl<S: TapeSymbol> Tape<S> {
     let (new_state, num_steps) = tape.simulate(machine, START, num_steps);
     (new_state, num_steps, tape)
   }
+}
+
+impl Display for Tape<bool> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for &b in self.left.iter() {
+          f.write_char(disp_bool(b))?;
+        }
+        write!(f, ">{}<", disp_bool(self.head))?;
+        // f.write_char('>')?;
+        // f.write_char(disp_bool(self.head))?;
+        // f.write_char('<')?;
+        for &b in self.right.iter().rev() {
+          f.write_char(disp_bool(b))?;
+        }        
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -325,7 +357,6 @@ mod test {
   fn sim_bb2() {
     let bb2 = get_machine("bb2");
     let (state, num_steps, tape) = Tape::simulate_from_start(&bb2, 10);
-    dbg!(&tape);
     assert_eq!(state, Right(HALT));
     assert_eq!(num_steps, 6);
     assert_eq!(
@@ -346,7 +377,6 @@ mod test {
   fn sim_bb3() {
     let bb3 = get_machine("bb3");
     let (state, num_steps, tape) = Tape::simulate_from_start(&bb3, 30);
-    dbg!(&tape);
     assert_eq!(state, Right(HALT));
     assert_eq!(num_steps, 14);
     assert_eq!(

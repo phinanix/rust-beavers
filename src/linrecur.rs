@@ -1,7 +1,7 @@
 use either::Either::{Left, Right};
 use crate::{
   simulate::{Tape, TapeSymbol},
-  turing::{Turing, START},
+  turing::{Turing, START, HALT},
 };
 
 #[allow(unused)]
@@ -14,7 +14,8 @@ pub enum LRResult {
 }
 use LRResult::*;
 
-pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> LRResult {
+pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> LRResult
+ where Tape<S> : std::fmt::Display {
   let mut tape: Tape<S> = Tape::new();
   let mut state = START;
   let mut cur_displacement = 0;
@@ -30,6 +31,7 @@ pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> L
   while steps_taken < num_steps {
     state = match tape.step_dir(state, machine) {
         Left(_unknown_edge) => unreachable!("machine is defined"),
+        Right((HALT, _dir)) => return Halt{num_steps: steps_taken+1},
         Right((new_state, dir)) => {
           cur_displacement += dir.to_displacement();
           leftmost = leftmost.min(cur_displacement);
@@ -38,6 +40,7 @@ pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> L
         },
     };
     steps_taken += 1;
+    // println!("steps: {} state: {:?} tape: {}", steps_taken, state, &tape);
 
     // cycle check 
     if state == state_to_check && tape == tape_to_check {
@@ -52,10 +55,24 @@ pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> L
     - (l, r) \subset (l+shift, r+shift) union dead tape
     */ 
     if state == state_to_check {
-      let start_tape_slice = tape_to_check.get_displaced_slice(leftmost, rightmost, displacement_to_check);
-      let cur_tape_slice = tape.get_displaced_slice(leftmost, rightmost, cur_displacement);
-      if start_tape_slice == cur_tape_slice {
-
+      let shift = cur_displacement - displacement_to_check;
+      // todo: this is duplicating some work with all the indexing stuff
+      let start_left = leftmost.abs_diff(displacement_to_check).try_into().unwrap();
+      let start_right = rightmost.abs_diff(displacement_to_check).try_into().unwrap();
+      let end_left = (leftmost + shift).abs_diff(cur_displacement).try_into().unwrap();
+      let end_right = (rightmost + shift).abs_diff(cur_displacement).try_into().unwrap();
+      let index_left = tape.left_length().min(end_left);
+      let index_right = tape.right_length().min(end_right);
+      // dbg!(shift, cur_displacement, displacement_to_check, leftmost, rightmost);
+      // dbg!(start_left, start_right, end_left, end_right, index_left, index_right);
+      // println!();
+      if index_left <= start_left && index_right <= start_right {
+        let start_tape_slice = tape_to_check.get_displaced_slice(leftmost, rightmost, displacement_to_check);
+        let cur_tape_slice = tape.get_displaced_slice(leftmost+shift, rightmost+shift, cur_displacement);
+        // dbg!(start_tape_slice, cur_tape_slice);
+        if start_tape_slice == cur_tape_slice {
+          return LR { start_step: steps_taken, period: steps_taken - num_at_which_we_check }
+        }
       }
     }
 
@@ -75,11 +92,13 @@ pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> L
 
 mod test {
   use super::*;
-  use crate::turing::{get_machine, HALT};
+  use crate::turing::{get_machine, HALT, SmallBinMachine};
 
-  #[test] 
-  fn index_oob(){
-    let myvec = vec![0, 1, 2, 3];
-    dbg!(&myvec[1..6]);
+  #[test]
+  fn lr_finds_simple_machine() {
+    let m_str = "1RB---_1RB---";
+    let m = SmallBinMachine::from_compact_format(m_str);
+    let lr_res = lr_simulate(&m, 5);
+    assert_eq!(lr_res, LR { start_step: 2, period: 1 });
   }
 }
