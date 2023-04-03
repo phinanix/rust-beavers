@@ -36,6 +36,11 @@ pub struct Tape<S> {
   right: Vec<S>,
 }
 
+pub fn index_from_end<S>(vec: &Vec<S>, length: usize) -> &'_[S] {
+  let len = vec.len();
+  &vec[len-length..len]
+}
+
 impl<S: TapeSymbol> Tape<S> {
   pub fn new() -> Self {
     Tape {
@@ -53,9 +58,10 @@ impl<S: TapeSymbol> Tape<S> {
     self.right.len()
   }
   
+  
   pub fn get_slice(&self, leftwards: usize, rightwards: usize) -> (&'_[S], S, &'_[S]) {
-    let left = &self.left[0..leftwards];
-    let right = &self.right[0..rightwards];
+    let left = index_from_end(&self.left, leftwards);
+    let right = index_from_end(&self.right, rightwards);
     return (left, self.head, right)
   }
 

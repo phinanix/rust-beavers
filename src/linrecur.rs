@@ -65,15 +65,16 @@ pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> L
       let index_right = tape.right_length().min(end_right);
       // dbg!(shift, cur_displacement, displacement_to_check, leftmost, rightmost);
       // dbg!(start_left, start_right, end_left, end_right, index_left, index_right);
-      // println!();
       if index_left <= start_left && index_right <= start_right {
         let start_tape_slice = tape_to_check.get_displaced_slice(leftmost, rightmost, displacement_to_check);
         let cur_tape_slice = tape.get_displaced_slice(leftmost+shift, rightmost+shift, cur_displacement);
         // dbg!(start_tape_slice, cur_tape_slice);
+        // println!("tape: {} tape_to_check: {}", tape, tape_to_check);
         if start_tape_slice == cur_tape_slice {
           return LR { start_step: steps_taken, period: steps_taken - num_at_which_we_check }
         }
       }
+      // println!()
     }
 
     // update power of two
@@ -90,6 +91,22 @@ pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> L
   Inconclusive { steps_simulated: num_steps }
 }
 
+pub fn aggregate_and_display_lr_res(results: Vec<LRResult>) {
+  let mut halt_count = 0; 
+  let mut cycle_count = 0;
+  let mut lr_count = 0;
+  let mut inconclusive_count = 0;
+  for result in results {
+    match result {
+        Halt { num_steps:  _num_steps } => halt_count+=1,
+        Cycle { start_step: _start_step, period: _period } => cycle_count+=1,
+        LR { start_step: _start_step, period: _period } => lr_count+=1,
+        Inconclusive { steps_simulated: _steps_simulated } => inconclusive_count+=1,
+    }
+  }
+  println!("halted: {} cycled: {} lr: {} inconclusive: {}", halt_count, cycle_count, lr_count, inconclusive_count);
+}
+
 mod test {
   use super::*;
   use crate::turing::{get_machine, HALT, SmallBinMachine};
@@ -100,5 +117,13 @@ mod test {
     let m = SmallBinMachine::from_compact_format(m_str);
     let lr_res = lr_simulate(&m, 5);
     assert_eq!(lr_res, LR { start_step: 2, period: 1 });
+  }
+
+  #[test]
+  fn lr_not_find_counter() {
+    let m_str = "0LB0RA_1LC1LH_1RA1LC"; //"1RB---_1RB---";
+    let m = SmallBinMachine::from_compact_format(m_str);
+    let lr_res = lr_simulate(&m, 200);
+    assert_eq!(lr_res, Inconclusive {steps_simulated: 200})
   }
 }
