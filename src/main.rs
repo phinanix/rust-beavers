@@ -18,19 +18,19 @@ high level todo:
 */
 fn main() {
   let first_machine = SmallBinMachine::start_machine(5, true);
-  let num_steps = 1300;
+  let num_steps = 130;
   let machines = tnf_simulate(first_machine, num_steps);
   dbg!(machines.len());
-  // for m in machines
-  // {
-  //   let m_str = SmallBinMachine::to_compact_format(&m);
-  //   let lr_res = lr_simulate(&m, num_steps);
-  //   let (final_state, normal_num_steps, _tape) = Tape::simulate_from_start(&m, num_steps);
+  for m in machines
+  {
+    let m_str = SmallBinMachine::to_compact_format(&m);
+    let lr_res = lr_simulate(&m, num_steps);
+    let (final_state, normal_num_steps, _tape) = Tape::simulate_from_start(&m, num_steps);
     
-  //   // println!("m: {}, res: {:?}", m_str, lr_res);
-  //   match lr_res {
-  //     LRResult::Halt { num_steps: lr_num_steps } => assert_eq!((final_state, normal_num_steps), (Right(HALT), lr_num_steps)),
-  //     _ => (),
-  //   }
-  // }
+    // println!("m: {}, res: {:?}", m_str, lr_res);
+    match lr_res {
+      LRResult::Halt { num_steps: lr_num_steps } => assert_eq!((final_state, normal_num_steps), (Right(HALT), lr_num_steps)),
+      _ => (),
+    }
+  }
 }

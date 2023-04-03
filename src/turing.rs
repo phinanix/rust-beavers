@@ -139,7 +139,7 @@ impl SmallBinMachine {
   fn edge_index(&self, Edge(State(state), symbol): Edge<bool>) -> usize {
     assert_ne!(state, 0); // you can't make progress from a halt state
     let state = state - 1; // the table has no entries for halting states ofc
-    assert!(state < self.num_states);
+    assert!(state < self.num_states, "{}", self.to_compact_format());
     (state * 2 + if symbol { 1 } else { 0 }) as usize
   }
 
@@ -191,12 +191,27 @@ impl SmallBinMachine {
 
     let mut out = vec![];
 
+    let mut to_print = false; 
     let max_state_index = match self.first_undefined_state() {
-      Some(undef_state) => undef_state,
-      None => self.num_states - 1,
+      Some(undef_state) => {
+        let ans = undef_state+1; 
+        if ans == edge.0.0 && ans < self.num_states
+          {ans + 1} 
+        else 
+          {ans}
+        },
+      None => {self.num_states},
     };
 
-    let possible_trans = Trans::possible_trans(max_state_index + 1);
+
+    let possible_trans = Trans::possible_trans(max_state_index);
+    if possible_trans.len() < 13 {to_print = true}; 
+    if to_print {
+      dbg!(max_state_index, self.first_undefined_state());
+      dbg!(self.to_compact_format(), edge, edge_index);
+      dbg!(possible_trans.len(), &possible_trans);
+      println!();
+    }
     for trans in possible_trans {
       let mut new_machine = self.clone();
       new_machine.table[edge_index] = Some(trans);
