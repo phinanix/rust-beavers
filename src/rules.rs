@@ -23,17 +23,25 @@
  0 1^n >0< -> 1^(n+1) >0<
 */
 
+use smallvec::{smallvec, SmallVec};
+
 use crate::{
-  simulate::TapeSymbol,
-  turing::{Edge, State, Trans, Turing},
+  turing::{Edge, State, TapeSymbol, Trans, Turing, Dir::{L, R}},
 };
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct Var(u8);
+
+//ax + n
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct AffineVar{pub n: u32, pub a: u32, pub var: Var}
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Config<S> {
   state: State,
-  left: Vec<(S, u32)>,
+  left: Vec<(S, AffineVar)>,
   head: S,
-  right: Vec<(S, u32)>,
+  right: Vec<(S, AffineVar)>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -41,6 +49,38 @@ pub struct Rule<S> {
   start: Config<S>,
   end: Config<S>,
 }
+
+impl<S:TapeSymbol> Rule<S> {
+  pub fn start_edge_index(&self) -> usize {
+    match self {
+      Rule { start: Config { state, left: _left, head, right: _right }, end: _end } => 
+        return Edge(*state, *head).edge_index(),
+    }
+  }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct Rulebook<S>(u8, SmallVec<[Vec<Rule<S>>; 14]>);
+
+
+impl<S: TapeSymbol> Rulebook<S> {
+  pub fn new(num_states: u8) -> Self {
+    let mut sv = smallvec![]; 
+    for _ in 0..2*num_states {
+      sv.push(vec![]);
+    }
+    Self(num_states, sv)
+  }
+
+  pub fn add_rule(&mut self, rule: Rule<S>) {
+    self.1[rule.start_edge_index()].push(rule);
+  }
+
+  pub fn get_rules(&self, edge: Edge<S>) -> &Vec<Rule<S>> {
+    &self.1[edge.edge_index()]
+  }
+}
+
 
 pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S>> {
   /* whenever there is a transition XS -> XTD for state X, symbols S,T, dir D
@@ -51,7 +91,25 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
     for symbol_in in S::all_symbols() {
       let Trans {state: state_out, symbol: symbol_out, dir} = 
         machine.step(Edge(state_in, symbol_in)).expect("machine is defined");
+      if state_in == state_out {
+        let sym_var = AffineVar{n: 0, a: 1, var: Var(0)};
+        let half_tape_in = vec![(symbol_in, sym_var)];
+        let half_tape_out = vec![(symbol_out, sym_var)];
+        match dir {
+            L => {
+              let start = Config {state: state_in, left: half_tape_in, head: symbol_in, right: vec![]};
+              let end = Config {state: state_in, left: vec![], head: symbol_out, right: half_tape_out};
+              out.push(Rule {start, end});
+            },
+            R => {
+              let start = Config {state: state_in, left: vec![], head: symbol_in, right: half_tape_in};
+              let end = Config {state: state_in, left: half_tape_out, head: symbol_out, right: vec![]};
+              out.push(Rule {start, end});
+            },
+        }
+      }
     }
   }
   out
 }
+

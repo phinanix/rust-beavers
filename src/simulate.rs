@@ -5,30 +5,7 @@ use std::{
   vec,
 };
 
-use crate::turing::{Dir, Edge, SmallBinMachine, State, Trans, Turing, HALT, START};
-
-pub trait TapeSymbol: Copy + Eq + Debug {
-  fn empty() -> Self;
-  fn all_symbols() -> Vec<Self>;
-}
-
-impl TapeSymbol for bool {
-  fn empty() -> Self {
-    false
-  }
-
-  fn all_symbols() -> Vec<Self> {
-    vec![false, true]
-  }
-}
-
-fn disp_bool(b: bool) -> char {
-  if b {
-    'T'
-  } else {
-    'F'
-  }
-}
+use crate::{turing::{Dir, Edge, SmallBinMachine, State, Trans, Turing, HALT, START, TapeSymbol, disp_bool}, rules::Rulebook};
 
 // tape has two stacks and a symbol the machine is currently reading
 // since these are array-backed vectors, the "front" is actually at the end
@@ -308,6 +285,10 @@ impl<S: TapeSymbol> ExpTape<S> {
       head: *head,
       right: Self::splat(right),
     }
+  }
+
+  pub fn apply_rules(&mut self, machine: &impl Turing<S>, state: State, rules: Rulebook<S>) -> Option<State> {
+    todo!()
   }
 }
 

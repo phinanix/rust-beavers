@@ -1,6 +1,6 @@
 use crate::{
-  simulate::{Tape, TapeSymbol},
-  turing::{Turing, HALT, START},
+  simulate::{Tape}, 
+  turing::{TapeSymbol, Turing, HALT, START},
 };
 use either::Either::{Left, Right};
 

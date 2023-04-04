@@ -1,6 +1,7 @@
-use smallvec::{smallvec, SmallVec};
 #[allow(unused)]
+use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Dir {
@@ -24,9 +25,44 @@ pub struct State(pub u8);
 pub const HALT: State = State(0);
 pub const START: State = State(1);
 
+pub trait TapeSymbol: Copy + Eq + Debug {
+  fn empty() -> Self;
+  fn all_symbols() -> Vec<Self>;
+}
+
+impl TapeSymbol for bool {
+  fn empty() -> Self {
+    false
+  }
+
+  fn all_symbols() -> Vec<Self> {
+    vec![false, true]
+  }
+}
+
+pub fn disp_bool(b: bool) -> char {
+  if b {
+    'T'
+  } else {
+    'F'
+  }
+}
+
+
 // the input to a TM's transition function
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Edge<S>(pub State, pub S);
+
+impl<S:TapeSymbol> Edge<S> {
+  pub fn edge_index(&self) -> usize {
+    let &Self(State(state), symbol) = self;
+    //index by state, then by symbol, so output is state*num_symbols + index_symbol
+    let symbols = S::all_symbols();
+    let num_symbols = symbols.len();
+    let symbol_index = symbols.into_iter().position(|s| s == symbol).unwrap();
+    return (state - 1) as usize * num_symbols + symbol_index
+  }
+}
 
 // the output of a TM's transition function
 // by convention, state 0 is halting. you can theoretically do anything when you halt but the
