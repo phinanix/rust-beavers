@@ -168,3 +168,10 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
   }
   out
 }
+
+mod test {
+  use super::*;
+  // affinevar: sub, submap
+  // detect chain rules
+  
+}

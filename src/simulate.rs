@@ -526,5 +526,6 @@ mod test {
   }
   //todo: simulate bb4 to further sanity check
 
-  //tests to write: bb4, tnf_simulate
+  //tests to write: bb4
+  // match var num, match rule tape, append rule tape, apply rule, apply rules, 
 }

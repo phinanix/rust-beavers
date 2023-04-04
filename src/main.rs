@@ -22,8 +22,8 @@ high level todo:
 */
 fn main() {
   let first_machine = SmallBinMachine::start_machine(4, true);
-  let num_steps = 130;
-  let machines = tnf_simulate(first_machine, num_steps);
+  let num_steps = 13000;
+  let machines = tnf_simulate(first_machine, 130);
   dbg!(machines.len());
   let mut lr_results = vec![];
   for m in machines {
