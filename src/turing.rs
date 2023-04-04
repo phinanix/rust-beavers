@@ -48,19 +48,18 @@ pub fn disp_bool(b: bool) -> char {
   }
 }
 
-
 // the input to a TM's transition function
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Edge<S>(pub State, pub S);
 
-impl<S:TapeSymbol> Edge<S> {
+impl<S: TapeSymbol> Edge<S> {
   pub fn edge_index(&self) -> usize {
     let &Self(State(state), symbol) = self;
     //index by state, then by symbol, so output is state*num_symbols + index_symbol
     let symbols = S::all_symbols();
     let num_symbols = symbols.len();
     let symbol_index = symbols.into_iter().position(|s| s == symbol).unwrap();
-    return (state - 1) as usize * num_symbols + symbol_index
+    return (state - 1) as usize * num_symbols + symbol_index;
   }
 }
 

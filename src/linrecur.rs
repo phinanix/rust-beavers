@@ -1,5 +1,5 @@
 use crate::{
-  simulate::{Tape}, 
+  simulate::Tape,
   turing::{TapeSymbol, Turing, HALT, START},
 };
 use either::Either::{Left, Right};

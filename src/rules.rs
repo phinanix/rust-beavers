@@ -23,10 +23,13 @@
  0 1^n >0< -> 1^(n+1) >0<
 */
 
+use std::collections::HashMap;
+
 use smallvec::{smallvec, SmallVec};
 
-use crate::{
-  turing::{Edge, State, TapeSymbol, Trans, Turing, Dir::{L, R}},
+use crate::turing::{
+  Dir::{L, R},
+  Edge, State, TapeSymbol, Trans, Turing,
 };
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -34,27 +37,53 @@ pub struct Var(u8);
 
 //ax + n
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct AffineVar{pub n: u32, pub a: u32, pub var: Var}
+pub struct AffineVar {
+  pub n: u32,
+  pub a: u32,
+  pub var: Var,
+}
 
+impl AffineVar {
+  pub fn sub(&self, x: u32) -> u32 {
+    let AffineVar { n, a, var: _var } = self;
+    return n + a * x;
+  }
+
+  pub fn sub_map(&self, hm: &HashMap<Var, u32>) -> u32 {
+    let &x = hm.get(&self.var).unwrap();
+    self.sub(x)
+  }
+}
+
+// much like Tape / ExpTape, the *last* thing in the Vec is the closest to the head, 
+// for both left and right
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Config<S> {
-  state: State,
-  left: Vec<(S, AffineVar)>,
-  head: S,
-  right: Vec<(S, AffineVar)>,
+  pub state: State,
+  pub left: Vec<(S, AffineVar)>,
+  pub head: S,
+  pub right: Vec<(S, AffineVar)>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Rule<S> {
-  start: Config<S>,
-  end: Config<S>,
+  pub start: Config<S>,
+  pub end: Config<S>,
 }
 
-impl<S:TapeSymbol> Rule<S> {
+impl<S: TapeSymbol> Rule<S> {
   pub fn start_edge_index(&self) -> usize {
     match self {
-      Rule { start: Config { state, left: _left, head, right: _right }, end: _end } => 
-        return Edge(*state, *head).edge_index(),
+      Rule {
+        start:
+          Config {
+            state,
+            left: _left,
+            head,
+            right: _right,
+          },
+        end: _end,
+      } => return Edge(*state, *head).edge_index(),
     }
   }
 }
@@ -62,11 +91,10 @@ impl<S:TapeSymbol> Rule<S> {
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Rulebook<S>(u8, SmallVec<[Vec<Rule<S>>; 14]>);
 
-
 impl<S: TapeSymbol> Rulebook<S> {
   pub fn new(num_states: u8) -> Self {
-    let mut sv = smallvec![]; 
-    for _ in 0..2*num_states {
+    let mut sv = smallvec![];
+    for _ in 0..2 * num_states {
       sv.push(vec![]);
     }
     Self(num_states, sv)
@@ -81,7 +109,6 @@ impl<S: TapeSymbol> Rulebook<S> {
   }
 }
 
-
 pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S>> {
   /* whenever there is a transition XS -> XTD for state X, symbols S,T, dir D
     there is a chain rule (X, >S< S^n) -> (X, T^n >T<) (shown here for R).
@@ -89,27 +116,55 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
   let mut out = vec![];
   for state_in in machine.all_states() {
     for symbol_in in S::all_symbols() {
-      let Trans {state: state_out, symbol: symbol_out, dir} = 
-        machine.step(Edge(state_in, symbol_in)).expect("machine is defined");
+      let Trans {
+        state: state_out,
+        symbol: symbol_out,
+        dir,
+      } = machine
+        .step(Edge(state_in, symbol_in))
+        .expect("machine is defined");
       if state_in == state_out {
-        let sym_var = AffineVar{n: 0, a: 1, var: Var(0)};
+        let sym_var = AffineVar {
+          n: 0,
+          a: 1,
+          var: Var(0),
+        };
         let half_tape_in = vec![(symbol_in, sym_var)];
         let half_tape_out = vec![(symbol_out, sym_var)];
         match dir {
-            L => {
-              let start = Config {state: state_in, left: half_tape_in, head: symbol_in, right: vec![]};
-              let end = Config {state: state_in, left: vec![], head: symbol_out, right: half_tape_out};
-              out.push(Rule {start, end});
-            },
-            R => {
-              let start = Config {state: state_in, left: vec![], head: symbol_in, right: half_tape_in};
-              let end = Config {state: state_in, left: half_tape_out, head: symbol_out, right: vec![]};
-              out.push(Rule {start, end});
-            },
+          L => {
+            let start = Config {
+              state: state_in,
+              left: half_tape_in,
+              head: symbol_in,
+              right: vec![],
+            };
+            let end = Config {
+              state: state_in,
+              left: vec![],
+              head: symbol_out,
+              right: half_tape_out,
+            };
+            out.push(Rule { start, end });
+          }
+          R => {
+            let start = Config {
+              state: state_in,
+              left: vec![],
+              head: symbol_in,
+              right: half_tape_in,
+            };
+            let end = Config {
+              state: state_in,
+              left: half_tape_out,
+              head: symbol_out,
+              right: vec![],
+            };
+            out.push(Rule { start, end });
+          }
         }
       }
     }
   }
   out
 }
-

@@ -1,11 +1,16 @@
 #[allow(unused)]
 use either::Either::{self, Left, Right};
 use std::{
+  collections::HashMap,
   fmt::{Debug, Display, Write},
+  iter::zip,
   vec,
 };
 
-use crate::{turing::{Dir, Edge, SmallBinMachine, State, Trans, Turing, HALT, START, TapeSymbol, disp_bool}, rules::Rulebook};
+use crate::{
+  rules::{AffineVar, Config, Rule, Rulebook, Var},
+  turing::{disp_bool, Dir, Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, START},
+};
 
 // tape has two stacks and a symbol the machine is currently reading
 // since these are array-backed vectors, the "front" is actually at the end
@@ -161,6 +166,81 @@ impl Display for Tape<bool> {
   }
 }
 
+pub fn match_var_num(
+  AffineVar { n, a, var }: AffineVar,
+  mut num: u32,
+) -> Option<(u32, (Var, u32))> {
+  // returns the num left on the tape, and what to send the var to.
+  if num <= n {
+    return None;
+  }
+  num -= n;
+  // num is still positive
+  if num < a {
+    return None;
+  } // sending var to 1 would be too big
+  Some((num % a, (var, num / a)))
+}
+
+pub fn match_rule_tape<S: TapeSymbol>(
+  hm: &mut HashMap<Var, u32>,
+  rule: &Vec<(S, AffineVar)>,
+  tape: &Vec<(S, u32)>,
+) -> Option<u32> {
+  // if rule applies, returns which numbers each affinevar becomes, else returns none
+  let mut leftover = 0;
+  if rule.len() > tape.len() {
+    return None;
+  };
+  for (&(rule_symbol, avar), &(tape_symbol, num)) in zip(rule.iter().rev(), tape.iter().rev()) {
+    if leftover != 0 {
+      return None;
+    }
+    if rule_symbol != tape_symbol {
+      return None;
+    }
+    match match_var_num(avar, num) {
+      None => return None,
+      Some((new_leftover, (var, var_num))) => {
+        leftover = new_leftover;
+        match hm.get(&var) {
+          None => {
+            hm.insert(var, var_num);
+          }
+          Some(&old_var_num) => {
+            if var_num != old_var_num {
+              return None;
+            }
+          }
+        }
+      }
+    }
+  }
+  Some(leftover)
+}
+
+pub fn append_rule_tape<S: TapeSymbol>(
+  hm: &HashMap<Var, u32>,
+  rule: &Vec<(S, AffineVar)>,
+  tape: &mut Vec<(S, u32)>,
+) {
+  let slice_to_append = match rule.get(0) {
+    None => return,
+    Some((s, avar)) => { 
+      match tape.last_mut() {
+        None => &rule[..],
+        Some((t, num)) => if s == t {
+          *num += avar.sub_map(hm);
+          &rule[1..]
+        } else {
+          &rule[..]
+        },
+      }
+    },
+  };
+  tape.extend(slice_to_append.iter().map(|&(s, avar)|(s, avar.sub_map(hm))));
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 struct ExpTape<S> {
   left: Vec<(S, u32)>,
@@ -287,8 +367,58 @@ impl<S: TapeSymbol> ExpTape<S> {
     }
   }
 
-  pub fn apply_rules(&mut self, machine: &impl Turing<S>, state: State, rules: Rulebook<S>) -> Option<State> {
-    todo!()
+  pub fn apply_rule(
+    &mut self,
+    cur_state: State,
+    Rule {
+      start: Config {
+        state,
+        left,
+        head,
+        right,
+      },
+      end,
+    }: &Rule<S>,
+  ) -> Option<State> {
+    if cur_state == *state && self.head == *head {
+      let mut hm = HashMap::new();
+      let left_l = match_rule_tape(&mut hm, left, &self.left)?;
+      let right_l = match_rule_tape(&mut hm, right, &self.right)?;
+      self.left.truncate(self.left.len() - left.len() + 1);
+      self.right.truncate(self.right.len() - right.len() + 1);
+      if left_l > 0 {
+        self.left.last_mut().unwrap().1 = left_l;
+      } else {
+        self.left.pop();
+      }
+      if right_l > 0 {
+        self.right.last_mut().unwrap().1 = right_l;
+      } else {
+        self.right.pop();
+      }
+      append_rule_tape(&hm, &end.left, &mut self.left);
+      append_rule_tape(&hm, &end.right, &mut self.right);
+
+      return Some(end.state);
+    } else {
+      return None;
+    }
+  }
+
+  pub fn apply_rules(
+    &mut self,
+    state: State,
+    rulebook: Rulebook<S>,
+  ) -> Option<State> {
+    let edge = Edge(state, self.head);
+    let rules = rulebook.get_rules(edge);
+    for rule in rules {
+      match self.apply_rule(state, rule) {
+        None => (),
+        Some(new_state) => return Some(new_state),
+      }
+    }
+    return None;
   }
 }
 
