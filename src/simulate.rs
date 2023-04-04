@@ -1,16 +1,24 @@
 #[allow(unused)]
 use either::Either::{self, Left, Right};
-use std::{fmt::{Debug, Display, Write}, vec};
+use std::{
+  fmt::{Debug, Display, Write},
+  vec,
+};
 
 use crate::turing::{Dir, Edge, SmallBinMachine, State, Trans, Turing, HALT, START};
 
 pub trait TapeSymbol: Copy + Eq + Debug {
   fn empty() -> Self;
+  fn all_symbols() -> Vec<Self>;
 }
 
 impl TapeSymbol for bool {
   fn empty() -> Self {
     false
+  }
+
+  fn all_symbols() -> Vec<Self> {
+    vec![false, true]
   }
 }
 
@@ -36,9 +44,9 @@ pub struct Tape<S> {
   right: Vec<S>,
 }
 
-pub fn index_from_end<S>(vec: &Vec<S>, length: usize) -> &'_[S] {
+pub fn index_from_end<S>(vec: &Vec<S>, length: usize) -> &'_ [S] {
   let len = vec.len();
-  &vec[len-length..len]
+  &vec[len - length..len]
 }
 
 impl<S: TapeSymbol> Tape<S> {
@@ -49,28 +57,34 @@ impl<S: TapeSymbol> Tape<S> {
       right: vec![],
     }
   }
-  
+
   pub fn left_length(&self) -> usize {
     self.left.len()
   }
-  
+
   pub fn right_length(&self) -> usize {
     self.right.len()
   }
-  
-  
-  pub fn get_slice(&self, leftwards: usize, rightwards: usize) -> (&'_[S], S, &'_[S]) {
+
+  pub fn get_slice(&self, leftwards: usize, rightwards: usize) -> (&'_ [S], S, &'_ [S]) {
     let left = index_from_end(&self.left, leftwards);
     let right = index_from_end(&self.right, rightwards);
-    return (left, self.head, right)
+    return (left, self.head, right);
   }
 
-  pub fn get_displaced_slice(&self, left: i32, right: i32, displacement: i32) -> (&'_[S], S, &'_[S]) {
+  pub fn get_displaced_slice(
+    &self,
+    left: i32,
+    right: i32,
+    displacement: i32,
+  ) -> (&'_ [S], S, &'_ [S]) {
     let left_slice: usize = left.abs_diff(displacement).try_into().unwrap();
     let right_slice: usize = right.abs_diff(displacement).try_into().unwrap();
-    self.get_slice(left_slice.min(self.left_length()), right_slice.min(self.right_length()))
+    self.get_slice(
+      left_slice.min(self.left_length()),
+      right_slice.min(self.right_length()),
+    )
   }
-
 
   fn move_right(&mut self) {
     // if the left side is empty and the bit we're moving off is empty, then we can just drop the
@@ -102,7 +116,7 @@ impl<S: TapeSymbol> Tape<S> {
   }
 
   // mutably updates self; returns new state
-  // return either new state and the dir we went to get there (Right) 
+  // return either new state and the dir we went to get there (Right)
   // or the Edge that the machine couldn't handle (Left)
   pub fn step_dir(&mut self, state: State, t: &impl Turing<S>) -> Either<Edge<S>, (State, Dir)> {
     let edge = Edge(state, self.head);
@@ -114,12 +128,12 @@ impl<S: TapeSymbol> Tape<S> {
     self.move_dir(dir);
     Right((state, dir))
   }
-  
+
   // return either new state (Right) or the Edge that the machine couldn't handle (Left)
   pub fn step(&mut self, state: State, t: &impl Turing<S>) -> Either<Edge<S>, State> {
     match self.step_dir(state, t) {
-        Left(e) => Left(e),
-        Right((s, _d)) => Right(s),
+      Left(e) => Left(e),
+      Right((s, _d)) => Right(s),
     }
   }
 
@@ -155,19 +169,19 @@ impl<S: TapeSymbol> Tape<S> {
 }
 
 impl Display for Tape<bool> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for &b in self.left.iter() {
-          f.write_char(disp_bool(b))?;
-        }
-        write!(f, ">{}<", disp_bool(self.head))?;
-        // f.write_char('>')?;
-        // f.write_char(disp_bool(self.head))?;
-        // f.write_char('<')?;
-        for &b in self.right.iter().rev() {
-          f.write_char(disp_bool(b))?;
-        }        
-        Ok(())
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for &b in self.left.iter() {
+      f.write_char(disp_bool(b))?;
     }
+    write!(f, ">{}<", disp_bool(self.head))?;
+    // f.write_char('>')?;
+    // f.write_char(disp_bool(self.head))?;
+    // f.write_char('<')?;
+    for &b in self.right.iter().rev() {
+      f.write_char(disp_bool(b))?;
+    }
+    Ok(())
+  }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]

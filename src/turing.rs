@@ -12,7 +12,7 @@ use Dir::*;
 impl Dir {
   pub fn to_displacement(&self) -> i32 {
     match self {
-      L => -1, 
+      L => -1,
       R => 1,
     }
   }
@@ -120,6 +120,7 @@ impl Trans<bool> {
 }
 // S = symbol
 pub trait Turing<S> {
+  fn all_states(&self) -> Vec<State>;
   fn step(&self, edge: Edge<S>) -> Option<Trans<S>>;
 }
 
@@ -130,6 +131,13 @@ pub struct SmallBinMachine {
 }
 
 impl Turing<bool> for SmallBinMachine {
+  fn all_states(&self) -> Vec<State> {
+    (1..=self.num_states)
+      .into_iter()
+      .map(|i| State(i))
+      .collect()
+  }
+
   fn step(&self, edge: Edge<bool>) -> Option<Trans<bool>> {
     *self.table.get(self.edge_index(edge)).unwrap()
   }
@@ -191,21 +199,23 @@ impl SmallBinMachine {
 
     let mut out = vec![];
 
-    let mut to_print = false; 
+    let mut to_print = false;
     let max_state_index = match self.first_undefined_state() {
       Some(undef_state) => {
-        let ans = undef_state+1; 
-        if ans == edge.0.0 && ans < self.num_states
-          {ans + 1} 
-        else 
-          {ans}
-        },
-      None => {self.num_states},
+        let ans = undef_state + 1;
+        if ans == edge.0 .0 && ans < self.num_states {
+          ans + 1
+        } else {
+          ans
+        }
+      }
+      None => self.num_states,
     };
 
-
     let possible_trans = Trans::possible_trans(max_state_index);
-    if possible_trans.len() < 13 {to_print = true}; 
+    if possible_trans.len() < 13 {
+      to_print = true
+    };
     if to_print {
       dbg!(max_state_index, self.first_undefined_state());
       dbg!(self.to_compact_format(), edge, edge_index);
