@@ -2,14 +2,14 @@
 use either::Either::{self, Left, Right};
 use std::{
   collections::HashMap,
-  fmt::{Debug, Display, Write},
+  fmt::{Debug, Display, Pointer, Write},
   iter::zip,
   vec,
 };
 
 use crate::{
   rules::{AffineVar, Config, Rule, Rulebook, Var},
-  turing::{disp_bool, Dir, Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, START},
+  turing::{Bit, Dir, Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, START},
 };
 
 // tape has two stacks and a symbol the machine is currently reading
@@ -124,6 +124,7 @@ impl<S: TapeSymbol> Tape<S> {
     machine: &impl Turing<S>,
     mut state: State,
     num_steps: u32,
+    print: bool,
   ) -> (Either<Edge<S>, State>, u32) {
     /* return:
     0: from step
@@ -135,7 +136,9 @@ impl<S: TapeSymbol> Tape<S> {
         Right(HALT) => return (Right(HALT), step),
         Right(state) => state,
       };
-      // dbg!(&self, state);
+      if print {
+        println!("step: {} state: {} tape: {}", step, state, &self);
+      }
     }
     (Right(state), num_steps)
   }
@@ -143,28 +146,51 @@ impl<S: TapeSymbol> Tape<S> {
   pub fn simulate_from_start(
     machine: &impl Turing<S>,
     num_steps: u32,
+    print: bool,
   ) -> (Either<Edge<S>, State>, u32, Self) {
     let mut tape = Self::new();
-    let (new_state, num_steps) = tape.simulate(machine, START, num_steps);
+    let (new_state, num_steps) = tape.simulate(machine, START, num_steps, print);
     (new_state, num_steps, tape)
   }
 }
 
-impl Display for Tape<bool> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    for &b in self.left.iter() {
-      f.write_char(disp_bool(b))?;
+impl Tape<Bit> {
+  pub fn from_bools(left: Vec<bool>, head: bool, right: Vec<bool>) -> Self {
+    Self {
+      left: left.into_iter().map(|b| Bit(b)).collect(),
+      head: Bit(head),
+      right: right.into_iter().map(|b| Bit(b)).collect(),
     }
-    write!(f, ">{}<", disp_bool(self.head))?;
-    // f.write_char('>')?;
-    // f.write_char(disp_bool(self.head))?;
-    // f.write_char('<')?;
-    for &b in self.right.iter().rev() {
-      f.write_char(disp_bool(b))?;
+  }
+}
+
+impl<S: TapeSymbol> Display for Tape<S> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for &s in self.left.iter() {
+      write!(f, "{}", s)?;
+    }
+    write!(f, ">{}<", self.head)?;
+    for &s in self.right.iter().rev() {
+      write!(f, "{}", s)?;
     }
     Ok(())
   }
 }
+// impl Display for Tape<bool> {
+//   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//     for &b in self.left.iter() {
+//       f.write_char(disp_bool(b))?;
+//     }
+//     write!(f, ">{}<", disp_bool(self.head))?;
+//     // f.write_char('>')?;
+//     // f.write_char(disp_bool(self.head))?;
+//     // f.write_char('<')?;
+//     for &b in self.right.iter().rev() {
+//       f.write_char(disp_bool(b))?;
+//     }
+//     Ok(())
+//   }
+// }
 
 pub fn match_var_num(
   AffineVar { n, a, var }: AffineVar,
@@ -422,13 +448,22 @@ impl<S: TapeSymbol> ExpTape<S> {
   }
 }
 
+impl ExpTape<Bit> {
+  pub fn from_bools(left: Vec<(bool, u32)>, head: bool, right: Vec<(bool, u32)>) -> Self {
+    Self {
+      left: left.into_iter().map(|(b, n)| (Bit(b), n)).collect(),
+      head: Bit(head),
+      right: right.into_iter().map(|(b, n)| (Bit(b), n)).collect(),
+    }
+  }
+}
 pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<SmallBinMachine> {
   let mut out = vec![];
 
   struct TnfState {
     machine: SmallBinMachine,
     state: State,
-    tape: Tape<bool>,
+    tape: Tape<Bit>,
     num_steps: u32,
   }
 
@@ -445,7 +480,7 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<Small
     num_steps,
   }) = stack.pop()
   {
-    match tape.simulate(&machine, state, total_steps - num_steps) {
+    match tape.simulate(&machine, state, total_steps - num_steps, false) {
       (Right(_state), _simulated_steps) => out.push(machine),
       (Left(edge), simulated_steps) => {
         let new_state = edge.0;
@@ -472,32 +507,25 @@ mod test {
 
   #[test]
   fn exptape_to_tape() {
-    let e_tape = ExpTape {
-      left: vec![(true, 2), (false, 1)],
-      head: false,
-      right: vec![(true, 1), (false, 3), (true, 1)],
-    };
-    let tape = Tape {
-      left: vec![true, true, false],
-      head: false,
-      right: vec![true, false, false, false, true],
-    };
+    let e_tape = ExpTape::from_bools(
+      vec![(true, 2), (false, 1)],
+      false,
+      vec![(true, 1), (false, 3), (true, 1)],
+    );
+    let tape = Tape::from_bools(
+      vec![true, true, false],
+      false,
+      vec![true, false, false, false, true],
+    );
     assert_eq!(ExpTape::to_tape(&e_tape), tape)
   }
   #[test]
   fn sim_bb2() {
     let bb2 = get_machine("bb2");
-    let (state, num_steps, tape) = Tape::simulate_from_start(&bb2, 10);
+    let (state, num_steps, tape) = Tape::simulate_from_start(&bb2, 10, false);
     assert_eq!(state, Right(HALT));
     assert_eq!(num_steps, 6);
-    assert_eq!(
-      tape,
-      Tape {
-        left: vec![true, true],
-        head: true,
-        right: vec![true]
-      }
-    );
+    assert_eq!(tape, Tape::from_bools(vec![true, true], true, vec![true]));
     let (e_state, e_steps, e_tape) = ExpTape::simulate_from_start(&bb2, 10);
     assert_eq!(
       (e_state, e_steps, ExpTape::to_tape(&e_tape)),
@@ -507,16 +535,12 @@ mod test {
   #[test]
   fn sim_bb3() {
     let bb3 = get_machine("bb3");
-    let (state, num_steps, tape) = Tape::simulate_from_start(&bb3, 30);
+    let (state, num_steps, tape) = Tape::simulate_from_start(&bb3, 30, false);
     assert_eq!(state, Right(HALT));
     assert_eq!(num_steps, 14);
     assert_eq!(
       tape,
-      Tape {
-        left: vec![true, true, true],
-        head: true,
-        right: vec![true, true]
-      }
+      Tape::from_bools(vec![true, true, true], true, vec![true, true])
     );
     let (e_state, e_steps, e_tape) = ExpTape::simulate_from_start(&bb3, 30);
     assert_eq!(

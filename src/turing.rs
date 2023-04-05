@@ -1,7 +1,18 @@
 #[allow(unused)]
 use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Write};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Bit(pub bool);
+impl Display for Bit {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      &Bit(true) => f.write_char('T'),
+      &Bit(false) => f.write_char('F'),
+    }
+  }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Dir {
@@ -25,26 +36,27 @@ pub struct State(pub u8);
 pub const HALT: State = State(0);
 pub const START: State = State(1);
 
-pub trait TapeSymbol: Copy + Eq + Debug {
+impl Display for State {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      &HALT => f.write_str("HALT"),
+      &State(i) => f.write_char(AB.chars().nth(i as usize).unwrap()),
+    }
+  }
+}
+
+pub trait TapeSymbol: Copy + Eq + Debug + Display {
   fn empty() -> Self;
   fn all_symbols() -> Vec<Self>;
 }
 
-impl TapeSymbol for bool {
+impl TapeSymbol for Bit {
   fn empty() -> Self {
-    false
+    Bit(false)
   }
 
   fn all_symbols() -> Vec<Self> {
-    vec![false, true]
-  }
-}
-
-pub fn disp_bool(b: bool) -> char {
-  if b {
-    'T'
-  } else {
-    'F'
+    vec![Bit(false), Bit(true)]
   }
 }
 
@@ -73,19 +85,19 @@ pub struct Trans<S> {
   pub dir: Dir,
 }
 
-pub const HALT_TRANS: Trans<bool> = Trans {
+pub const HALT_TRANS: Trans<Bit> = Trans {
   state: HALT,
-  symbol: true,
+  symbol: Bit(true),
   dir: R,
 };
 
 const AB: &str = "HABCDEFG";
 
-impl Trans<bool> {
+impl Trans<Bit> {
   fn possible_trans(max_state: u8) -> Vec<Self> {
     let mut out = vec![HALT_TRANS];
     for state in 1..=max_state {
-      for symbol in [false, true] {
+      for symbol in Bit::all_symbols() {
         for dir in [L, R] {
           out.push(Trans {
             state: State(state),
@@ -107,8 +119,8 @@ impl Trans<bool> {
           return None;
         }
         let symbol = match symbol as char {
-          '0' => false,
-          '1' => true,
+          '0' => Bit(false),
+          '1' => Bit(true),
           _ => panic!("{} is not a valid symbol", symbol),
         };
         let dir = match dir as char {
@@ -136,7 +148,7 @@ impl Trans<bool> {
     match self {
       &Trans {
         state: State(state),
-        symbol,
+        symbol: Bit(symbol),
         dir,
       } => {
         let symbol_chr = if symbol { '1' } else { '0' };
@@ -162,10 +174,10 @@ pub trait Turing<S> {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SmallBinMachine {
   num_states: u8,
-  table: SmallVec<[Option<Trans<bool>>; 14]>,
+  table: SmallVec<[Option<Trans<Bit>>; 14]>,
 }
 
-impl Turing<bool> for SmallBinMachine {
+impl Turing<Bit> for SmallBinMachine {
   fn all_states(&self) -> Vec<State> {
     (1..=self.num_states)
       .into_iter()
@@ -173,20 +185,20 @@ impl Turing<bool> for SmallBinMachine {
       .collect()
   }
 
-  fn step(&self, edge: Edge<bool>) -> Option<Trans<bool>> {
+  fn step(&self, edge: Edge<Bit>) -> Option<Trans<Bit>> {
     *self.table.get(self.edge_index(edge)).unwrap()
   }
 }
 
 impl SmallBinMachine {
-  fn edge_index(&self, Edge(State(state), symbol): Edge<bool>) -> usize {
+  fn edge_index(&self, Edge(State(state), Bit(symbol)): Edge<Bit>) -> usize {
     assert_ne!(state, 0); // you can't make progress from a halt state
     let state = state - 1; // the table has no entries for halting states ofc
     assert!(state < self.num_states, "{}", self.to_compact_format());
     (state * 2 + if symbol { 1 } else { 0 }) as usize
   }
 
-  pub fn start_machine(num_states: u8, first_write: bool) -> Self {
+  pub fn start_machine(num_states: u8, first_write: Bit) -> Self {
     let trans = Trans {
       state: State(2),
       symbol: first_write,
@@ -223,7 +235,7 @@ impl SmallBinMachine {
     Some(state + 1)
   }
 
-  pub fn branch_on_edge(&self, edge: Edge<bool>) -> Vec<Self> {
+  pub fn branch_on_edge(&self, edge: Edge<Bit>) -> Vec<Self> {
     let edge_index = self.edge_index(edge);
     assert_eq!(self.table[edge_index], None);
     if self.num_undefined_trans() == 1 {
@@ -317,7 +329,7 @@ mod test {
     let trans = Trans {
       state: State(3),
       dir: L,
-      symbol: true,
+      symbol: Bit(true),
     };
     let trans_str = "1LC";
     assert_eq!(Some(trans), Trans::from_compact_format(trans_str));
@@ -332,17 +344,17 @@ mod test {
       Some(Trans {
         state: State(2),
         dir: R,
-        symbol: true
+        symbol: Bit(true)
       }),
       Some(Trans {
         state: State(2),
         dir: R,
-        symbol: false
+        symbol: Bit(false)
       }),
       Some(Trans {
         state: State(1),
         dir: L,
-        symbol: true
+        symbol: Bit(true)
       }),
       None
     ];
@@ -354,7 +366,7 @@ mod test {
   #[test]
   fn possible_trans() {
     let mut possible_trans = Trans::possible_trans(2);
-    let mut ans: Vec<Trans<bool>> = vec![
+    let mut ans: Vec<Trans<Bit>> = vec![
       "1RH", "0LA", "0RA", "1LA", "1RA", "0LB", "0RB", "1LB", "1RB",
     ]
     .into_iter()
@@ -400,7 +412,7 @@ mod test {
   fn branch_test() {
     let machine_str = "1RB0RB_1LA---";
     let machine = SmallBinMachine::from_compact_format(machine_str);
-    let branched_machines = machine.branch_on_edge(Edge(State(2), true));
+    let branched_machines = machine.branch_on_edge(Edge(State(2), Bit(true)));
     assert_eq!(
       branched_machines,
       vec![SmallBinMachine::from_compact_format("1RB0RB_1LA1RH")]
@@ -408,7 +420,7 @@ mod test {
 
     let machine_str = "1LA---_------";
     let machine = SmallBinMachine::from_compact_format(machine_str);
-    let mut branched_machines = machine.branch_on_edge(Edge(State(1), true));
+    let mut branched_machines = machine.branch_on_edge(Edge(State(1), Bit(true)));
     let mut branched_machines_str: Vec<String> = branched_machines
       .iter()
       .map(|m| SmallBinMachine::to_compact_format(&m))

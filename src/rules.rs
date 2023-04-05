@@ -170,7 +170,53 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
 }
 
 mod test {
+  use crate::turing::get_machine;
+
   use super::*;
-  // affinevar: sub, submap
+
+  #[test]
+  fn affinevar_sub() {
+    let three_fifty = AffineVar {
+      n: 50,
+      a: 3,
+      var: Var(0),
+    };
+    assert_eq!(three_fifty.sub(6), 68);
+    assert_eq!(three_fifty.sub(0), 50);
+    let two_x_plus_seven = AffineVar {
+      n: 7,
+      a: 2,
+      var: Var(1),
+    };
+    assert_eq!(two_x_plus_seven.sub(19), 45);
+    assert_eq!(two_x_plus_seven.sub(3), 13);
+  }
+
+  #[test]
+  fn affinevar_sub_map() {
+    let mut hm = HashMap::new();
+    hm.insert(Var(0), 6);
+    hm.insert(Var(1), 19);
+
+    let three_fifty = AffineVar {
+      n: 50,
+      a: 3,
+      var: Var(0),
+    };
+    let two_x_plus_seven = AffineVar {
+      n: 7,
+      a: 2,
+      var: Var(1),
+    };
+
+    assert_eq!(three_fifty.sub_map(&hm), 68);
+    assert_eq!(two_x_plus_seven.sub_map(&hm), 45);
+  }
+
   // detect chain rules
+  #[test]
+  fn chain_rules_detected() {
+    let bb2 = get_machine("bb2");
+    assert_eq!(detect_chain_rules(&bb2), vec![]);
+  }
 }
