@@ -45,5 +45,5 @@ fn main() {
   //   }
   // }
   // aggregate_and_display_lr_res(lr_results);
-  Tape::simulate_from_start(&get_machine("bb2"), 10, true);
+  Tape::simulate_from_start(&get_machine("unk1"), 200, true);
 }

@@ -186,14 +186,10 @@ mod test {
 
   #[test]
   fn lr_not_find_not_lr() {
-    let m_strs = [
-      "0LB0RA_1LC1LH_1RA1LC",
-      "1RB0LC_0LC1RA_1LH1LA",
-      "1RB---_0LC0RB_1LC1LA",
-    ]; //"1RB---_1RB---";
+    let m_strs = ["binary_counter", "checkerboard_sweeper", "sweeper"];
     for m_str in m_strs {
       dbg!(m_str);
-      let m = SmallBinMachine::from_compact_format(m_str);
+      let m = get_machine(m_str);
       let lr_res = lr_simulate(&m, 200);
       assert_eq!(
         lr_res,

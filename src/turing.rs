@@ -310,15 +310,22 @@ impl SmallBinMachine {
   }
 }
 
-const MACHINES: [(&str, &str); 3] = [
+const MACHINES: [(&str, &str); 6] = [
   ("bb2", "1RB1LB_1LA1RH"),
   ("bb3", "1RB1RH_0RC1RB_1LC1LA"),
   ("bb4", ""),
+  ("binary_counter", "0LB0RA_1LC1LH_1RA1LC"),
+  ("checkerboard_sweeper", "1RB0LC_0LC1RA_1LH1LA"),
+  ("sweeper", "1RB---_0LC0RB_1LC1LA"),
 ];
 
 pub fn get_machine(name: &str) -> SmallBinMachine {
   let machine_map = HashMap::from(MACHINES);
-  SmallBinMachine::from_compact_format(machine_map.get(name).unwrap())
+  SmallBinMachine::from_compact_format(
+    machine_map
+      .get(name)
+      .expect(&format!("{} wasn't a valid machine name", name)),
+  )
 }
 
 mod test {
