@@ -226,19 +226,23 @@ pub fn append_rule_tape<S: TapeSymbol>(
 ) {
   let slice_to_append = match rule.get(0) {
     None => return,
-    Some((s, avar)) => { 
-      match tape.last_mut() {
-        None => &rule[..],
-        Some((t, num)) => if s == t {
+    Some((s, avar)) => match tape.last_mut() {
+      None => &rule[..],
+      Some((t, num)) => {
+        if s == t {
           *num += avar.sub_map(hm);
           &rule[1..]
         } else {
           &rule[..]
-        },
+        }
       }
     },
   };
-  tape.extend(slice_to_append.iter().map(|&(s, avar)|(s, avar.sub_map(hm))));
+  tape.extend(
+    slice_to_append
+      .iter()
+      .map(|&(s, avar)| (s, avar.sub_map(hm))),
+  );
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -405,11 +409,7 @@ impl<S: TapeSymbol> ExpTape<S> {
     }
   }
 
-  pub fn apply_rules(
-    &mut self,
-    state: State,
-    rulebook: Rulebook<S>,
-  ) -> Option<State> {
+  pub fn apply_rules(&mut self, state: State, rulebook: Rulebook<S>) -> Option<State> {
     let edge = Edge(state, self.head);
     let rules = rulebook.get_rules(edge);
     for rule in rules {
@@ -527,5 +527,5 @@ mod test {
   //todo: simulate bb4 to further sanity check
 
   //tests to write: bb4
-  // match var num, match rule tape, append rule tape, apply rule, apply rules, 
+  // match var num, match rule tape, append rule tape, apply rule, apply rules,
 }

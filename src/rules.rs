@@ -55,7 +55,7 @@ impl AffineVar {
   }
 }
 
-// much like Tape / ExpTape, the *last* thing in the Vec is the closest to the head, 
+// much like Tape / ExpTape, the *last* thing in the Vec is the closest to the head,
 // for both left and right
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Config<S> {
@@ -173,5 +173,4 @@ mod test {
   use super::*;
   // affinevar: sub, submap
   // detect chain rules
-  
 }
