@@ -65,6 +65,11 @@ pub struct Config<S> {
   pub right: Vec<(S, AffineVar)>,
 }
 
+//todo: figure out like modules or something
+// impl Config<S> {
+//   fn from_tape_state(state: State, exptape : ExpTape)
+// }
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Rule<S> {
   pub start: Config<S>,
@@ -170,7 +175,7 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
 }
 
 mod test {
-  use crate::turing::get_machine;
+  use crate::turing::{get_machine, Bit};
 
   use super::*;
 
@@ -218,5 +223,65 @@ mod test {
   fn chain_rules_detected() {
     let bb2 = get_machine("bb2");
     assert_eq!(detect_chain_rules(&bb2), vec![]);
+    let binary_counter = get_machine("binary_counter");
+    let detected_rules = detect_chain_rules(&binary_counter);
+    // todo this is absolutely gross
+    let rule1 = Rule {
+      start: Config {
+        state: State(1),
+        left: vec![],
+        head: Bit(true),
+        right: vec![(
+          Bit(true),
+          AffineVar {
+            n: 0,
+            a: 1,
+            var: Var(0),
+          },
+        )],
+      },
+      end: Config {
+        state: State(1),
+        left: vec![(
+          Bit(false),
+          AffineVar {
+            n: 0,
+            a: 1,
+            var: Var(0),
+          },
+        )],
+        head: Bit(false),
+        right: vec![],
+      },
+    };
+    let rule2 = Rule {
+      start: Config {
+        state: State(3),
+        left: vec![(
+          Bit(true),
+          AffineVar {
+            n: 0,
+            a: 1,
+            var: Var(0),
+          }
+        )],
+        head: Bit(true),
+        right: vec![],
+      },
+      end: Config {
+        state: State(3),
+        left: vec![],
+        head: Bit(true),
+        right: vec![(
+          Bit(true),
+          AffineVar {
+            n: 0,
+            a: 1,
+            var: Var(0),
+          },
+        )],
+      },
+    };
+    assert_eq!(detected_rules, vec![rule1, rule2]);
   }
 }
