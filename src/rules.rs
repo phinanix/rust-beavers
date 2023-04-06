@@ -24,10 +24,10 @@
 */
 
 use nom::{
-  bytes::complete::tag,
+  bytes::complete::{tag, is_a},
   character::complete::{char, one_of},
   combinator::{map_res, recognize, map},
-  multi::{many0, many1},
+  multi::{many0, many1, separated_list0},
   sequence::{terminated, Tuple, delimited, separated_pair},
   IResult, branch::alt,
 };
@@ -242,6 +242,22 @@ fn parse_tuple(input: &str) -> IResult<&str, (Bit, AffineVar)> {
   delimited(tag("("), separated_pair(parse_bit, tag(", "), parse_count), tag(")"))(input)
 }
 
+fn parse_tape_side(input: &str) -> IResult<&str, Vec<(Bit, AffineVar)>> {
+  separated_list0(char(' '), parse_tuple)(input)
+}
+
+fn parse_config(input: &str) -> IResult<&str, Config<Bit>> {
+  let (input, (_, state_digit, _, left, _, head, _, mut right)) = 
+    (tag("phase: "), parse_u8, tag("  "), parse_tape_side, 
+      tag(" |>"), parse_bit, tag("<| "), parse_tape_side).parse(input)?;
+  right.reverse();
+  Ok((input, Config{state: State(state_digit), left, head, right: right}))
+}
+
+fn parse_rule(input: &str) -> IResult<&str, Rule<Bit>> {
+  let (input, (start, _, end)) = (parse_config, tag("\ninto:\n"), parse_config).parse(input)?;
+  Ok((input, Rule{start, end}))
+}
 
 mod test {
   use crate::turing::{get_machine, Bit};
@@ -375,11 +391,32 @@ mod test {
     assert_eq!(parse_count("7"), Ok(("", AffineVar{n: 7, a: 0, var: Var(0)})));
   }
 
+  #[test]
   fn test_parse_tuple() {
     assert_eq!(parse_tuple("(F, 1)"), Ok(("", (Bit(false), AffineVar::constant(1)))));
     assert_eq!(parse_tuple("(F, 0 + 1*x_0)"), Ok(("", (Bit(false), AffineVar{n: 0, a: 1, var: Var(0)}))));
-    assert_eq!(parse_tuple("(T, 1 + 3*x_2)"), Ok(("", (Bit(false), AffineVar{n: 1, a: 3, var: Var(2)}))));
+    assert_eq!(parse_tuple("(T, 1 + 3*x_2)"), Ok(("", (Bit(true), AffineVar{n: 1, a: 3, var: Var(2)}))));
     assert!(parse_tuple("(T, 1 + 3*x_2").is_err())
+  }
+
+  #[test]
+  fn test_parse_tape_side() {
+    assert_eq!(parse_tape_side("(F, 1) (T, 1 + 1*x_0)"), 
+      Ok(("", vec![(Bit(false), AffineVar::constant(1)), 
+           (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})])));
+    assert_eq!(parse_tape_side("(F, 0 + 1*x_0) (T, 1)"),
+      Ok(("", vec![(Bit(false), AffineVar{n: 0, a:1, var:Var(0)}),
+            (Bit(true), AffineVar::constant(1))])));
+  }
+
+  fn test_parse_rule() {
+    let start = Config{state: State(3), left: vec![(Bit(false), AffineVar::constant(1)), 
+      (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
+    right: vec![]};
+    let end = Config{state: State(1), left: vec![(Bit(true), AffineVar::constant(1))], head: Bit(false), 
+    right: vec![(Bit(true), AffineVar::constant(1)), (Bit(false), AffineVar{n: 0, a:1, var:Var(0)})]};
+    assert_eq!(parse_rule("phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|\ninto:\nphase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)"), 
+    Ok(("", Rule{start, end})));
   }
 }
 
