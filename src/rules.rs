@@ -23,13 +23,21 @@
  0 1^n >0< -> 1^(n+1) >0<
 */
 
-use std::collections::HashMap;
-
+use nom::{
+  bytes::complete::tag,
+  character::complete::{char, one_of},
+  combinator::{map_res, recognize, map},
+  multi::{many0, many1},
+  sequence::{terminated, Tuple, delimited, separated_pair},
+  IResult, branch::alt,
+};
+use proptest::{prelude::*, sample::select};
 use smallvec::{smallvec, SmallVec};
+use std::{collections::HashMap, num::ParseIntError, fmt::Display};
 
 use crate::turing::{
   Dir::{L, R},
-  Edge, State, TapeSymbol, Trans, Turing,
+  Edge, State, TapeSymbol, Trans, Turing, Bit,
 };
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -44,6 +52,10 @@ pub struct AffineVar {
 }
 
 impl AffineVar {
+  pub fn constant(n: u32) -> Self {
+    Self {n, a: 0, var: Var(0)}
+  }
+
   pub fn sub(&self, x: u32) -> u32 {
     let AffineVar { n, a, var: _var } = self;
     return n + a * x;
@@ -53,6 +65,12 @@ impl AffineVar {
     let &x = hm.get(&self.var).unwrap();
     self.sub(x)
   }
+}
+
+impl Display for AffineVar {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} + {}*x_{}", self.n, self.a, self.var.0)
+    }
 }
 
 // much like Tape / ExpTape, the *last* thing in the Vec is the closest to the head,
@@ -174,6 +192,57 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
   out
 }
 
+fn parse_int(input: &str) -> IResult<&str, &str> {
+  recognize(many1(terminated(one_of("0123456789"), many0(char('_')))))(input)
+}
+
+fn parse_u32(input: &str) -> IResult<&str, u32> {
+  map_res(parse_int,
+    |out: &str| u32::from_str_radix(out, 10),
+  )(input)
+}
+
+fn parse_u8(input: &str) -> IResult<&str, u8> {
+  map_res(parse_int, |out: &str| u8::from_str_radix(out, 10))(input)
+}
+
+fn parse_var(input: &str) -> IResult<&str, Var> {
+  map(parse_u8, |out: u8| Var(out))(input)
+}
+
+/*
+in 100 steps we turn
+phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|
+into:
+phase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)
+*/
+
+fn parse_avar(input: &str) -> IResult<&str, AffineVar> {
+  // 3 + 2*x_0
+   let (input, (n, _, a, _, var)) =
+    (parse_u32, tag(" + "), parse_u32, tag("*x_"), parse_var).parse(input)?;
+  let avar = AffineVar { n, a, var };
+  Ok((input, avar))
+}
+
+fn parse_count(input: &str) -> IResult<&str, AffineVar> {
+  let parse_u32_to_avar = map(parse_u32, |out: u32| AffineVar{n: out, a:0, var: Var(0)});
+  alt((parse_avar, parse_u32_to_avar))(input)
+}
+
+fn parse_bit(input: &str) -> IResult<&str, Bit> {
+  map(alt((char('T'), char('F'))), |c| match c {
+    'T' => Bit(true), 
+    'F' => Bit(false), 
+    _ => unreachable!("only parsed the two chars")
+  })(input)
+}
+
+fn parse_tuple(input: &str) -> IResult<&str, (Bit, AffineVar)> {
+  delimited(tag("("), separated_pair(parse_bit, tag(", "), parse_count), tag(")"))(input)
+}
+
+
 mod test {
   use crate::turing::{get_machine, Bit};
 
@@ -263,7 +332,7 @@ mod test {
             n: 0,
             a: 1,
             var: Var(0),
-          }
+          },
         )],
         head: Bit(true),
         right: vec![],
@@ -283,5 +352,45 @@ mod test {
       },
     };
     assert_eq!(detected_rules, vec![rule1, rule2]);
+  }
+
+  #[test]
+  fn test_parse_avar() {
+    assert_eq!(parse_avar("3 + 5*x_0"), Ok(("", AffineVar{n: 3, a: 5, var: Var(0)})));
+    assert_eq!(parse_avar("7 + 234*x_11"), Ok(("", AffineVar{n: 7, a: 234, var: Var(11)})));
+    assert_eq!(parse_avar("118 + 5*x_0"), Ok(("", AffineVar{n: 118, a: 5, var: Var(0)})));
+
+    assert!(parse_avar("3 + 5* x_0").is_err());
+  }
+
+  #[test]
+  fn avar_disp() {
+    assert_eq!(format!("{}", AffineVar{n: 3, a: 5, var: Var(0)}), "3 + 5*x_0");
+  }
+
+  #[test]
+  fn test_parse_count() {
+    assert_eq!(parse_count("3 + 5*x_0"), Ok(("", AffineVar{n: 3, a: 5, var: Var(0)})));
+    assert_eq!(parse_count("7 + 234*x_11"), Ok(("", AffineVar{n: 7, a: 234, var: Var(11)})));
+    assert_eq!(parse_count("7"), Ok(("", AffineVar{n: 7, a: 0, var: Var(0)})));
+  }
+
+  fn test_parse_tuple() {
+    assert_eq!(parse_tuple("(F, 1)"), Ok(("", (Bit(false), AffineVar::constant(1)))));
+    assert_eq!(parse_tuple("(F, 0 + 1*x_0)"), Ok(("", (Bit(false), AffineVar{n: 0, a: 1, var: Var(0)}))));
+    assert_eq!(parse_tuple("(T, 1 + 3*x_2)"), Ok(("", (Bit(false), AffineVar{n: 1, a: 3, var: Var(2)}))));
+    assert!(parse_tuple("(T, 1 + 3*x_2").is_err())
+  }
+}
+
+fn avar_strategy() -> impl Strategy<Value = AffineVar> {
+  (any::<u32>(), any::<u32>(), any::<u8>())
+  .prop_map(|(n, a, v_num)| AffineVar{n, a, var: Var(v_num)})
+}
+
+proptest! {
+  #[test]
+  fn avar_roundtrip(avar in avar_strategy()) {
+    assert_eq!(parse_avar(&format!("{}", avar)), Ok(("", avar)));
   }
 }
