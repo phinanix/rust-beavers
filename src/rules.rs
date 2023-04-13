@@ -29,7 +29,7 @@ use nom::{
   combinator::{map_res, recognize, map},
   multi::{many0, many1, separated_list0},
   sequence::{terminated, Tuple, delimited, separated_pair},
-  IResult, branch::alt,
+  IResult, branch::alt, error::{ParseError, FromExternalError},
 };
 use proptest::{prelude::*, sample::select};
 use smallvec::{smallvec, SmallVec};
@@ -192,21 +192,21 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
   out
 }
 
-fn parse_int(input: &str) -> IResult<&str, &str> {
+fn parse_int<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, &str, E> {
   recognize(many1(terminated(one_of("0123456789"), many0(char('_')))))(input)
 }
 
-fn parse_u32(input: &str) -> IResult<&str, u32> {
+fn parse_u32<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, u32, E> {
   map_res(parse_int,
     |out: &str| u32::from_str_radix(out, 10),
   )(input)
 }
 
-fn parse_u8(input: &str) -> IResult<&str, u8> {
+fn parse_u8<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, u8, E> {
   map_res(parse_int, |out: &str| u8::from_str_radix(out, 10))(input)
 }
 
-fn parse_var(input: &str) -> IResult<&str, Var> {
+fn parse_var<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Var, E> {
   map(parse_u8, |out: u8| Var(out))(input)
 }
 
@@ -217,7 +217,7 @@ into:
 phase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)
 */
 
-pub fn parse_avar(input: &str) -> IResult<&str, AffineVar> {
+pub fn parse_avar<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, AffineVar, E> {
   // 3 + 2*x_0
    let (input, (n, _, a, _, var)) =
     (parse_u32, tag(" + "), parse_u32, tag("*x_"), parse_var).parse(input)?;
@@ -225,12 +225,12 @@ pub fn parse_avar(input: &str) -> IResult<&str, AffineVar> {
   Ok((input, avar))
 }
 
-pub fn parse_count(input: &str) -> IResult<&str, AffineVar> {
+pub fn parse_count<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, AffineVar, E> {
   let parse_u32_to_avar = map(parse_u32, |out: u32| AffineVar{n: out, a:0, var: Var(0)});
   alt((parse_avar, parse_u32_to_avar))(input)
 }
 
-pub fn parse_bit(input: &str) -> IResult<&str, Bit> {
+pub fn parse_bit<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, Bit, E> {
   map(alt((char('T'), char('F'))), |c| match c {
     'T' => Bit(true), 
     'F' => Bit(false), 
@@ -238,15 +238,15 @@ pub fn parse_bit(input: &str) -> IResult<&str, Bit> {
   })(input)
 }
 
-pub fn parse_tuple(input: &str) -> IResult<&str, (Bit, AffineVar)> {
+pub fn parse_tuple<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, (Bit, AffineVar), E> {
   delimited(tag("("), separated_pair(parse_bit, tag(", "), parse_count), tag(")"))(input)
 }
 
-pub fn parse_tape_side(input: &str) -> IResult<&str, Vec<(Bit, AffineVar)>> {
+pub fn parse_tape_side<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Vec<(Bit, AffineVar)>, E> {
   separated_list0(char(' '), parse_tuple)(input)
 }
 
-pub fn parse_config(input: &str) -> IResult<&str, Config<Bit>> {
+pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Config<Bit>, E> {
   let (input, (_, state_digit, _, left, _, head, _, mut right)) = 
     (tag("phase: "), parse_u8, tag("  "), parse_tape_side, 
       tag(" |>"), parse_bit, tag("<| "), parse_tape_side).parse(input)?;
@@ -260,7 +260,9 @@ pub fn parse_rule(input: &str) -> IResult<&str, Rule<Bit>> {
 }
 
 mod test {
-  use crate::turing::{get_machine, Bit};
+  use nom::Finish;
+
+use crate::turing::{get_machine, Bit};
 
   use super::*;
 
@@ -372,11 +374,12 @@ mod test {
 
   #[test]
   fn test_parse_avar() {
-    assert_eq!(parse_avar("3 + 5*x_0"), Ok(("", AffineVar{n: 3, a: 5, var: Var(0)})));
-    assert_eq!(parse_avar("7 + 234*x_11"), Ok(("", AffineVar{n: 7, a: 234, var: Var(11)})));
-    assert_eq!(parse_avar("118 + 5*x_0"), Ok(("", AffineVar{n: 118, a: 5, var: Var(0)})));
+    let ans = parse_avar::<nom::error::Error<&str>>("3 + 5*x_0");
+    assert_eq!(ans, Ok(("", AffineVar{n: 3, a: 5, var: Var(0)})));
+    assert_eq!(parse_avar::<nom::error::Error<&str>>("7 + 234*x_11"), Ok(("", AffineVar{n: 7, a: 234, var: Var(11)})));
+    assert_eq!(parse_avar::<nom::error::Error<&str>>("118 + 5*x_0"), Ok(("", AffineVar{n: 118, a: 5, var: Var(0)})));
 
-    assert!(parse_avar("3 + 5* x_0").is_err());
+    assert!(parse_avar::<nom::error::Error<&str>>("3 + 5* x_0").is_err());
   }
 
   #[test]
@@ -386,29 +389,39 @@ mod test {
 
   #[test]
   fn test_parse_count() {
-    assert_eq!(parse_count("3 + 5*x_0"), Ok(("", AffineVar{n: 3, a: 5, var: Var(0)})));
-    assert_eq!(parse_count("7 + 234*x_11"), Ok(("", AffineVar{n: 7, a: 234, var: Var(11)})));
-    assert_eq!(parse_count("7"), Ok(("", AffineVar{n: 7, a: 0, var: Var(0)})));
+    assert_eq!(parse_count::<nom::error::Error<&str>>("3 + 5*x_0"), Ok(("", AffineVar{n: 3, a: 5, var: Var(0)})));
+    assert_eq!(parse_count::<nom::error::Error<&str>>("7 + 234*x_11"), Ok(("", AffineVar{n: 7, a: 234, var: Var(11)})));
+    assert_eq!(parse_count::<nom::error::Error<&str>>("7"), Ok(("", AffineVar{n: 7, a: 0, var: Var(0)})));
   }
 
   #[test]
   fn test_parse_tuple() {
-    assert_eq!(parse_tuple("(F, 1)"), Ok(("", (Bit(false), AffineVar::constant(1)))));
-    assert_eq!(parse_tuple("(F, 0 + 1*x_0)"), Ok(("", (Bit(false), AffineVar{n: 0, a: 1, var: Var(0)}))));
-    assert_eq!(parse_tuple("(T, 1 + 3*x_2)"), Ok(("", (Bit(true), AffineVar{n: 1, a: 3, var: Var(2)}))));
-    assert!(parse_tuple("(T, 1 + 3*x_2").is_err())
+    assert_eq!(parse_tuple::<nom::error::Error<&str>>("(F, 1)"), Ok(("", (Bit(false), AffineVar::constant(1)))));
+    assert_eq!(parse_tuple::<nom::error::Error<&str>>("(F, 0 + 1*x_0)"), Ok(("", (Bit(false), AffineVar{n: 0, a: 1, var: Var(0)}))));
+    assert_eq!(parse_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2)"), Ok(("", (Bit(true), AffineVar{n: 1, a: 3, var: Var(2)}))));
+    assert!(parse_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2").is_err())
   }
 
   #[test]
   fn test_parse_tape_side() {
-    assert_eq!(parse_tape_side("(F, 1) (T, 1 + 1*x_0)"), 
+    assert_eq!(parse_tape_side::<nom::error::Error<&str>>("(F, 1) (T, 1 + 1*x_0)"), 
       Ok(("", vec![(Bit(false), AffineVar::constant(1)), 
            (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})])));
-    assert_eq!(parse_tape_side("(F, 0 + 1*x_0) (T, 1)"),
+    assert_eq!(parse_tape_side::<nom::error::Error<&str>>("(F, 0 + 1*x_0) (T, 1)"),
       Ok(("", vec![(Bit(false), AffineVar{n: 0, a:1, var:Var(0)}),
             (Bit(true), AffineVar::constant(1))])));
   }
 
+  #[test]
+  fn test_parse_config() {
+    let start = Config{state: State(3), left: vec![(Bit(false), AffineVar::constant(1)), 
+      (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
+    right: vec![]};
+    let ans: Result<(&str, Config<Bit>), nom::error::VerboseError<&str>> = parse_config("phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|").finish();
+    assert_eq!(ans, Ok(("", start)));
+  }
+
+  #[test]
   fn test_parse_rule() {
     let start = Config{state: State(3), left: vec![(Bit(false), AffineVar::constant(1)), 
       (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
@@ -428,6 +441,6 @@ fn avar_strategy() -> impl Strategy<Value = AffineVar> {
 proptest! {
   #[test]
   fn avar_roundtrip(avar in avar_strategy()) {
-    assert_eq!(parse_avar(&format!("{}", avar)), Ok(("", avar)));
+    assert_eq!(parse_avar::<nom::error::Error<&str>>(&format!("{}", avar)), Ok(("", avar)));
   }
 }

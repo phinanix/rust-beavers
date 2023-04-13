@@ -555,7 +555,7 @@ mod test {
 
   #[test]
   fn test_match_var_num() {
-    let (_leftover, var) = parse_avar(&"3 + 2*x_0").unwrap();
+    let (_leftover, var) = parse_avar::<nom::error::Error<&str>>(&"3 + 2*x_0").unwrap();
     assert_eq!(match_var_num(var, 3), None); 
     assert_eq!(match_var_num(var, 5), Some((0, (Var(0), 1)))); 
     assert_eq!(match_var_num(var, 6), Some((1, (Var(0), 1)))); 
@@ -563,9 +563,15 @@ mod test {
 
   #[test]
   fn test_match_rule_tape() {
-    // let (_leftover, rule) = parse_rule("phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|
-    // into:
-    // phase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)").unwrap();
+    let start = Config{state: State(3), left: vec![(Bit(false), AffineVar::constant(1)), 
+      (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
+    right: vec![]};
+    let end = Config{state: State(1), left: vec![(Bit(true), AffineVar::constant(1))], head: Bit(false), 
+    right: vec![(Bit(true), AffineVar::constant(1)), (Bit(false), AffineVar{n: 0, a:1, var:Var(0)})]};
+
+    assert_eq!(parse_rule("phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|\ninto:\nphase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)"),
+    Ok(("", Rule{start, end})));
+    let (_leftover, rule) = parse_rule("phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|\ninto:\nphase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)").unwrap();
     // --(F, inf) (T, 1) |>T<|(T, 7) (F, inf)
   }
 }
