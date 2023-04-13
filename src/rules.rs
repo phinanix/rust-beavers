@@ -43,6 +43,12 @@ use crate::turing::{
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Var(pub u8);
 
+impl Display for Var {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      write!(f, "x_{}", self.0)
+  }
+}
+
 //ax + n
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct AffineVar {
@@ -69,7 +75,7 @@ impl AffineVar {
 
 impl Display for AffineVar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} + {}*x_{}", self.n, self.a, self.var.0)
+        write!(f, "{} + {}*{}", self.n, self.a, self.var)
     }
 }
 
@@ -238,28 +244,29 @@ pub fn parse_bit<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, Bi
   })(input)
 }
 
-pub fn parse_tuple<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, (Bit, AffineVar), E> {
+pub fn parse_count_tuple<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, (Bit, AffineVar), E> {
   delimited(tag("("), separated_pair(parse_bit, tag(", "), parse_count), tag(")"))(input)
 }
 
-pub fn parse_tape_side<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Vec<(Bit, AffineVar)>, E> {
-  separated_list0(char(' '), parse_tuple)(input)
+pub fn parse_config_tape_side<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Vec<(Bit, AffineVar)>, E> {
+  separated_list0(char(' '), parse_count_tuple)(input)
 }
 
-pub fn parse_small_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, (u8, Vec<(Bit, AffineVar)>), E> {
-  let (input, (_, state_digit, _, side)) =
-    (tag("phase: "), parse_u8, tag("  "), parse_tape_side).parse(input)?;
-  Ok((input, (state_digit, side)))
+pub fn parse_u32_tuple<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, (Bit, u32), E> {
+  delimited(tag("("), separated_pair(parse_bit, tag(", "), parse_u32), tag(")"))(input)
+}
+
+pub fn parse_tape_side<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Vec<(Bit, u32)>, E> {
+  separated_list0(char(' '), parse_u32_tuple)(input)
 }
 
 pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Config<Bit>, E> {
   let (input, (_, state_digit, _, left, _, head, _, mut right)) = 
-    (tag("phase: "), parse_u8, tag("  "), parse_tape_side, 
-      tag(" |>"), parse_bit, tag("<| "), parse_tape_side).parse(input)?;
+    (tag("phase: "), parse_u8, tag("  "), parse_config_tape_side, 
+      tag(" |>"), parse_bit, tag("<| "), parse_config_tape_side).parse(input)?;
   right.reverse();
-  Ok((input, Config{state: State(state_digit), left, head, right: right}))
+  Ok((input, Config{state: State(state_digit), left, head, right}))
 }
-
 
 pub fn parse_rule(input: &str) -> IResult<&str, Rule<Bit>> {
   let (input, (start, _, end)) = (parse_config, tag("\ninto:\n"), parse_config).parse(input)?;
@@ -312,7 +319,6 @@ use crate::turing::{get_machine, Bit};
     assert_eq!(two_x_plus_seven.sub_map(&hm), 45);
   }
 
-  // detect chain rules
   #[test]
   fn chain_rules_detected() {
     let bb2 = get_machine("bb2");
@@ -403,18 +409,18 @@ use crate::turing::{get_machine, Bit};
 
   #[test]
   fn test_parse_tuple() {
-    assert_eq!(parse_tuple::<nom::error::Error<&str>>("(F, 1)"), Ok(("", (Bit(false), AffineVar::constant(1)))));
-    assert_eq!(parse_tuple::<nom::error::Error<&str>>("(F, 0 + 1*x_0)"), Ok(("", (Bit(false), AffineVar{n: 0, a: 1, var: Var(0)}))));
-    assert_eq!(parse_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2)"), Ok(("", (Bit(true), AffineVar{n: 1, a: 3, var: Var(2)}))));
-    assert!(parse_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2").is_err())
+    assert_eq!(parse_count_tuple::<nom::error::Error<&str>>("(F, 1)"), Ok(("", (Bit(false), AffineVar::constant(1)))));
+    assert_eq!(parse_count_tuple::<nom::error::Error<&str>>("(F, 0 + 1*x_0)"), Ok(("", (Bit(false), AffineVar{n: 0, a: 1, var: Var(0)}))));
+    assert_eq!(parse_count_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2)"), Ok(("", (Bit(true), AffineVar{n: 1, a: 3, var: Var(2)}))));
+    assert!(parse_count_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2").is_err())
   }
 
   #[test]
   fn test_parse_tape_side() {
-    assert_eq!(parse_tape_side::<nom::error::Error<&str>>("(F, 1) (T, 1 + 1*x_0)"), 
+    assert_eq!(parse_config_tape_side::<nom::error::Error<&str>>("(F, 1) (T, 1 + 1*x_0)"), 
       Ok(("", vec![(Bit(false), AffineVar::constant(1)), 
            (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})])));
-    assert_eq!(parse_tape_side::<nom::error::Error<&str>>("(F, 0 + 1*x_0) (T, 1)"),
+    assert_eq!(parse_config_tape_side::<nom::error::Error<&str>>("(F, 0 + 1*x_0) (T, 1)"),
       Ok(("", vec![(Bit(false), AffineVar{n: 0, a:1, var:Var(0)}),
             (Bit(true), AffineVar::constant(1))])));
   }
@@ -425,9 +431,6 @@ use crate::turing::{get_machine, Bit};
       (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
     right: vec![]};
     let inp = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| ";
-    let ans: Result<(&str, (u8, Vec<(Bit, AffineVar)>)), nom::error::VerboseError<&str>> = parse_small_config(inp).finish();
-    dbg!(ans);
-
     let ans: Result<(&str, Config<Bit>), nom::error::VerboseError<&str>> = parse_config(inp).finish();
     assert_eq!(ans, Ok(("", start)));
 

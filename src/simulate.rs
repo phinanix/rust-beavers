@@ -1,14 +1,15 @@
 #[allow(unused)]
 use either::Either::{self, Left, Right};
+use nom::{error::{ParseError, FromExternalError}, IResult, bytes::complete::tag, sequence::Tuple};
 use std::{
   collections::HashMap,
   fmt::{Debug, Display, Pointer, Write},
   iter::zip,
-  vec,
+  vec, num::ParseIntError,
 };
 
 use crate::{
-  rules::{AffineVar, Config, Rule, Rulebook, Var},
+  rules::{AffineVar, Config, Rule, Rulebook, Var, parse_tape_side, parse_bit},
   turing::{Bit, Dir, Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, START},
 };
 
@@ -195,54 +196,115 @@ impl<S: TapeSymbol> Display for Tape<S> {
 pub fn match_var_num(
   AffineVar { n, a, var }: AffineVar,
   mut num: u32,
-) -> Option<(u32, (Var, u32))> {
+  verbose: bool
+) -> Option<(u32, Option<(Var, u32)>)> {
+
   // returns the num left on the tape, and what to send the var to.
-  if num <= n {
+  if num < n {
+    if verbose {println!("num")};
     return None;
   }
   num -= n;
-  // num is still positive
+  if a == 0 {
+   return Some((num, None))
+  }
   if num < a {
     return None;
   } // sending var to 1 would be too big
-  Some((num % a, (var, num / a)))
+  Some((num % a, Some((var, num / a))))
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum RuleTapeMatch {
+  ConsumedEnd, 
+  Leftover(u32)
+}
+use RuleTapeMatch::*;
 
 pub fn match_rule_tape<S: TapeSymbol>(
   hm: &mut HashMap<Var, u32>,
   rule: &Vec<(S, AffineVar)>,
   tape: &Vec<(S, u32)>,
-) -> Option<u32> {
-  // if rule applies, returns how much of the last elt is leftover, else returns none
+  verbose: bool,
+) -> Option<RuleTapeMatch> {
+  // if rule applies, returns 
+  // 0: how much of the last elt is leftover
+  // 1: how many elements 
+  // else returns none
   let mut leftover = 0;
-  if rule.len() > tape.len() {
+  if rule.len() > tape.len() + 1 {
+    if verbose { println!("rule too long") };
     return None;
   };
-  for (&(rule_symbol, avar), &(tape_symbol, num)) in zip(rule.iter().rev(), tape.iter().rev()) {
+
+  let mut last_elt_empty_tape = false;
+  if rule.len() == tape.len() + 1 {
+    let last_rule_pair = rule.first().unwrap();
+    if last_rule_pair.0 == S::empty() {
+      //we can match the empty characters implicitly represented by the end of the tape
+      if verbose { println!("matched {}, {} to empty", last_rule_pair.0, last_rule_pair.1) };
+      last_elt_empty_tape = true;
+    } else {
+      if verbose { println!("rule too long") };
+      return None
+    }
+  }
+  let rule_slice_start = if last_elt_empty_tape {1} else {0};
+  for (&(rule_symbol, avar), &(tape_symbol, num)) in zip(rule[rule_slice_start..].iter().rev(), tape.iter().rev()) {
     if leftover != 0 {
+      if verbose {println!("some bits leftover")};
       return None;
     }
+    if verbose {println!("matching {}, {} to {}, {}", rule_symbol, avar, tape_symbol, num)};
     if rule_symbol != tape_symbol {
+      if verbose {println!("symbols didn't match")};
       return None;
     }
-    match match_var_num(avar, num) {
-      None => return None,
-      Some((new_leftover, (var, var_num))) => {
-        leftover = new_leftover;
-        match hm.get(&var) {
-          None => {
-            hm.insert(var, var_num);
-          }
-          Some(&old_var_num) => {
-            if var_num != old_var_num {
-              return None;
-            }
+    let (new_leftover, mb_new_var) = match_var_num(avar, num, verbose)?;
+
+    leftover = new_leftover;
+    if let Some((var, var_num)) = mb_new_var {
+      match hm.get(&var) {
+        None => {
+          hm.insert(var, var_num);
+        }
+        Some(&old_var_num) => {
+          if var_num != old_var_num {
+            if verbose {println!("var {} sent to both: {} {}", var, old_var_num, var_num)};
+            return None;
           }
         }
       }
     }
   }
-  Some(leftover)
+  if last_elt_empty_tape {
+    if leftover != 0 {
+      return None
+    } else {
+      return Some(ConsumedEnd)
+    }
+  } else {
+    return Some(Leftover(leftover))
+  }
+}
+
+pub fn remove<T>(vec: &mut Vec<T>, to_remove: usize) {
+  vec.truncate(vec.len() - to_remove)
+}
+
+pub fn consume_tape_from_rulematch<S: TapeSymbol>(
+  tape: &mut Vec<(S, u32)>,
+  tape_match: RuleTapeMatch,
+  rule_len: usize,
+) {
+  match tape_match {
+    ConsumedEnd => remove(tape, rule_len - 1),
+    Leftover(0) => remove(tape, rule_len),
+    Leftover(leftover) => {
+      remove(tape, rule_len - 1);
+      tape.last_mut().unwrap().1 = leftover;
+    },
+  }
 }
 
 pub fn append_rule_tape<S: TapeSymbol>(
@@ -272,7 +334,7 @@ pub fn append_rule_tape<S: TapeSymbol>(
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-struct ExpTape<S> {
+pub struct ExpTape<S> {
   left: Vec<(S, u32)>,
   head: S,
   right: Vec<(S, u32)>,
@@ -409,43 +471,56 @@ impl<S: TapeSymbol> ExpTape<S> {
       },
       end,
     }: &Rule<S>,
+    verbose: bool
   ) -> Option<State> {
     if cur_state == *state && self.head == *head {
       let mut hm = HashMap::new();
-      let left_l = match_rule_tape(&mut hm, left, &self.left)?;
-      let right_l = match_rule_tape(&mut hm, right, &self.right)?;
-      self.left.truncate(self.left.len() - left.len() + 1);
-      self.right.truncate(self.right.len() - right.len() + 1);
-      if left_l > 0 {
-        self.left.last_mut().unwrap().1 = left_l;
-      } else {
-        self.left.pop();
-      }
-      if right_l > 0 {
-        self.right.last_mut().unwrap().1 = right_l;
-      } else {
-        self.right.pop();
-      }
+      if verbose {println!("left")};
+      let left_match = match_rule_tape(&mut hm, left, &self.left, verbose)?;
+      if verbose {println!("right")};
+      let right_match = match_rule_tape(&mut hm, right, &self.right, verbose)?;
+      if verbose {println!("succeeded")};
+      consume_tape_from_rulematch(&mut self.left, left_match, left.len());
+      consume_tape_from_rulematch(&mut self.right, right_match, right.len());
       append_rule_tape(&hm, &end.left, &mut self.left);
       append_rule_tape(&hm, &end.right, &mut self.right);
-
+      self.head = end.head;
       return Some(end.state);
     } else {
       return None;
     }
   }
 
-  pub fn apply_rules(&mut self, state: State, rulebook: Rulebook<S>) -> Option<State> {
+  pub fn apply_rules(&mut self, state: State, rulebook: Rulebook<S>, verbose: bool) -> Option<State> {
     let edge = Edge(state, self.head);
     let rules = rulebook.get_rules(edge);
     for rule in rules {
-      match self.apply_rule(state, rule) {
+      match self.apply_rule(state, rule, verbose) {
         None => (),
         Some(new_state) => return Some(new_state),
       }
     }
     return None;
   }
+}
+
+impl<S: TapeSymbol> Display for ExpTape<S> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for &(s, n) in self.left.iter() {
+      write!(f, "({}, {}) ", s, n)?;
+    }
+    write!(f, "|>{}<|", self.head)?;
+    for &(s, n) in self.right.iter().rev() {
+      write!(f, " ({}, {})", s, n)?;
+    }
+    Ok(())
+  }
+}
+pub fn parse_tape(input: &str) -> IResult<&str, ExpTape<Bit>> {
+  let (input, (left, _, head, _, mut right)) = 
+    (parse_tape_side, tag(" |>"), parse_bit, tag("<| "), parse_tape_side).parse(input)?;
+  right.reverse();
+  Ok((input, ExpTape{left, head, right}))
 }
 
 impl ExpTape<Bit> {
@@ -556,15 +631,33 @@ mod test {
   #[test]
   fn test_match_var_num() {
     let (_leftover, var) = parse_avar::<nom::error::Error<&str>>(&"3 + 2*x_0").unwrap();
-    assert_eq!(match_var_num(var, 3), None); 
-    assert_eq!(match_var_num(var, 5), Some((0, (Var(0), 1)))); 
-    assert_eq!(match_var_num(var, 6), Some((1, (Var(0), 1)))); 
+    assert_eq!(match_var_num(var, 3, false), None); 
+    assert_eq!(match_var_num(var, 5, false), Some((0, Some((Var(0), 1))))); 
+    assert_eq!(match_var_num(var, 6, false), Some((1, Some((Var(0), 1))))); 
+    let (_leftover, var) = parse_avar::<nom::error::Error<&str>>(&"3 + 0*x_0").unwrap();
+    assert_eq!(match_var_num(var, 3, false), Some((0, None))); 
+    assert_eq!(match_var_num(var, 5, false), Some((2, None)));
   }
 
   #[test]
   fn test_match_rule_tape() {
     let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| \ninto:\nphase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
     let (_leftover, rule) = parse_rule(rule_str).unwrap();
-    // --(F, inf) (T, 1) |>T<|(T, 7) (F, inf)
+    let tape_str = "(T, 1) |>T<| (T, 7)";
+    let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
+    let tape_copy = tape.clone();
+    println!("app1");
+    assert_eq!(tape.apply_rule(State(3), &rule, true), None);
+    assert_eq!(tape, tape_copy);
+    //now we apply the rule to a tape that works
+    let tape_str = "(T, 2) |>T<| (T, 7)";
+    let output_str = "(T, 1) |>F<| (F, 1) (T, 8)";
+    let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
+    let (_leftover, output_tape) = parse_tape(output_str).unwrap();
+    println!("app2");
+    assert_eq!(tape.apply_rule(State(3), &rule, true), Some(State(1)));
+    println!("rule\n{}\nactual tape\n{}\ngoal tape\n{}", rule_str, tape, output_tape);
+    assert_eq!(tape, output_tape);
+
   }
 }
