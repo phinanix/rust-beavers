@@ -563,15 +563,8 @@ mod test {
 
   #[test]
   fn test_match_rule_tape() {
-    let start = Config{state: State(3), left: vec![(Bit(false), AffineVar::constant(1)), 
-      (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
-    right: vec![]};
-    let end = Config{state: State(1), left: vec![(Bit(true), AffineVar::constant(1))], head: Bit(false), 
-    right: vec![(Bit(true), AffineVar::constant(1)), (Bit(false), AffineVar{n: 0, a:1, var:Var(0)})]};
-
-    assert_eq!(parse_rule("phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|\ninto:\nphase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)"),
-    Ok(("", Rule{start, end})));
-    let (_leftover, rule) = parse_rule("phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|\ninto:\nphase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)").unwrap();
+    let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| \ninto:\nphase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
+    let (_leftover, rule) = parse_rule(rule_str).unwrap();
     // --(F, inf) (T, 1) |>T<|(T, 7) (F, inf)
   }
 }

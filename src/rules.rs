@@ -246,6 +246,12 @@ pub fn parse_tape_side<'a, E: ParseError<&'a str> + FromExternalError<&'a str, P
   separated_list0(char(' '), parse_tuple)(input)
 }
 
+pub fn parse_small_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, (u8, Vec<(Bit, AffineVar)>), E> {
+  let (input, (_, state_digit, _, side)) =
+    (tag("phase: "), parse_u8, tag("  "), parse_tape_side).parse(input)?;
+  Ok((input, (state_digit, side)))
+}
+
 pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Config<Bit>, E> {
   let (input, (_, state_digit, _, left, _, head, _, mut right)) = 
     (tag("phase: "), parse_u8, tag("  "), parse_tape_side, 
@@ -253,6 +259,7 @@ pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, Pars
   right.reverse();
   Ok((input, Config{state: State(state_digit), left, head, right: right}))
 }
+
 
 pub fn parse_rule(input: &str) -> IResult<&str, Rule<Bit>> {
   let (input, (start, _, end)) = (parse_config, tag("\ninto:\n"), parse_config).parse(input)?;
@@ -417,8 +424,13 @@ use crate::turing::{get_machine, Bit};
     let start = Config{state: State(3), left: vec![(Bit(false), AffineVar::constant(1)), 
       (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
     right: vec![]};
-    let ans: Result<(&str, Config<Bit>), nom::error::VerboseError<&str>> = parse_config("phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|").finish();
+    let inp = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| ";
+    let ans: Result<(&str, (u8, Vec<(Bit, AffineVar)>)), nom::error::VerboseError<&str>> = parse_small_config(inp).finish();
+    dbg!(ans);
+
+    let ans: Result<(&str, Config<Bit>), nom::error::VerboseError<&str>> = parse_config(inp).finish();
     assert_eq!(ans, Ok(("", start)));
+
   }
 
   #[test]
@@ -428,8 +440,8 @@ use crate::turing::{get_machine, Bit};
     right: vec![]};
     let end = Config{state: State(1), left: vec![(Bit(true), AffineVar::constant(1))], head: Bit(false), 
     right: vec![(Bit(true), AffineVar::constant(1)), (Bit(false), AffineVar{n: 0, a:1, var:Var(0)})]};
-    assert_eq!(parse_rule("phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|\ninto:\nphase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)"), 
-    Ok(("", Rule{start, end})));
+    let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| \ninto:\nphase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
+    assert_eq!(parse_rule(rule_str), Ok(("", Rule{start, end})));
   }
 }
 
