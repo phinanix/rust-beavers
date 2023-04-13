@@ -41,7 +41,7 @@ use crate::turing::{
 };
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct Var(u8);
+pub struct Var(pub u8);
 
 //ax + n
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -217,7 +217,7 @@ into:
 phase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)
 */
 
-fn parse_avar(input: &str) -> IResult<&str, AffineVar> {
+pub fn parse_avar(input: &str) -> IResult<&str, AffineVar> {
   // 3 + 2*x_0
    let (input, (n, _, a, _, var)) =
     (parse_u32, tag(" + "), parse_u32, tag("*x_"), parse_var).parse(input)?;
@@ -225,12 +225,12 @@ fn parse_avar(input: &str) -> IResult<&str, AffineVar> {
   Ok((input, avar))
 }
 
-fn parse_count(input: &str) -> IResult<&str, AffineVar> {
+pub fn parse_count(input: &str) -> IResult<&str, AffineVar> {
   let parse_u32_to_avar = map(parse_u32, |out: u32| AffineVar{n: out, a:0, var: Var(0)});
   alt((parse_avar, parse_u32_to_avar))(input)
 }
 
-fn parse_bit(input: &str) -> IResult<&str, Bit> {
+pub fn parse_bit(input: &str) -> IResult<&str, Bit> {
   map(alt((char('T'), char('F'))), |c| match c {
     'T' => Bit(true), 
     'F' => Bit(false), 
@@ -238,15 +238,15 @@ fn parse_bit(input: &str) -> IResult<&str, Bit> {
   })(input)
 }
 
-fn parse_tuple(input: &str) -> IResult<&str, (Bit, AffineVar)> {
+pub fn parse_tuple(input: &str) -> IResult<&str, (Bit, AffineVar)> {
   delimited(tag("("), separated_pair(parse_bit, tag(", "), parse_count), tag(")"))(input)
 }
 
-fn parse_tape_side(input: &str) -> IResult<&str, Vec<(Bit, AffineVar)>> {
+pub fn parse_tape_side(input: &str) -> IResult<&str, Vec<(Bit, AffineVar)>> {
   separated_list0(char(' '), parse_tuple)(input)
 }
 
-fn parse_config(input: &str) -> IResult<&str, Config<Bit>> {
+pub fn parse_config(input: &str) -> IResult<&str, Config<Bit>> {
   let (input, (_, state_digit, _, left, _, head, _, mut right)) = 
     (tag("phase: "), parse_u8, tag("  "), parse_tape_side, 
       tag(" |>"), parse_bit, tag("<| "), parse_tape_side).parse(input)?;
@@ -254,7 +254,7 @@ fn parse_config(input: &str) -> IResult<&str, Config<Bit>> {
   Ok((input, Config{state: State(state_digit), left, head, right: right}))
 }
 
-fn parse_rule(input: &str) -> IResult<&str, Rule<Bit>> {
+pub fn parse_rule(input: &str) -> IResult<&str, Rule<Bit>> {
   let (input, (start, _, end)) = (parse_config, tag("\ninto:\n"), parse_config).parse(input)?;
   Ok((input, Rule{start, end}))
 }

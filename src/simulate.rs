@@ -213,7 +213,7 @@ pub fn match_rule_tape<S: TapeSymbol>(
   rule: &Vec<(S, AffineVar)>,
   tape: &Vec<(S, u32)>,
 ) -> Option<u32> {
-  // if rule applies, returns which numbers each affinevar becomes, else returns none
+  // if rule applies, returns how much of the last elt is leftover, else returns none
   let mut leftover = 0;
   if rule.len() > tape.len() {
     return None;
@@ -503,7 +503,7 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<Small
 
 mod test {
   use super::*;
-  use crate::turing::{get_machine, HALT};
+  use crate::{turing::{get_machine, HALT}, rules::{parse_avar, parse_rule}};
 
   #[test]
   fn exptape_to_tape() {
@@ -552,4 +552,20 @@ mod test {
 
   //tests to write: bb4
   // match var num, match rule tape, append rule tape, apply rule, apply rules,
+
+  #[test]
+  fn test_match_var_num() {
+    let (_leftover, var) = parse_avar(&"3 + 2*x_0").unwrap();
+    assert_eq!(match_var_num(var, 3), None); 
+    assert_eq!(match_var_num(var, 5), Some((0, (Var(0), 1)))); 
+    assert_eq!(match_var_num(var, 6), Some((1, (Var(0), 1)))); 
+  }
+
+  #[test]
+  fn test_match_rule_tape() {
+    // let (_leftover, rule) = parse_rule("phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|
+    // into:
+    // phase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)").unwrap();
+    // --(F, inf) (T, 1) |>T<|(T, 7) (F, inf)
+  }
 }
