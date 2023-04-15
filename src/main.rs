@@ -7,9 +7,9 @@ use crate::{
 };
 use either::Either::Right;
 use itertools::Itertools;
-use rules::simulate_detect_rules;
+use rules::{detect_chain_rules, simulate_detect_rules, simulate_using_rules, Rulebook};
 use simulate::{tnf_simulate, ExpTape};
-use turing::{get_machine, Bit, SmallBinMachine};
+use turing::{get_machine, Bit, SmallBinMachine, Turing};
 
 mod linrecur;
 mod rules;
@@ -50,8 +50,18 @@ fn main() {
   // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
   // let num_steps = 1300;
   // search_for_translated_cyclers(first_machine, num_steps);
-  let machine = &get_machine("binary_counter");
-  let num_steps = 100;
+  let machine = &get_machine("sweeper");
+  let chain_rules = detect_chain_rules(machine);
+  for chain_rule in &chain_rules {
+    println!("{}", chain_rule);
+  }
+  let mut rulebook = Rulebook::new(machine.num_states());
+  rulebook.add_rules(chain_rules);
+  let num_steps = 30;
+  println!("vanilla");
   ExpTape::simulate_from_start(machine, num_steps);
-  simulate_detect_rules(machine, num_steps, false);
+  println!("using rules");
+  simulate_using_rules(machine, num_steps, &rulebook, false);
+  println!("detecting rules");
+  simulate_detect_rules(machine, num_steps, &rulebook, false);
 }

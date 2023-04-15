@@ -301,7 +301,7 @@ const MACHINES: [(&str, &str); 6] = [
   ("bb4", ""),
   ("binary_counter", "0LB0RA_1LC1LH_1RA1LC"),
   ("checkerboard_sweeper", "1RB0LC_0LC1RA_1LH1LA"),
-  ("sweeper", "1RB---_0LC0RB_1LC1LA"),
+  ("sweeper", "1RB1LH_0LC0RB_1LC1LA"),
 ];
 
 pub fn get_machine(name: &str) -> SmallBinMachine {

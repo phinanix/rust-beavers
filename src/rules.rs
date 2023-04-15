@@ -145,6 +145,11 @@ impl<S: TapeSymbol> Rulebook<S> {
     self.1[rule.start_edge_index()].push(rule);
   }
 
+  pub fn add_rules(&mut self, rules: Vec<Rule<S>>) {
+    for rule in rules {
+      self.add_rule(rule);
+    }
+  }
   pub fn get_rules(&self, edge: Edge<S>) -> &Vec<Rule<S>> {
     &self.1[edge.edge_index()]
   }
@@ -370,7 +375,10 @@ pub fn simulate_using_rules<S: TapeSymbol>(
   let mut state = START;
   for step in 1..num_steps + 1 {
     state = match apply_rules(&mut exptape, state, rulebook, verbose) {
-      Some(new_state) => new_state,
+      Some(new_state) => {
+        println!("rule_applied");
+        new_state
+      }
       None => match exptape.step(state, machine) {
         Left(_edge) => unreachable!("machine is defined"),
         Right(state) => state,
@@ -379,6 +387,7 @@ pub fn simulate_using_rules<S: TapeSymbol>(
     if state == HALT {
       return (HALT, step);
     }
+    println!("step: {} phase: {} tape: {}", step, state, exptape);
   }
   return (state, num_steps);
 }
@@ -473,6 +482,7 @@ pub fn detect_rule<S: TapeSymbol>(history: &Vec<(u32, State, ExpTape<S>)>) -> Ve
 pub fn simulate_detect_rules<S: TapeSymbol>(
   machine: &impl Turing<S>,
   num_steps: u32,
+  rulebook: &Rulebook<S>,
   verbose: bool,
 ) -> (State, u32) {
   /*
@@ -482,12 +492,15 @@ pub fn simulate_detect_rules<S: TapeSymbol>(
   */
   let mut exptape = ExpTape::new();
   let mut state = START;
-  let mut rulebook = Rulebook::new(machine.num_states());
+  // let mut rulebook = Rulebook::new(machine.num_states());
   let mut signatures: DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S>)>> =
     defaulthashmap!();
   for step in 1..num_steps + 1 {
     state = match apply_rules(&mut exptape, state, &rulebook, verbose) {
-      Some(new_state) => new_state,
+      Some(new_state) => {
+        println!("rule_applied");
+        new_state
+      }
       None => match exptape.step(state, machine) {
         Left(_edge) => unreachable!("machine is defined"),
         Right(state) => state,
@@ -996,4 +1009,12 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
     );
     assert_eq!(tape, output_tape);
   }
+
+  /* make a test that using chain rules is the same as not using them
+   right now the test fails, because B T -> F R B becomes
+   phase: B  |>T<| (T, 0 + 1*x_0)
+   into
+   phase: B  (F, 0 + 1*x_0) |>F<|
+   but the final bit which the head is on should be a T, not an F
+  */
 }
