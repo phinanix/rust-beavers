@@ -23,17 +23,9 @@
  0 1^n >0< -> 1^(n+1) >0<
 */
 
-use nom::{
-  bytes::complete::{tag, is_a},
-  character::complete::{char, one_of},
-  combinator::{map_res, recognize, map},
-  multi::{many0, many1, separated_list0},
-  sequence::{terminated, Tuple, delimited, separated_pair},
-  IResult, branch::alt, error::{ParseError, FromExternalError},
-};
 use proptest::{prelude::*, sample::select};
 use smallvec::{smallvec, SmallVec};
-use std::{collections::HashMap, num::ParseIntError, fmt::Display};
+use std::{collections::HashMap, fmt::Display};
 
 use crate::turing::{
   Dir::{L, R},
@@ -198,79 +190,177 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
   out
 }
 
-fn parse_int<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, &str, E> {
-  recognize(many1(terminated(one_of("0123456789"), many0(char('_')))))(input)
-}
+pub mod parse {
+  
+  use nom::{
+    bytes::complete::{tag, is_a},
+    character::complete::{char, one_of},
+    combinator::{map_res, recognize, map},
+    multi::{many0, many1, separated_list0},
+    sequence::{terminated, Tuple, delimited, separated_pair},
+    IResult, branch::alt, error::{ParseError, FromExternalError},
+  };
+  use std::num::ParseIntError;
 
-fn parse_u32<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, u32, E> {
-  map_res(parse_int,
-    |out: &str| u32::from_str_radix(out, 10),
-  )(input)
-}
+use crate::turing::{Bit, State};
 
-fn parse_u8<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, u8, E> {
-  map_res(parse_int, |out: &str| u8::from_str_radix(out, 10))(input)
-}
+use super::{Var, AffineVar, Config, Rule};
+  
+  fn parse_int<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, &str, E> {
+    recognize(many1(terminated(one_of("0123456789"), many0(char('_')))))(input)
+  }
 
-fn parse_var<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Var, E> {
-  map(parse_u8, |out: u8| Var(out))(input)
-}
+  fn parse_u32<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, u32, E> {
+    map_res(parse_int,
+      |out: &str| u32::from_str_radix(out, 10),
+    )(input)
+  }
 
-/*
-in 100 steps we turn
-phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|
-into:
-phase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)
-*/
+  fn parse_u8<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, u8, E> {
+    map_res(parse_int, |out: &str| u8::from_str_radix(out, 10))(input)
+  }
 
-pub fn parse_avar<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, AffineVar, E> {
-  // 3 + 2*x_0
-   let (input, (n, _, a, _, var)) =
-    (parse_u32, tag(" + "), parse_u32, tag("*x_"), parse_var).parse(input)?;
-  let avar = AffineVar { n, a, var };
-  Ok((input, avar))
-}
+  fn parse_var<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Var, E> {
+    map(parse_u8, |out: u8| Var(out))(input)
+  }
 
-pub fn parse_count<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, AffineVar, E> {
-  let parse_u32_to_avar = map(parse_u32, |out: u32| AffineVar{n: out, a:0, var: Var(0)});
-  alt((parse_avar, parse_u32_to_avar))(input)
-}
+  /*
+  in 100 steps we turn
+  phase: 3  (F, 1) (T, 1 + 1*x_0 ) |>T<|
+  into:
+  phase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)
+  */
 
-pub fn parse_bit<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, Bit, E> {
-  map(alt((char('T'), char('F'))), |c| match c {
-    'T' => Bit(true), 
-    'F' => Bit(false), 
-    _ => unreachable!("only parsed the two chars")
-  })(input)
-}
+  pub fn parse_avar<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, AffineVar, E> {
+    // 3 + 2*x_0
+    let (input, (n, _, a, _, var)) =
+      (parse_u32, tag(" + "), parse_u32, tag("*x_"), parse_var).parse(input)?;
+    let avar = AffineVar { n, a, var };
+    Ok((input, avar))
+  }
 
-pub fn parse_count_tuple<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, (Bit, AffineVar), E> {
-  delimited(tag("("), separated_pair(parse_bit, tag(", "), parse_count), tag(")"))(input)
-}
+  pub fn parse_count<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, AffineVar, E> {
+    let parse_u32_to_avar = map(parse_u32, |out: u32| AffineVar{n: out, a:0, var: Var(0)});
+    alt((parse_avar, parse_u32_to_avar))(input)
+  }
 
-pub fn parse_config_tape_side<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Vec<(Bit, AffineVar)>, E> {
-  separated_list0(char(' '), parse_count_tuple)(input)
-}
+  pub fn parse_bit<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, Bit, E> {
+    map(alt((char('T'), char('F'))), |c| match c {
+      'T' => Bit(true), 
+      'F' => Bit(false), 
+      _ => unreachable!("only parsed the two chars")
+    })(input)
+  }
 
-pub fn parse_u32_tuple<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, (Bit, u32), E> {
-  delimited(tag("("), separated_pair(parse_bit, tag(", "), parse_u32), tag(")"))(input)
-}
+  pub fn parse_count_tuple<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, (Bit, AffineVar), E> {
+    delimited(tag("("), separated_pair(parse_bit, tag(", "), parse_count), tag(")"))(input)
+  }
 
-pub fn parse_tape_side<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Vec<(Bit, u32)>, E> {
-  separated_list0(char(' '), parse_u32_tuple)(input)
-}
+  pub fn parse_config_tape_side<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Vec<(Bit, AffineVar)>, E> {
+    separated_list0(char(' '), parse_count_tuple)(input)
+  }
 
-pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Config<Bit>, E> {
-  let (input, (_, state_digit, _, left, _, head, _, mut right)) = 
-    (tag("phase: "), parse_u8, tag("  "), parse_config_tape_side, 
-      tag(" |>"), parse_bit, tag("<| "), parse_config_tape_side).parse(input)?;
-  right.reverse();
-  Ok((input, Config{state: State(state_digit), left, head, right}))
-}
+  pub fn parse_u32_tuple<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, (Bit, u32), E> {
+    delimited(tag("("), separated_pair(parse_bit, tag(", "), parse_u32), tag(")"))(input)
+  }
 
-pub fn parse_rule(input: &str) -> IResult<&str, Rule<Bit>> {
-  let (input, (start, _, end)) = (parse_config, tag("\ninto:\n"), parse_config).parse(input)?;
-  Ok((input, Rule{start, end}))
+  pub fn parse_tape_side<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Vec<(Bit, u32)>, E> {
+    separated_list0(char(' '), parse_u32_tuple)(input)
+  }
+
+  pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Config<Bit>, E> {
+    let (input, (_, state_digit, _, left, _, head, _, mut right)) = 
+      (tag("phase: "), parse_u8, tag("  "), parse_config_tape_side, 
+        tag(" |>"), parse_bit, tag("<| "), parse_config_tape_side).parse(input)?;
+    right.reverse();
+    Ok((input, Config{state: State(state_digit), left, head, right}))
+  }
+
+  pub fn parse_rule(input: &str) -> IResult<&str, Rule<Bit>> {
+    let (input, (start, _, end)) = (parse_config, tag("\ninto:\n"), parse_config).parse(input)?;
+    Ok((input, Rule{start, end}))
+  }
+
+  mod test {
+    use nom::Finish;
+    use proptest::{strategy::Strategy, prelude::*};
+
+    use super::*;
+
+    #[test]
+    fn test_parse_avar() {
+      let ans = parse_avar::<nom::error::Error<&str>>("3 + 5*x_0");
+      assert_eq!(ans, Ok(("", AffineVar{n: 3, a: 5, var: Var(0)})));
+      assert_eq!(parse_avar::<nom::error::Error<&str>>("7 + 234*x_11"), Ok(("", AffineVar{n: 7, a: 234, var: Var(11)})));
+      assert_eq!(parse_avar::<nom::error::Error<&str>>("118 + 5*x_0"), Ok(("", AffineVar{n: 118, a: 5, var: Var(0)})));
+
+      assert!(parse_avar::<nom::error::Error<&str>>("3 + 5* x_0").is_err());
+    }
+
+    #[test]
+    fn avar_disp() {
+      assert_eq!(format!("{}", AffineVar{n: 3, a: 5, var: Var(0)}), "3 + 5*x_0");
+    }
+
+    #[test]
+    fn test_parse_count() {
+      assert_eq!(parse_count::<nom::error::Error<&str>>("3 + 5*x_0"), Ok(("", AffineVar{n: 3, a: 5, var: Var(0)})));
+      assert_eq!(parse_count::<nom::error::Error<&str>>("7 + 234*x_11"), Ok(("", AffineVar{n: 7, a: 234, var: Var(11)})));
+      assert_eq!(parse_count::<nom::error::Error<&str>>("7"), Ok(("", AffineVar{n: 7, a: 0, var: Var(0)})));
+    }
+
+    #[test]
+    fn test_parse_tuple() {
+      assert_eq!(parse_count_tuple::<nom::error::Error<&str>>("(F, 1)"), Ok(("", (Bit(false), AffineVar::constant(1)))));
+      assert_eq!(parse_count_tuple::<nom::error::Error<&str>>("(F, 0 + 1*x_0)"), Ok(("", (Bit(false), AffineVar{n: 0, a: 1, var: Var(0)}))));
+      assert_eq!(parse_count_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2)"), Ok(("", (Bit(true), AffineVar{n: 1, a: 3, var: Var(2)}))));
+      assert!(parse_count_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2").is_err())
+    }
+
+    #[test]
+    fn test_parse_tape_side() {
+      assert_eq!(parse_config_tape_side::<nom::error::Error<&str>>("(F, 1) (T, 1 + 1*x_0)"), 
+        Ok(("", vec![(Bit(false), AffineVar::constant(1)), 
+            (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})])));
+      assert_eq!(parse_config_tape_side::<nom::error::Error<&str>>("(F, 0 + 1*x_0) (T, 1)"),
+        Ok(("", vec![(Bit(false), AffineVar{n: 0, a:1, var:Var(0)}),
+              (Bit(true), AffineVar::constant(1))])));
+    }
+
+    #[test]
+    fn test_parse_config() {
+      let start = Config{state: State(3), left: vec![(Bit(false), AffineVar::constant(1)), 
+        (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
+      right: vec![]};
+      let inp = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| ";
+      let ans: Result<(&str, Config<Bit>), nom::error::VerboseError<&str>> = parse_config(inp).finish();
+      assert_eq!(ans, Ok(("", start)));
+
+    }
+
+    #[test]
+    fn test_parse_rule() {
+      let start = Config{state: State(3), left: vec![(Bit(false), AffineVar::constant(1)), 
+        (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
+      right: vec![]};
+      let end = Config{state: State(1), left: vec![(Bit(true), AffineVar::constant(1))], head: Bit(false), 
+      right: vec![(Bit(true), AffineVar::constant(1)), (Bit(false), AffineVar{n: 0, a:1, var:Var(0)})]};
+      let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| \ninto:\nphase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
+      assert_eq!(parse_rule(rule_str), Ok(("", Rule{start, end})));
+    }
+    fn avar_strategy() -> impl Strategy<Value = AffineVar> {
+      (any::<u32>(), any::<u32>(), any::<u8>())
+      .prop_map(|(n, a, v_num)| AffineVar{n, a, var: Var(v_num)})
+    }
+    
+    proptest! {
+      #[test]
+      fn avar_roundtrip(avar in avar_strategy()) {
+        assert_eq!(parse_avar::<nom::error::Error<&str>>(&format!("{}", avar)), Ok(("", avar)));
+      }
+    }
+  
+  }
 }
 
 mod test {
@@ -384,78 +474,5 @@ use crate::turing::{get_machine, Bit};
     };
     assert_eq!(detected_rules, vec![rule1, rule2]);
   }
-
-  #[test]
-  fn test_parse_avar() {
-    let ans = parse_avar::<nom::error::Error<&str>>("3 + 5*x_0");
-    assert_eq!(ans, Ok(("", AffineVar{n: 3, a: 5, var: Var(0)})));
-    assert_eq!(parse_avar::<nom::error::Error<&str>>("7 + 234*x_11"), Ok(("", AffineVar{n: 7, a: 234, var: Var(11)})));
-    assert_eq!(parse_avar::<nom::error::Error<&str>>("118 + 5*x_0"), Ok(("", AffineVar{n: 118, a: 5, var: Var(0)})));
-
-    assert!(parse_avar::<nom::error::Error<&str>>("3 + 5* x_0").is_err());
-  }
-
-  #[test]
-  fn avar_disp() {
-    assert_eq!(format!("{}", AffineVar{n: 3, a: 5, var: Var(0)}), "3 + 5*x_0");
-  }
-
-  #[test]
-  fn test_parse_count() {
-    assert_eq!(parse_count::<nom::error::Error<&str>>("3 + 5*x_0"), Ok(("", AffineVar{n: 3, a: 5, var: Var(0)})));
-    assert_eq!(parse_count::<nom::error::Error<&str>>("7 + 234*x_11"), Ok(("", AffineVar{n: 7, a: 234, var: Var(11)})));
-    assert_eq!(parse_count::<nom::error::Error<&str>>("7"), Ok(("", AffineVar{n: 7, a: 0, var: Var(0)})));
-  }
-
-  #[test]
-  fn test_parse_tuple() {
-    assert_eq!(parse_count_tuple::<nom::error::Error<&str>>("(F, 1)"), Ok(("", (Bit(false), AffineVar::constant(1)))));
-    assert_eq!(parse_count_tuple::<nom::error::Error<&str>>("(F, 0 + 1*x_0)"), Ok(("", (Bit(false), AffineVar{n: 0, a: 1, var: Var(0)}))));
-    assert_eq!(parse_count_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2)"), Ok(("", (Bit(true), AffineVar{n: 1, a: 3, var: Var(2)}))));
-    assert!(parse_count_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2").is_err())
-  }
-
-  #[test]
-  fn test_parse_tape_side() {
-    assert_eq!(parse_config_tape_side::<nom::error::Error<&str>>("(F, 1) (T, 1 + 1*x_0)"), 
-      Ok(("", vec![(Bit(false), AffineVar::constant(1)), 
-           (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})])));
-    assert_eq!(parse_config_tape_side::<nom::error::Error<&str>>("(F, 0 + 1*x_0) (T, 1)"),
-      Ok(("", vec![(Bit(false), AffineVar{n: 0, a:1, var:Var(0)}),
-            (Bit(true), AffineVar::constant(1))])));
-  }
-
-  #[test]
-  fn test_parse_config() {
-    let start = Config{state: State(3), left: vec![(Bit(false), AffineVar::constant(1)), 
-      (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
-    right: vec![]};
-    let inp = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| ";
-    let ans: Result<(&str, Config<Bit>), nom::error::VerboseError<&str>> = parse_config(inp).finish();
-    assert_eq!(ans, Ok(("", start)));
-
-  }
-
-  #[test]
-  fn test_parse_rule() {
-    let start = Config{state: State(3), left: vec![(Bit(false), AffineVar::constant(1)), 
-      (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
-    right: vec![]};
-    let end = Config{state: State(1), left: vec![(Bit(true), AffineVar::constant(1))], head: Bit(false), 
-    right: vec![(Bit(true), AffineVar::constant(1)), (Bit(false), AffineVar{n: 0, a:1, var:Var(0)})]};
-    let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| \ninto:\nphase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
-    assert_eq!(parse_rule(rule_str), Ok(("", Rule{start, end})));
-  }
 }
 
-fn avar_strategy() -> impl Strategy<Value = AffineVar> {
-  (any::<u32>(), any::<u32>(), any::<u8>())
-  .prop_map(|(n, a, v_num)| AffineVar{n, a, var: Var(v_num)})
-}
-
-proptest! {
-  #[test]
-  fn avar_roundtrip(avar in avar_strategy()) {
-    assert_eq!(parse_avar::<nom::error::Error<&str>>(&format!("{}", avar)), Ok(("", avar)));
-  }
-}

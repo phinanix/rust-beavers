@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-  rules::{AffineVar, Config, Rule, Rulebook, Var, parse_tape_side, parse_bit},
+  rules::{AffineVar, Config, Rule, Rulebook, Var, parse::{parse_tape_side, parse_bit}},
   turing::{Bit, Dir, Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, START},
 };
 
@@ -516,6 +516,7 @@ impl<S: TapeSymbol> Display for ExpTape<S> {
     Ok(())
   }
 }
+
 pub fn parse_tape(input: &str) -> IResult<&str, ExpTape<Bit>> {
   let (input, (left, _, head, _, mut right)) = 
     (parse_tape_side, tag(" |>"), parse_bit, tag("<| "), parse_tape_side).parse(input)?;
@@ -532,6 +533,7 @@ impl ExpTape<Bit> {
     }
   }
 }
+
 pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<SmallBinMachine> {
   let mut out = vec![];
 
@@ -578,7 +580,7 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<Small
 
 mod test {
   use super::*;
-  use crate::{turing::{get_machine, HALT}, rules::{parse_avar, parse_rule}};
+  use crate::{turing::{get_machine, HALT}, rules::parse::{parse_avar, parse_rule}};
 
   #[test]
   fn exptape_to_tape() {
