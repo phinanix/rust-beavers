@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+defaultmap = "0.5.0"
 either = "1.8.1"
 itertools = "0.10.5"
 nom = "7.1.3"

@@ -2,6 +2,7 @@
 use smallvec::{smallvec, SmallVec};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display, Write};
+use std::hash::Hash;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Bit(pub bool);
@@ -45,7 +46,7 @@ impl Display for State {
   }
 }
 
-pub trait TapeSymbol: Copy + Eq + Debug + Display {
+pub trait TapeSymbol: Copy + Eq + Hash + Debug + Display {
   fn empty() -> Self;
   fn all_symbols() -> Vec<Self>;
 }
@@ -152,6 +153,9 @@ impl Trans<Bit> {
 // S = symbol
 pub trait Turing<S> {
   fn all_states(&self) -> Vec<State>;
+  fn num_states(&self) -> u8 {
+    self.all_states().len() as u8
+  }
   fn step(&self, edge: Edge<S>) -> Option<Trans<S>>;
 }
 
@@ -167,6 +171,10 @@ impl Turing<Bit> for SmallBinMachine {
       .into_iter()
       .map(|i| State(i))
       .collect()
+  }
+
+  fn num_states(&self) -> u8 {
+    self.num_states
   }
 
   fn step(&self, edge: Edge<Bit>) -> Option<Trans<Bit>> {

@@ -7,7 +7,6 @@ use nom::{
   IResult,
 };
 use std::{
-  collections::HashMap,
   fmt::{Debug, Display, Pointer, Write},
   iter::zip,
   num::ParseIntError,
@@ -190,12 +189,25 @@ pub struct ExpTape<S> {
   pub right: Vec<(S, u32)>,
 }
 
-impl<S> ExpTape<S> {
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub struct Signature<S> {
+  pub left: Vec<S>,
+  pub head: S,
+  pub right: Vec<S>,
+}
+
+impl<S: Copy> ExpTape<S> {
+  pub fn signature(&self) -> Signature<S> {
+    let left = self.left.iter().map(|&(s, _n)| s).collect();
+    let right = self.right.iter().map(|&(s, _n)| s).collect();
+    Signature { left, head: self.head, right }
+  }
+
   // pub fn left(&self) -> &Vec<(S, u32)>
 }
 
 impl<S: TapeSymbol> ExpTape<S> {
-  fn new() -> Self {
+  pub fn new() -> Self {
     ExpTape {
       left: vec![],
       head: TapeSymbol::empty(),
@@ -254,7 +266,7 @@ impl<S: TapeSymbol> ExpTape<S> {
   }
 
   //todo: these 3 functions are duplicated, some chance we want to dedub with Tape, not sure
-  fn step(&mut self, state: State, t: &impl Turing<S>) -> Either<Edge<S>, State> {
+  pub fn step(&mut self, state: State, t: &impl Turing<S>) -> Either<Edge<S>, State> {
     let edge = Edge(state, self.head);
     let Trans { state, symbol, dir } = match t.step(edge) {
       Some(trans) => trans,
@@ -281,12 +293,12 @@ impl<S: TapeSymbol> ExpTape<S> {
         Right(HALT) => return (Right(HALT), step),
         Right(state) => state,
       };
-      // dbg!(&self, state);
+      println!("step: {} phase: {} tape: {}", step, state, self);
     }
     (Right(state), num_steps)
   }
 
-  fn simulate_from_start(
+  pub fn simulate_from_start(
     machine: &impl Turing<S>,
     num_steps: u32,
   ) -> (Either<Edge<S>, State>, u32, Self) {

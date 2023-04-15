@@ -23,16 +23,19 @@
  0 1^n >0< -> 1^(n+1) >0<
 */
 
+use defaultmap::{defaulthashmap, DefaultHashMap};
+use either::Either::{Left, Right};
+use itertools::Itertools;
 use proptest::{prelude::*, sample::select};
 use smallvec::{smallvec, SmallVec};
-use std::{collections::HashMap, fmt::Display, iter::zip};
+use std::{cmp::Ordering::*, collections::HashMap, fmt::Display, iter::zip};
 
 use crate::{
-  simulate::ExpTape,
+  simulate::{ExpTape, Signature},
   turing::{
     Bit,
     Dir::{L, R},
-    Edge, State, TapeSymbol, Trans, Turing,
+    Edge, State, TapeSymbol, Trans, Turing, HALT, START,
   },
 };
 
@@ -85,6 +88,19 @@ pub struct Config<S> {
   pub right: Vec<(S, AffineVar)>,
 }
 
+impl<S: Display + Copy> Display for Config<S> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "phase: {}  ", self.state)?;
+    for &(s, v) in self.left.iter() {
+      write!(f, "({}, {}) ", s, v)?;
+    }
+    write!(f, "|>{}<|", self.head)?;
+    for &(s, v) in self.right.iter().rev() {
+      write!(f, " ({}, {})", s, v)?;
+    }
+    Ok(())
+  }
+}
 //todo: figure out like modules or something
 // impl Config<S> {
 //   fn from_tape_state(state: State, exptape : ExpTape)
@@ -94,6 +110,12 @@ pub struct Config<S> {
 pub struct Rule<S> {
   pub start: Config<S>,
   pub end: Config<S>,
+}
+
+impl<S: Display + Copy> Display for Rule<S> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}\ninto\n{}", self.start, self.end)
+  }
 }
 
 impl<S: TapeSymbol> Rule<S> {
@@ -324,7 +346,7 @@ pub fn apply_rule<S: TapeSymbol>(
 pub fn apply_rules<S: TapeSymbol>(
   tape: &mut ExpTape<S>,
   state: State,
-  rulebook: Rulebook<S>,
+  rulebook: &Rulebook<S>,
   verbose: bool,
 ) -> Option<State> {
   let edge = Edge(state, tape.head);
@@ -336,6 +358,159 @@ pub fn apply_rules<S: TapeSymbol>(
     }
   }
   return None;
+}
+
+pub fn simulate_using_rules<S: TapeSymbol>(
+  machine: &impl Turing<S>,
+  num_steps: u32,
+  rulebook: &Rulebook<S>,
+  verbose: bool,
+) -> (State, u32) {
+  let mut exptape = ExpTape::new();
+  let mut state = START;
+  for step in 1..num_steps + 1 {
+    state = match apply_rules(&mut exptape, state, rulebook, verbose) {
+      Some(new_state) => new_state,
+      None => match exptape.step(state, machine) {
+        Left(_edge) => unreachable!("machine is defined"),
+        Right(state) => state,
+      },
+    };
+    if state == HALT {
+      return (HALT, step);
+    }
+  }
+  return (state, num_steps);
+}
+
+fn collate<S: TapeSymbol>(
+  (f_sym, f_num): (S, u32),
+  (s_sym, s_num): (S, u32),
+) -> ((S, AffineVar), (S, AffineVar), bool) {
+  // bool is was there a var used
+  assert_eq!(f_sym, s_sym);
+  match f_num.cmp(&s_num) {
+    Less => (
+      (f_sym, AffineVar { n: 0, a: 1, var: Var(0) }),
+      (
+        s_sym,
+        AffineVar {
+          n: s_num.checked_sub(f_num).expect("we used cmp"),
+          a: 1,
+          var: Var(0),
+        },
+      ),
+      true,
+    ),
+    Equal => (
+      (f_sym, AffineVar::constant(f_num)),
+      (s_sym, AffineVar::constant(s_num)),
+      false,
+    ),
+    Greater => (
+      (
+        f_sym,
+        AffineVar {
+          n: f_num.checked_sub(s_num).expect("we used cmp"),
+          a: 1,
+          var: Var(0),
+        },
+      ),
+      (s_sym, AffineVar { n: 0, a: 1, var: Var(0) }),
+      true,
+    ),
+  }
+}
+
+fn make_side<S: TapeSymbol>(
+  start: &[(S, u32)],
+  end: &[(S, u32)],
+) -> (Vec<(S, AffineVar)>, Vec<(S, AffineVar)>, bool) {
+  assert_eq!(start.len(), end.len());
+  let mut start_out = vec![];
+  let mut end_out = vec![];
+  let mut var_used = false;
+  for (&s, &e) in zip(start, end) {
+    let (s_var, e_var, was_var) = collate(s, e);
+    var_used = var_used || was_var;
+    start_out.push(s_var);
+    end_out.push(e_var);
+  }
+  (start_out, end_out, var_used)
+}
+
+pub fn detect_rule<S: TapeSymbol>(history: &Vec<(u32, State, ExpTape<S>)>) -> Vec<Rule<S>> {
+  /* we're detecting an additive rule, so any numbers that don't change, we guess don't change
+  and any numbers that do change, we guess change by that constant each time
+  so we need to
+  1) make vectors of the change amount
+  2) zip those vectors with the signatures and turn them into configs
+  */
+  let second_last = &history[history.len() - 2];
+  let last = &history[history.len() - 1];
+  let (start_left, end_left, var_used_left) = make_side(&second_last.2.left, &last.2.left);
+  let (start_right, end_right, var_used_right) = make_side(&second_last.2.right, &last.2.right);
+  if !var_used_left && !var_used_right {
+    return vec![];
+  }
+  let rule = Rule {
+    start: Config {
+      state: second_last.1,
+      left: start_left,
+      head: second_last.2.head,
+      right: start_right,
+    },
+    end: Config {
+      state: last.1,
+      left: end_left,
+      head: last.2.head,
+      right: end_right,
+    },
+  };
+  vec![rule]
+}
+
+pub fn simulate_detect_rules<S: TapeSymbol>(
+  machine: &impl Turing<S>,
+  num_steps: u32,
+  verbose: bool,
+) -> (State, u32) {
+  /*
+  the plan to detect rules:
+  store the signatures of everything seen so far
+  if you see the same signature more than once, there is a possible rule
+  */
+  let mut exptape = ExpTape::new();
+  let mut state = START;
+  let mut rulebook = Rulebook::new(machine.num_states());
+  let mut signatures: DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S>)>> =
+    defaulthashmap!();
+  for step in 1..num_steps + 1 {
+    state = match apply_rules(&mut exptape, state, &rulebook, verbose) {
+      Some(new_state) => new_state,
+      None => match exptape.step(state, machine) {
+        Left(_edge) => unreachable!("machine is defined"),
+        Right(state) => state,
+      },
+    };
+    println!("step: {} phase: {} tape: {}", step, state, exptape);
+    if state == HALT {
+      return (HALT, step);
+    }
+    let cur_sig_vec = &mut signatures[exptape.signature()];
+    cur_sig_vec.push((step, state, exptape.clone()));
+    if cur_sig_vec.len() > 1 {
+      let rules = detect_rule(cur_sig_vec);
+      if rules.len() > 0 {
+        println!(
+          "using steps: {:?} detected rule:\n{}\n",
+          cur_sig_vec.iter().map(|(s, _, _)| s).collect_vec(),
+          rules.first().unwrap()
+        );
+      }
+    }
+  }
+  return (state, num_steps);
 }
 
 pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S>> {

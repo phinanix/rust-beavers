@@ -7,7 +7,8 @@ use crate::{
 };
 use either::Either::Right;
 use itertools::Itertools;
-use simulate::tnf_simulate;
+use rules::simulate_detect_rules;
+use simulate::{tnf_simulate, ExpTape};
 use turing::{get_machine, Bit, SmallBinMachine};
 
 mod linrecur;
@@ -49,6 +50,8 @@ fn main() {
   // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
   // let num_steps = 1300;
   // search_for_translated_cyclers(first_machine, num_steps);
-
-  Tape::simulate_from_start(&get_machine("unk1"), 200, true);
+  let machine = &get_machine("binary_counter");
+  let num_steps = 100;
+  ExpTape::simulate_from_start(machine, num_steps);
+  simulate_detect_rules(machine, num_steps, false);
 }
