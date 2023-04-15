@@ -641,10 +641,10 @@ mod test {
 
   #[test]
   fn test_match_rule_tape() {
-    // phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| 
-    // into:
-    // phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)
-    let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| \ninto:\nphase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
+    let rule_str = 
+"phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| 
+into:
+phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
     let (_leftover, rule) = parse_rule(rule_str).unwrap();
     let tape_str = "(T, 1) |>T<| (T, 7)";
     let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
