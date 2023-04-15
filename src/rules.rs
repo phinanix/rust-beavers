@@ -370,7 +370,7 @@ pub fn simulate_using_rules<S: TapeSymbol>(
   num_steps: u32,
   rulebook: &Rulebook<S>,
   verbose: bool,
-) -> (State, u32) {
+) -> (State, u32, ExpTape<S>) {
   let mut exptape = ExpTape::new();
   let mut state = START;
   for step in 1..num_steps + 1 {
@@ -385,11 +385,11 @@ pub fn simulate_using_rules<S: TapeSymbol>(
       },
     };
     if state == HALT {
-      return (HALT, step);
+      return (HALT, step, exptape);
     }
     println!("step: {} phase: {} tape: {}", step, state, exptape);
   }
-  return (state, num_steps);
+  return (state, num_steps, exptape);
 }
 
 fn collate<S: TapeSymbol>(
@@ -551,7 +551,7 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
             let end = Config {
               state: state_in,
               left: vec![],
-              head: symbol_out,
+              head: symbol_in,
               right: half_tape_out,
             };
             out.push(Rule { start, end });
@@ -566,7 +566,7 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
             let end = Config {
               state: state_in,
               left: half_tape_out,
-              head: symbol_out,
+              head: symbol_in,
               right: vec![],
             };
             out.push(Rule { start, end });
@@ -1016,5 +1016,32 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
    into
    phase: B  (F, 0 + 1*x_0) |>F<|
    but the final bit which the head is on should be a T, not an F
+   that bug is fixed, but now the test fails because 1 chain step might encompass multiple normal steps, so probably the test should track the number of steps a chain step takes
+   or something
   */
+  fn simulate_machine_with_chain_steps<S: TapeSymbol>(
+    machine: &impl Turing<S>,
+    num_steps: u32,
+  ) -> (State, u32, ExpTape<S>) {
+    let chain_rules = detect_chain_rules(machine);
+    let mut rulebook = Rulebook::new(machine.num_states());
+    rulebook.add_rules(chain_rules);
+    ExpTape::simulate_from_start(machine, num_steps);
+    simulate_using_rules(machine, num_steps, &rulebook, false)
+  }
+
+  fn compare_machine_with_chain<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) {
+    let (mb_state, steps1, tape1) = ExpTape::simulate_from_start(machine, num_steps);
+    let (state2, steps2, tape2) = simulate_machine_with_chain_steps(machine, num_steps);
+    assert_eq!(
+      (mb_state.expect_right("machine is defined"), steps1, tape1),
+      (state2, steps2, tape2)
+    );
+    // assert_eq!((steps1, tape1), (steps2, tape2));
+  }
+
+  #[test]
+  fn chain_steps_is_same() {
+    compare_machine_with_chain(&get_machine("sweeper"), 30);
+  }
 }
