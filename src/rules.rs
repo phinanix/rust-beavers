@@ -27,17 +27,21 @@ use proptest::{prelude::*, sample::select};
 use smallvec::{smallvec, SmallVec};
 use std::{collections::HashMap, fmt::Display, iter::zip};
 
-use crate::{turing::{
-  Dir::{L, R},
-  Edge, State, TapeSymbol, Trans, Turing, Bit,
-}, simulate::ExpTape};
+use crate::{
+  simulate::ExpTape,
+  turing::{
+    Bit,
+    Dir::{L, R},
+    Edge, State, TapeSymbol, Trans, Turing,
+  },
+};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Var(pub u8);
 
 impl Display for Var {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      write!(f, "x_{}", self.0)
+    write!(f, "x_{}", self.0)
   }
 }
 
@@ -51,7 +55,7 @@ pub struct AffineVar {
 
 impl AffineVar {
   pub fn constant(n: u32) -> Self {
-    Self {n, a: 0, var: Var(0)}
+    Self { n, a: 0, var: Var(0) }
   }
 
   pub fn sub(&self, x: u32) -> u32 {
@@ -66,9 +70,9 @@ impl AffineVar {
 }
 
 impl Display for AffineVar {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} + {}*{}", self.n, self.a, self.var)
-    }
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{} + {}*{}", self.n, self.a, self.var)
+  }
 }
 
 // much like Tape / ExpTape, the *last* thing in the Vec is the closest to the head,
@@ -96,13 +100,7 @@ impl<S: TapeSymbol> Rule<S> {
   pub fn start_edge_index(&self) -> usize {
     match self {
       Rule {
-        start:
-          Config {
-            state,
-            left: _left,
-            head,
-            right: _right,
-          },
+        start: Config { state, left: _left, head, right: _right },
         end: _end,
       } => return Edge(*state, *head).edge_index(),
     }
@@ -133,17 +131,18 @@ impl<S: TapeSymbol> Rulebook<S> {
 pub fn match_var_num(
   AffineVar { n, a, var }: AffineVar,
   mut num: u32,
-  verbose: bool
+  verbose: bool,
 ) -> Option<(u32, Option<(Var, u32)>)> {
-
   // returns the num left on the tape, and what to send the var to.
   if num < n {
-    if verbose {println!("num")};
+    if verbose {
+      println!("num")
+    };
     return None;
   }
   num -= n;
   if a == 0 {
-   return Some((num, None))
+    return Some((num, None));
   }
   if num < a {
     return None;
@@ -153,8 +152,8 @@ pub fn match_var_num(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RuleTapeMatch {
-  ConsumedEnd, 
-  Leftover(u32)
+  ConsumedEnd,
+  Leftover(u32),
 }
 use RuleTapeMatch::*;
 
@@ -164,13 +163,15 @@ pub fn match_rule_tape<S: TapeSymbol>(
   tape: &[(S, u32)],
   verbose: bool,
 ) -> Option<RuleTapeMatch> {
-  // if rule applies, returns 
+  // if rule applies, returns
   // 0: how much of the last elt is leftover
-  // 1: how many elements 
+  // 1: how many elements
   // else returns none
   let mut leftover = 0;
   if rule.len() > tape.len() + 1 {
-    if verbose { println!("rule too long") };
+    if verbose {
+      println!("rule too long")
+    };
     return None;
   };
 
@@ -179,22 +180,40 @@ pub fn match_rule_tape<S: TapeSymbol>(
     let last_rule_pair = rule.first().unwrap();
     if last_rule_pair.0 == S::empty() {
       //we can match the empty characters implicitly represented by the end of the tape
-      if verbose { println!("matched {}, {} to empty", last_rule_pair.0, last_rule_pair.1) };
+      if verbose {
+        println!(
+          "matched {}, {} to empty",
+          last_rule_pair.0, last_rule_pair.1
+        )
+      };
       last_elt_empty_tape = true;
     } else {
-      if verbose { println!("rule too long") };
-      return None
-    }
-  }
-  let rule_slice_start = if last_elt_empty_tape {1} else {0};
-  for (&(rule_symbol, avar), &(tape_symbol, num)) in zip(rule[rule_slice_start..].iter().rev(), tape.iter().rev()) {
-    if leftover != 0 {
-      if verbose {println!("some bits leftover")};
+      if verbose {
+        println!("rule too long")
+      };
       return None;
     }
-    if verbose {println!("matching {}, {} to {}, {}", rule_symbol, avar, tape_symbol, num)};
+  }
+  let rule_slice_start = if last_elt_empty_tape { 1 } else { 0 };
+  for (&(rule_symbol, avar), &(tape_symbol, num)) in
+    zip(rule[rule_slice_start..].iter().rev(), tape.iter().rev())
+  {
+    if leftover != 0 {
+      if verbose {
+        println!("some bits leftover")
+      };
+      return None;
+    }
+    if verbose {
+      println!(
+        "matching {}, {} to {}, {}",
+        rule_symbol, avar, tape_symbol, num
+      )
+    };
     if rule_symbol != tape_symbol {
-      if verbose {println!("symbols didn't match")};
+      if verbose {
+        println!("symbols didn't match")
+      };
       return None;
     }
     let (new_leftover, mb_new_var) = match_var_num(avar, num, verbose)?;
@@ -207,7 +226,9 @@ pub fn match_rule_tape<S: TapeSymbol>(
         }
         Some(&old_var_num) => {
           if var_num != old_var_num {
-            if verbose {println!("var {} sent to both: {} {}", var, old_var_num, var_num)};
+            if verbose {
+              println!("var {} sent to both: {} {}", var, old_var_num, var_num)
+            };
             return None;
           }
         }
@@ -216,12 +237,12 @@ pub fn match_rule_tape<S: TapeSymbol>(
   }
   if last_elt_empty_tape {
     if leftover != 0 {
-      return None
+      return None;
     } else {
-      return Some(ConsumedEnd)
+      return Some(ConsumedEnd);
     }
   } else {
-    return Some(Leftover(leftover))
+    return Some(Leftover(leftover));
   }
 }
 
@@ -240,7 +261,7 @@ pub fn consume_tape_from_rulematch<S: TapeSymbol>(
     Leftover(leftover) => {
       remove(tape, rule_len - 1);
       tape.last_mut().unwrap().1 = leftover;
-    },
+    }
   }
 }
 
@@ -270,27 +291,25 @@ pub fn append_rule_tape<S: TapeSymbol>(
   );
 }
 
-pub fn apply_rule<S:TapeSymbol>(
+pub fn apply_rule<S: TapeSymbol>(
   tape: &mut ExpTape<S>,
   cur_state: State,
-  Rule {
-    start: Config {
-      state,
-      left,
-      head,
-      right,
-    },
-    end,
-  }: &Rule<S>,
-  verbose: bool
+  Rule { start: Config { state, left, head, right }, end }: &Rule<S>,
+  verbose: bool,
 ) -> Option<State> {
   if cur_state == *state && tape.head == *head {
     let mut hm = HashMap::new();
-    if verbose {println!("left")};
+    if verbose {
+      println!("left")
+    };
     let left_match = match_rule_tape(&mut hm, left, &tape.left, verbose)?;
-    if verbose {println!("right")};
+    if verbose {
+      println!("right")
+    };
     let right_match = match_rule_tape(&mut hm, right, &tape.right, verbose)?;
-    if verbose {println!("succeeded")};
+    if verbose {
+      println!("succeeded")
+    };
     consume_tape_from_rulematch(&mut tape.left, left_match, left.len());
     consume_tape_from_rulematch(&mut tape.right, right_match, right.len());
     append_rule_tape(&hm, &end.left, &mut tape.left);
@@ -302,7 +321,12 @@ pub fn apply_rule<S:TapeSymbol>(
   }
 }
 
-pub fn apply_rules<S:TapeSymbol>(tape: &mut ExpTape<S>, state: State, rulebook: Rulebook<S>, verbose: bool) -> Option<State> {
+pub fn apply_rules<S: TapeSymbol>(
+  tape: &mut ExpTape<S>,
+  state: State,
+  rulebook: Rulebook<S>,
+  verbose: bool,
+) -> Option<State> {
   let edge = Edge(state, tape.head);
   let rules = rulebook.get_rules(edge);
   for rule in rules {
@@ -321,19 +345,11 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
   let mut out = vec![];
   for state_in in machine.all_states() {
     for symbol_in in S::all_symbols() {
-      let Trans {
-        state: state_out,
-        symbol: symbol_out,
-        dir,
-      } = machine
+      let Trans { state: state_out, symbol: symbol_out, dir } = machine
         .step(Edge(state_in, symbol_in))
         .expect("machine is defined");
       if state_in == state_out {
-        let sym_var = AffineVar {
-          n: 0,
-          a: 1,
-          var: Var(0),
-        };
+        let sym_var = AffineVar { n: 0, a: 1, var: Var(0) };
         let half_tape_in = vec![(symbol_in, sym_var)];
         let half_tape_out = vec![(symbol_out, sym_var)];
         match dir {
@@ -375,36 +391,45 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
 }
 
 pub mod parse {
-  
+
   use nom::{
-    bytes::complete::{tag, is_a},
+    branch::alt,
+    bytes::complete::{is_a, tag},
     character::complete::{char, one_of},
-    combinator::{map_res, recognize, map},
+    combinator::{map, map_res, recognize},
+    error::{FromExternalError, ParseError},
     multi::{many0, many1, separated_list0},
-    sequence::{terminated, Tuple, delimited, separated_pair},
-    IResult, branch::alt, error::{ParseError, FromExternalError},
+    sequence::{delimited, separated_pair, terminated, Tuple},
+    IResult,
   };
   use std::num::ParseIntError;
 
-use crate::{turing::{Bit, State}, simulate::ExpTape};
+  use crate::{
+    simulate::ExpTape,
+    turing::{Bit, State},
+  };
 
-use super::{Var, AffineVar, Config, Rule};
-  
+  use super::{AffineVar, Config, Rule, Var};
+
   fn parse_int<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, &str, E> {
     recognize(many1(terminated(one_of("0123456789"), many0(char('_')))))(input)
   }
 
-  fn parse_u32<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, u32, E> {
-    map_res(parse_int,
-      |out: &str| u32::from_str_radix(out, 10),
-    )(input)
+  fn parse_u32<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
+    input: &'a str,
+  ) -> IResult<&str, u32, E> {
+    map_res(parse_int, |out: &str| u32::from_str_radix(out, 10))(input)
   }
 
-  fn parse_u8<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, u8, E> {
+  fn parse_u8<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
+    input: &'a str,
+  ) -> IResult<&str, u8, E> {
     map_res(parse_int, |out: &str| u8::from_str_radix(out, 10))(input)
   }
 
-  fn parse_var<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Var, E> {
+  fn parse_var<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
+    input: &'a str,
+  ) -> IResult<&str, Var, E> {
     map(parse_u8, |out: u8| Var(out))(input)
   }
 
@@ -415,7 +440,9 @@ use super::{Var, AffineVar, Config, Rule};
   phase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)
   */
 
-  pub fn parse_avar<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, AffineVar, E> {
+  pub fn parse_avar<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
+    input: &'a str,
+  ) -> IResult<&str, AffineVar, E> {
     // 3 + 2*x_0
     let (input, (n, _, a, _, var)) =
       (parse_u32, tag(" + "), parse_u32, tag("*x_"), parse_var).parse(input)?;
@@ -423,158 +450,262 @@ use super::{Var, AffineVar, Config, Rule};
     Ok((input, avar))
   }
 
-  pub fn parse_count<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, AffineVar, E> {
-    let parse_u32_to_avar = map(parse_u32, |out: u32| AffineVar{n: out, a:0, var: Var(0)});
+  pub fn parse_count<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
+    input: &'a str,
+  ) -> IResult<&str, AffineVar, E> {
+    let parse_u32_to_avar = map(parse_u32, |out: u32| AffineVar {
+      n: out,
+      a: 0,
+      var: Var(0),
+    });
     alt((parse_avar, parse_u32_to_avar))(input)
   }
 
   pub fn parse_bit<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, Bit, E> {
     map(alt((char('T'), char('F'))), |c| match c {
-      'T' => Bit(true), 
-      'F' => Bit(false), 
-      _ => unreachable!("only parsed the two chars")
+      'T' => Bit(true),
+      'F' => Bit(false),
+      _ => unreachable!("only parsed the two chars"),
     })(input)
   }
 
-  pub fn parse_count_tuple<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, (Bit, AffineVar), E> {
-    delimited(tag("("), separated_pair(parse_bit, tag(", "), parse_count), tag(")"))(input)
+  pub fn parse_count_tuple<
+    'a,
+    E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>,
+  >(
+    input: &'a str,
+  ) -> IResult<&str, (Bit, AffineVar), E> {
+    delimited(
+      tag("("),
+      separated_pair(parse_bit, tag(", "), parse_count),
+      tag(")"),
+    )(input)
   }
 
-  pub fn parse_config_tape_side<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Vec<(Bit, AffineVar)>, E> {
+  pub fn parse_config_tape_side<
+    'a,
+    E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>,
+  >(
+    input: &'a str,
+  ) -> IResult<&str, Vec<(Bit, AffineVar)>, E> {
     separated_list0(char(' '), parse_count_tuple)(input)
   }
 
-  pub fn parse_u32_tuple<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, (Bit, u32), E> {
-    delimited(tag("("), separated_pair(parse_bit, tag(", "), parse_u32), tag(")"))(input)
+  pub fn parse_u32_tuple<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
+    input: &'a str,
+  ) -> IResult<&str, (Bit, u32), E> {
+    delimited(
+      tag("("),
+      separated_pair(parse_bit, tag(", "), parse_u32),
+      tag(")"),
+    )(input)
   }
 
-  pub fn parse_tape_side<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Vec<(Bit, u32)>, E> {
+  pub fn parse_tape_side<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
+    input: &'a str,
+  ) -> IResult<&str, Vec<(Bit, u32)>, E> {
     separated_list0(char(' '), parse_u32_tuple)(input)
   }
 
   pub fn parse_tape(input: &str) -> IResult<&str, ExpTape<Bit>> {
-    let (input, (left, _, head, _, mut right)) = 
-      (parse_tape_side, tag(" |>"), parse_bit, tag("<| "), parse_tape_side).parse(input)?;
+    let (input, (left, _, head, _, mut right)) = (
+      parse_tape_side,
+      tag(" |>"),
+      parse_bit,
+      tag("<| "),
+      parse_tape_side,
+    )
+      .parse(input)?;
     right.reverse();
-    Ok((input, ExpTape{left, head, right}))
+    Ok((input, ExpTape { left, head, right }))
   }
-  
-  pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(input: &'a str) -> IResult<&str, Config<Bit>, E> {
-    let (input, (_, state_digit, _, left, _, head, _, mut right)) = 
-      (tag("phase: "), parse_u8, tag("  "), parse_config_tape_side, 
-        tag(" |>"), parse_bit, tag("<| "), parse_config_tape_side).parse(input)?;
+
+  pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
+    input: &'a str,
+  ) -> IResult<&str, Config<Bit>, E> {
+    let (input, (_, state_digit, _, left, _, head, _, mut right)) = (
+      tag("phase: "),
+      parse_u8,
+      tag("  "),
+      parse_config_tape_side,
+      tag(" |>"),
+      parse_bit,
+      tag("<| "),
+      parse_config_tape_side,
+    )
+      .parse(input)?;
     right.reverse();
-    Ok((input, Config{state: State(state_digit), left, head, right}))
+    Ok((
+      input,
+      Config { state: State(state_digit), left, head, right },
+    ))
   }
 
   pub fn parse_rule(input: &str) -> IResult<&str, Rule<Bit>> {
     let (input, (start, _, end)) = (parse_config, tag("\ninto:\n"), parse_config).parse(input)?;
-    Ok((input, Rule{start, end}))
+    Ok((input, Rule { start, end }))
   }
 
   mod test {
     use nom::Finish;
-    use proptest::{strategy::Strategy, prelude::*};
+    use proptest::{prelude::*, strategy::Strategy};
 
     use super::*;
 
     #[test]
     fn test_parse_avar() {
       let ans = parse_avar::<nom::error::Error<&str>>("3 + 5*x_0");
-      assert_eq!(ans, Ok(("", AffineVar{n: 3, a: 5, var: Var(0)})));
-      assert_eq!(parse_avar::<nom::error::Error<&str>>("7 + 234*x_11"), Ok(("", AffineVar{n: 7, a: 234, var: Var(11)})));
-      assert_eq!(parse_avar::<nom::error::Error<&str>>("118 + 5*x_0"), Ok(("", AffineVar{n: 118, a: 5, var: Var(0)})));
+      assert_eq!(ans, Ok(("", AffineVar { n: 3, a: 5, var: Var(0) })));
+      assert_eq!(
+        parse_avar::<nom::error::Error<&str>>("7 + 234*x_11"),
+        Ok(("", AffineVar { n: 7, a: 234, var: Var(11) }))
+      );
+      assert_eq!(
+        parse_avar::<nom::error::Error<&str>>("118 + 5*x_0"),
+        Ok(("", AffineVar { n: 118, a: 5, var: Var(0) }))
+      );
 
       assert!(parse_avar::<nom::error::Error<&str>>("3 + 5* x_0").is_err());
     }
 
     #[test]
     fn avar_disp() {
-      assert_eq!(format!("{}", AffineVar{n: 3, a: 5, var: Var(0)}), "3 + 5*x_0");
+      assert_eq!(
+        format!("{}", AffineVar { n: 3, a: 5, var: Var(0) }),
+        "3 + 5*x_0"
+      );
     }
 
     #[test]
     fn test_parse_count() {
-      assert_eq!(parse_count::<nom::error::Error<&str>>("3 + 5*x_0"), Ok(("", AffineVar{n: 3, a: 5, var: Var(0)})));
-      assert_eq!(parse_count::<nom::error::Error<&str>>("7 + 234*x_11"), Ok(("", AffineVar{n: 7, a: 234, var: Var(11)})));
-      assert_eq!(parse_count::<nom::error::Error<&str>>("7"), Ok(("", AffineVar{n: 7, a: 0, var: Var(0)})));
+      assert_eq!(
+        parse_count::<nom::error::Error<&str>>("3 + 5*x_0"),
+        Ok(("", AffineVar { n: 3, a: 5, var: Var(0) }))
+      );
+      assert_eq!(
+        parse_count::<nom::error::Error<&str>>("7 + 234*x_11"),
+        Ok(("", AffineVar { n: 7, a: 234, var: Var(11) }))
+      );
+      assert_eq!(
+        parse_count::<nom::error::Error<&str>>("7"),
+        Ok(("", AffineVar { n: 7, a: 0, var: Var(0) }))
+      );
     }
 
     #[test]
     fn test_parse_tuple() {
-      assert_eq!(parse_count_tuple::<nom::error::Error<&str>>("(F, 1)"), Ok(("", (Bit(false), AffineVar::constant(1)))));
-      assert_eq!(parse_count_tuple::<nom::error::Error<&str>>("(F, 0 + 1*x_0)"), Ok(("", (Bit(false), AffineVar{n: 0, a: 1, var: Var(0)}))));
-      assert_eq!(parse_count_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2)"), Ok(("", (Bit(true), AffineVar{n: 1, a: 3, var: Var(2)}))));
+      assert_eq!(
+        parse_count_tuple::<nom::error::Error<&str>>("(F, 1)"),
+        Ok(("", (Bit(false), AffineVar::constant(1))))
+      );
+      assert_eq!(
+        parse_count_tuple::<nom::error::Error<&str>>("(F, 0 + 1*x_0)"),
+        Ok(("", (Bit(false), AffineVar { n: 0, a: 1, var: Var(0) })))
+      );
+      assert_eq!(
+        parse_count_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2)"),
+        Ok(("", (Bit(true), AffineVar { n: 1, a: 3, var: Var(2) })))
+      );
       assert!(parse_count_tuple::<nom::error::Error<&str>>("(T, 1 + 3*x_2").is_err())
     }
 
     #[test]
     fn test_parse_tape_side() {
-      assert_eq!(parse_config_tape_side::<nom::error::Error<&str>>("(F, 1) (T, 1 + 1*x_0)"), 
-        Ok(("", vec![(Bit(false), AffineVar::constant(1)), 
-            (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})])));
-      assert_eq!(parse_config_tape_side::<nom::error::Error<&str>>("(F, 0 + 1*x_0) (T, 1)"),
-        Ok(("", vec![(Bit(false), AffineVar{n: 0, a:1, var:Var(0)}),
-              (Bit(true), AffineVar::constant(1))])));
+      assert_eq!(
+        parse_config_tape_side::<nom::error::Error<&str>>("(F, 1) (T, 1 + 1*x_0)"),
+        Ok((
+          "",
+          vec![
+            (Bit(false), AffineVar::constant(1)),
+            (Bit(true), AffineVar { n: 1, a: 1, var: Var(0) })
+          ]
+        ))
+      );
+      assert_eq!(
+        parse_config_tape_side::<nom::error::Error<&str>>("(F, 0 + 1*x_0) (T, 1)"),
+        Ok((
+          "",
+          vec![
+            (Bit(false), AffineVar { n: 0, a: 1, var: Var(0) }),
+            (Bit(true), AffineVar::constant(1))
+          ]
+        ))
+      );
     }
 
     #[test]
     fn test_parse_config() {
-      let start = Config{state: State(3), left: vec![(Bit(false), AffineVar::constant(1)), 
-        (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
-      right: vec![]};
+      let start = Config {
+        state: State(3),
+        left: vec![
+          (Bit(false), AffineVar::constant(1)),
+          (Bit(true), AffineVar { n: 1, a: 1, var: Var(0) }),
+        ],
+        head: Bit(true),
+        right: vec![],
+      };
       let inp = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| ";
-      let ans: Result<(&str, Config<Bit>), nom::error::VerboseError<&str>> = parse_config(inp).finish();
+      let ans: Result<(&str, Config<Bit>), nom::error::VerboseError<&str>> =
+        parse_config(inp).finish();
       assert_eq!(ans, Ok(("", start)));
-
     }
 
     #[test]
     fn test_parse_rule() {
-      let start = Config{state: State(3), left: vec![(Bit(false), AffineVar::constant(1)), 
-        (Bit(true), AffineVar{n: 1, a: 1, var:Var(0)})], head: Bit(true), 
-      right: vec![]};
-      let end = Config{state: State(1), left: vec![(Bit(true), AffineVar::constant(1))], head: Bit(false), 
-      right: vec![(Bit(true), AffineVar::constant(1)), (Bit(false), AffineVar{n: 0, a:1, var:Var(0)})]};
+      let start = Config {
+        state: State(3),
+        left: vec![
+          (Bit(false), AffineVar::constant(1)),
+          (Bit(true), AffineVar { n: 1, a: 1, var: Var(0) }),
+        ],
+        head: Bit(true),
+        right: vec![],
+      };
+      let end = Config {
+        state: State(1),
+        left: vec![(Bit(true), AffineVar::constant(1))],
+        head: Bit(false),
+        right: vec![
+          (Bit(true), AffineVar::constant(1)),
+          (Bit(false), AffineVar { n: 0, a: 1, var: Var(0) }),
+        ],
+      };
       let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| \ninto:\nphase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
-      assert_eq!(parse_rule(rule_str), Ok(("", Rule{start, end})));
+      assert_eq!(parse_rule(rule_str), Ok(("", Rule { start, end })));
     }
     fn avar_strategy() -> impl Strategy<Value = AffineVar> {
-      (any::<u32>(), any::<u32>(), any::<u8>())
-      .prop_map(|(n, a, v_num)| AffineVar{n, a, var: Var(v_num)})
+      (any::<u32>(), any::<u32>(), any::<u8>()).prop_map(|(n, a, v_num)| AffineVar {
+        n,
+        a,
+        var: Var(v_num),
+      })
     }
-    
+
     proptest! {
       #[test]
       fn avar_roundtrip(avar in avar_strategy()) {
         assert_eq!(parse_avar::<nom::error::Error<&str>>(&format!("{}", avar)), Ok(("", avar)));
       }
     }
-  
   }
 }
 
 mod test {
   use nom::Finish;
 
-  use crate::{turing::{get_machine, Bit}, rules::parse::{parse_rule, parse_tape, parse_avar}};
+  use crate::{
+    rules::parse::{parse_avar, parse_rule, parse_tape},
+    turing::{get_machine, Bit},
+  };
 
   use super::*;
 
   #[test]
   fn affinevar_sub() {
-    let three_fifty = AffineVar {
-      n: 50,
-      a: 3,
-      var: Var(0),
-    };
+    let three_fifty = AffineVar { n: 50, a: 3, var: Var(0) };
     assert_eq!(three_fifty.sub(6), 68);
     assert_eq!(three_fifty.sub(0), 50);
-    let two_x_plus_seven = AffineVar {
-      n: 7,
-      a: 2,
-      var: Var(1),
-    };
+    let two_x_plus_seven = AffineVar { n: 7, a: 2, var: Var(1) };
     assert_eq!(two_x_plus_seven.sub(19), 45);
     assert_eq!(two_x_plus_seven.sub(3), 13);
   }
@@ -585,16 +716,8 @@ mod test {
     hm.insert(Var(0), 6);
     hm.insert(Var(1), 19);
 
-    let three_fifty = AffineVar {
-      n: 50,
-      a: 3,
-      var: Var(0),
-    };
-    let two_x_plus_seven = AffineVar {
-      n: 7,
-      a: 2,
-      var: Var(1),
-    };
+    let three_fifty = AffineVar { n: 50, a: 3, var: Var(0) };
+    let two_x_plus_seven = AffineVar { n: 7, a: 2, var: Var(1) };
 
     assert_eq!(three_fifty.sub_map(&hm), 68);
     assert_eq!(two_x_plus_seven.sub_map(&hm), 45);
@@ -612,25 +735,11 @@ mod test {
         state: State(1),
         left: vec![],
         head: Bit(true),
-        right: vec![(
-          Bit(true),
-          AffineVar {
-            n: 0,
-            a: 1,
-            var: Var(0),
-          },
-        )],
+        right: vec![(Bit(true), AffineVar { n: 0, a: 1, var: Var(0) })],
       },
       end: Config {
         state: State(1),
-        left: vec![(
-          Bit(false),
-          AffineVar {
-            n: 0,
-            a: 1,
-            var: Var(0),
-          },
-        )],
+        left: vec![(Bit(false), AffineVar { n: 0, a: 1, var: Var(0) })],
         head: Bit(false),
         right: vec![],
       },
@@ -638,14 +747,7 @@ mod test {
     let rule2 = Rule {
       start: Config {
         state: State(3),
-        left: vec![(
-          Bit(true),
-          AffineVar {
-            n: 0,
-            a: 1,
-            var: Var(0),
-          },
-        )],
+        left: vec![(Bit(true), AffineVar { n: 0, a: 1, var: Var(0) })],
         head: Bit(true),
         right: vec![],
       },
@@ -653,35 +755,26 @@ mod test {
         state: State(3),
         left: vec![],
         head: Bit(true),
-        right: vec![(
-          Bit(true),
-          AffineVar {
-            n: 0,
-            a: 1,
-            var: Var(0),
-          },
-        )],
+        right: vec![(Bit(true), AffineVar { n: 0, a: 1, var: Var(0) })],
       },
     };
     assert_eq!(detected_rules, vec![rule1, rule2]);
   }
 
-
   #[test]
   fn test_match_var_num() {
     let (_leftover, var) = parse_avar::<nom::error::Error<&str>>(&"3 + 2*x_0").unwrap();
-    assert_eq!(match_var_num(var, 3, false), None); 
-    assert_eq!(match_var_num(var, 5, false), Some((0, Some((Var(0), 1))))); 
-    assert_eq!(match_var_num(var, 6, false), Some((1, Some((Var(0), 1))))); 
+    assert_eq!(match_var_num(var, 3, false), None);
+    assert_eq!(match_var_num(var, 5, false), Some((0, Some((Var(0), 1)))));
+    assert_eq!(match_var_num(var, 6, false), Some((1, Some((Var(0), 1)))));
     let (_leftover, var) = parse_avar::<nom::error::Error<&str>>(&"3 + 0*x_0").unwrap();
-    assert_eq!(match_var_num(var, 3, false), Some((0, None))); 
+    assert_eq!(match_var_num(var, 3, false), Some((0, None)));
     assert_eq!(match_var_num(var, 5, false), Some((2, None)));
   }
 
   #[test]
   fn test_match_rule_tape() {
-    let rule_str = 
-"phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| 
+    let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| 
 into:
 phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
     let (_leftover, rule) = parse_rule(rule_str).unwrap();
@@ -698,7 +791,10 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
     let (_leftover, output_tape) = parse_tape(output_str).unwrap();
     println!("app2");
     assert_eq!(apply_rule(&mut tape, State(3), &rule, true), Some(State(1)));
-    println!("rule\n{}\nactual tape\n{}\ngoal tape\n{}", rule_str, tape, output_tape);
+    println!(
+      "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
+      rule_str, tape, output_tape
+    );
     assert_eq!(tape, output_tape);
     //and a different tape
     let tape_str = "(T, 2) (F, 2) (T, 4) |>T<| (T, 7)";
@@ -707,7 +803,10 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
     let (_leftover, output_tape) = parse_tape(output_str).unwrap();
     println!("app3");
     assert_eq!(apply_rule(&mut tape, State(3), &rule, true), Some(State(1)));
-    println!("rule\n{}\nactual tape\n{}\ngoal tape\n{}", rule_str, tape, output_tape);
+    println!(
+      "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
+      rule_str, tape, output_tape
+    );
     assert_eq!(tape, output_tape);
     //and another
     let tape_str = "(T, 2) (F, 1) (T, 4) |>T<| (T, 7)";
@@ -716,10 +815,10 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
     let (_leftover, output_tape) = parse_tape(output_str).unwrap();
     println!("app4");
     assert_eq!(apply_rule(&mut tape, State(3), &rule, true), Some(State(1)));
-    println!("rule\n{}\nactual tape\n{}\ngoal tape\n{}", rule_str, tape, output_tape);
+    println!(
+      "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
+      rule_str, tape, output_tape
+    );
     assert_eq!(tape, output_tape);
-
   }
-
 }
-

@@ -34,11 +34,7 @@ where
   while steps_taken < num_steps {
     state = match tape.step_dir(state, machine) {
       Left(_unknown_edge) => unreachable!("machine is defined"),
-      Right((HALT, _dir)) => {
-        return Halt {
-          num_steps: steps_taken + 1,
-        }
-      }
+      Right((HALT, _dir)) => return Halt { num_steps: steps_taken + 1 },
       Right((new_state, dir)) => {
         cur_displacement += dir.to_displacement();
         leftmost = leftmost.min(cur_displacement);
@@ -132,9 +128,7 @@ where
       rightmost = cur_displacement;
     }
   }
-  Inconclusive {
-    steps_simulated: num_steps,
-  }
+  Inconclusive { steps_simulated: num_steps }
 }
 
 pub fn aggregate_and_display_lr_res(results: Vec<LRResult>) {
@@ -144,20 +138,10 @@ pub fn aggregate_and_display_lr_res(results: Vec<LRResult>) {
   let mut inconclusive_count = 0;
   for result in results {
     match result {
-      Halt {
-        num_steps: _num_steps,
-      } => halt_count += 1,
-      Cycle {
-        start_step: _start_step,
-        period: _period,
-      } => cycle_count += 1,
-      LR {
-        start_step: _start_step,
-        period: _period,
-      } => lr_count += 1,
-      Inconclusive {
-        steps_simulated: _steps_simulated,
-      } => inconclusive_count += 1,
+      Halt { num_steps: _num_steps } => halt_count += 1,
+      Cycle { start_step: _start_step, period: _period } => cycle_count += 1,
+      LR { start_step: _start_step, period: _period } => lr_count += 1,
+      Inconclusive { steps_simulated: _steps_simulated } => inconclusive_count += 1,
     }
   }
   println!(
@@ -175,13 +159,7 @@ mod test {
     let m_str = "1RB---_1RB---";
     let m = SmallBinMachine::from_compact_format(m_str);
     let lr_res = lr_simulate(&m, 5);
-    assert_eq!(
-      lr_res,
-      LR {
-        start_step: 2,
-        period: 1
-      }
-    );
+    assert_eq!(lr_res, LR { start_step: 2, period: 1 });
   }
 
   #[test]
@@ -191,12 +169,7 @@ mod test {
       dbg!(m_str);
       let m = get_machine(m_str);
       let lr_res = lr_simulate(&m, 200);
-      assert_eq!(
-        lr_res,
-        Inconclusive {
-          steps_simulated: 200
-        }
-      )
+      assert_eq!(lr_res, Inconclusive { steps_simulated: 200 })
     }
   }
 }

@@ -8,7 +8,7 @@ use crate::{
 use either::Either::Right;
 use itertools::Itertools;
 use simulate::tnf_simulate;
-use turing::{get_machine, SmallBinMachine, Bit};
+use turing::{get_machine, Bit, SmallBinMachine};
 
 mod linrecur;
 mod rules;
@@ -32,9 +32,9 @@ fn search_for_translated_cyclers(first_machine: SmallBinMachine, num_steps: u32)
 
     // println!("m: {}, res: {:?}", m_str, lr_res);
     match lr_res {
-      LRResult::Halt {
-        num_steps: lr_num_steps,
-      } => assert_eq!((final_state, normal_num_steps), (Right(HALT), lr_num_steps)),
+      LRResult::Halt { num_steps: lr_num_steps } => {
+        assert_eq!((final_state, normal_num_steps), (Right(HALT), lr_num_steps))
+      }
       _ => (),
     }
     match final_state {

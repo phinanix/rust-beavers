@@ -1,15 +1,21 @@
 #[allow(unused)]
 use either::Either::{self, Left, Right};
-use nom::{error::{ParseError, FromExternalError}, IResult, bytes::complete::tag, sequence::Tuple};
+use nom::{
+  bytes::complete::tag,
+  error::{FromExternalError, ParseError},
+  sequence::Tuple,
+  IResult,
+};
 use std::{
   collections::HashMap,
   fmt::{Debug, Display, Pointer, Write},
   iter::zip,
-  vec, num::ParseIntError,
+  num::ParseIntError,
+  vec,
 };
 
-use crate::{
-  turing::{Bit, Dir, Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, START},
+use crate::turing::{
+  Bit, Dir, Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, START,
 };
 
 // tape has two stacks and a symbol the machine is currently reading
@@ -177,7 +183,6 @@ impl<S: TapeSymbol> Display for Tape<S> {
   }
 }
 
-
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct ExpTape<S> {
   pub left: Vec<(S, u32)>,
@@ -307,7 +312,6 @@ impl<S: TapeSymbol> ExpTape<S> {
       right: Self::splat(right),
     }
   }
-
 }
 
 impl<S: TapeSymbol> Display for ExpTape<S> {
@@ -349,13 +353,7 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<Small
     tape: Tape::new(),
     num_steps: 0,
   }];
-  while let Some(TnfState {
-    machine,
-    state,
-    mut tape,
-    num_steps,
-  }) = stack.pop()
-  {
+  while let Some(TnfState { machine, state, mut tape, num_steps }) = stack.pop() {
     match tape.simulate(&machine, state, total_steps - num_steps, false) {
       (Right(_state), _simulated_steps) => out.push(machine),
       (Left(edge), simulated_steps) => {
@@ -379,7 +377,10 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<Small
 
 mod test {
   use super::*;
-  use crate::{turing::{get_machine, HALT}, rules::parse::{parse_avar, parse_rule}};
+  use crate::{
+    rules::parse::{parse_avar, parse_rule},
+    turing::{get_machine, HALT},
+  };
 
   #[test]
   fn exptape_to_tape() {

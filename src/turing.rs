@@ -85,11 +85,7 @@ pub struct Trans<S> {
   pub dir: Dir,
 }
 
-pub const HALT_TRANS: Trans<Bit> = Trans {
-  state: HALT,
-  symbol: Bit(true),
-  dir: R,
-};
+pub const HALT_TRANS: Trans<Bit> = Trans { state: HALT, symbol: Bit(true), dir: R };
 
 const AB: &str = "HABCDEFG";
 
@@ -99,11 +95,7 @@ impl Trans<Bit> {
     for state in 1..=max_state {
       for symbol in Bit::all_symbols() {
         for dir in [L, R] {
-          out.push(Trans {
-            state: State(state),
-            symbol,
-            dir,
-          })
+          out.push(Trans { state: State(state), symbol, dir })
         }
       }
     }
@@ -134,11 +126,7 @@ impl Trans<Bit> {
           .expect("state was not a letter")
           .try_into()
           .unwrap();
-        return Some(Trans {
-          state: State(state),
-          symbol,
-          dir,
-        });
+        return Some(Trans { state: State(state), symbol, dir });
       }
       _ => panic!("{} is not a valid trans", inp),
     }
@@ -146,11 +134,7 @@ impl Trans<Bit> {
 
   fn to_compact_format(&self) -> String {
     match self {
-      &Trans {
-        state: State(state),
-        symbol: Bit(symbol),
-        dir,
-      } => {
+      &Trans { state: State(state), symbol: Bit(symbol), dir } => {
         let symbol_chr = if symbol { '1' } else { '0' };
         //todo factor this into dir
         let dir_chr = if dir == L { 'L' } else { 'R' };
@@ -199,11 +183,7 @@ impl SmallBinMachine {
   }
 
   pub fn start_machine(num_states: u8, first_write: Bit) -> Self {
-    let trans = Trans {
-      state: State(2),
-      symbol: first_write,
-      dir: R,
-    };
+    let trans = Trans { state: State(2), symbol: first_write, dir: R };
     let mut table = smallvec![Some(trans)];
     for _ in 1..(num_states * 2) {
       table.push(None);
@@ -289,10 +269,7 @@ impl SmallBinMachine {
       table.push(Trans::from_compact_format(&inp[index..index + 3]));
       table.push(Trans::from_compact_format(&inp[index + 3..index + 6]));
     }
-    Self {
-      num_states: num_states.try_into().unwrap(),
-      table,
-    }
+    Self { num_states: num_states.try_into().unwrap(), table }
   }
 
   pub fn to_compact_format(&self) -> String {
@@ -333,11 +310,7 @@ mod test {
 
   #[test]
   fn trans_from_string() {
-    let trans = Trans {
-      state: State(3),
-      dir: L,
-      symbol: Bit(true),
-    };
+    let trans = Trans { state: State(3), dir: L, symbol: Bit(true) };
     let trans_str = "1LC";
     assert_eq!(Some(trans), Trans::from_compact_format(trans_str));
     assert_eq!(trans_str, Trans::to_compact_format(&trans));
@@ -348,21 +321,9 @@ mod test {
     let machine_str = "1RB0RB_1LA---";
     let num_states = 2;
     let table = smallvec![
-      Some(Trans {
-        state: State(2),
-        dir: R,
-        symbol: Bit(true)
-      }),
-      Some(Trans {
-        state: State(2),
-        dir: R,
-        symbol: Bit(false)
-      }),
-      Some(Trans {
-        state: State(1),
-        dir: L,
-        symbol: Bit(true)
-      }),
+      Some(Trans { state: State(2), dir: R, symbol: Bit(true) }),
+      Some(Trans { state: State(2), dir: R, symbol: Bit(false) }),
+      Some(Trans { state: State(1), dir: L, symbol: Bit(true) }),
       None
     ];
     let machine = SmallBinMachine { num_states, table };
