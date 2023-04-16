@@ -50,14 +50,14 @@ fn main() {
   // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
   // let num_steps = 1300;
   // search_for_translated_cyclers(first_machine, num_steps);
-  let machine = &get_machine("sweeper");
+  let machine = &get_machine("binary_counter");
   let chain_rules = detect_chain_rules(machine);
   for chain_rule in &chain_rules {
     println!("{}", chain_rule);
   }
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
-  let num_steps = 30;
+  let num_steps = 100;
   println!("vanilla");
   ExpTape::simulate_from_start(machine, num_steps);
   println!("using rules");

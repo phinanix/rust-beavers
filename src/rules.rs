@@ -479,6 +479,28 @@ pub fn detect_rule<S: TapeSymbol>(history: &Vec<(u32, State, ExpTape<S>)>) -> Ve
   vec![rule]
 }
 
+pub fn one_rule_step<S: TapeSymbol> (
+  machine: &impl Turing<S>,
+  exptape: &mut ExpTape<S>, 
+  state: State,
+  rulebook: &Rulebook<S>, 
+  step: u32,
+  verbose: bool,
+) -> State {
+  let new_state = match apply_rules(exptape, state, rulebook, verbose) {
+    Some(new_state) => {
+      println!("rule_applied");
+      new_state
+    }
+    None => match exptape.step(state, machine) {
+      Left(_edge) => unreachable!("machine is defined"),
+      Right(state) => state,
+    },
+  };
+  println!("step: {} phase: {} tape: {}", step, state, exptape);
+  return new_state;
+}
+
 pub fn simulate_detect_rules<S: TapeSymbol>(
   machine: &impl Turing<S>,
   num_steps: u32,
@@ -496,17 +518,7 @@ pub fn simulate_detect_rules<S: TapeSymbol>(
   let mut signatures: DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S>)>> =
     defaulthashmap!();
   for step in 1..num_steps + 1 {
-    state = match apply_rules(&mut exptape, state, &rulebook, verbose) {
-      Some(new_state) => {
-        println!("rule_applied");
-        new_state
-      }
-      None => match exptape.step(state, machine) {
-        Left(_edge) => unreachable!("machine is defined"),
-        Right(state) => state,
-      },
-    };
-    println!("step: {} phase: {} tape: {}", step, state, exptape);
+    state = one_rule_step(machine, &mut exptape, state, rulebook, step, verbose);
     if state == HALT {
       return (HALT, step);
     }
@@ -928,7 +940,7 @@ mod test {
       end: Config {
         state: State(1),
         left: vec![(Bit(false), AffineVar { n: 0, a: 1, var: Var(0) })],
-        head: Bit(false),
+        head: Bit(true),
         right: vec![],
       },
     };
@@ -1019,29 +1031,49 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
    that bug is fixed, but now the test fails because 1 chain step might encompass multiple normal steps, so probably the test should track the number of steps a chain step takes
    or something
   */
-  fn simulate_machine_with_chain_steps<S: TapeSymbol>(
+
+  fn simultaneous_steps<S: TapeSymbol>(
     machine: &impl Turing<S>,
-    num_steps: u32,
-  ) -> (State, u32, ExpTape<S>) {
-    let chain_rules = detect_chain_rules(machine);
-    let mut rulebook = Rulebook::new(machine.num_states());
-    rulebook.add_rules(chain_rules);
-    ExpTape::simulate_from_start(machine, num_steps);
-    simulate_using_rules(machine, num_steps, &rulebook, false)
+    normal_tape: &mut ExpTape<S>,
+    mut normal_state: State, 
+    rule_tape: &mut ExpTape<S>,
+    rule_state: State, 
+    rulebook: &Rulebook<S>,
+    step: u32,
+    verbose: bool,
+  ) -> (State, State) {
+    assert_eq!(normal_state, rule_state);
+    assert_eq!(normal_tape, rule_tape);
+    let new_rule_state = one_rule_step(machine, rule_tape, rule_state, rulebook, step, verbose);
+    let mut num_steps_to_match = 0; 
+    
+    while (new_rule_state, &mut *rule_tape) != (normal_state, normal_tape) {
+      if num_steps_to_match > 20 || normal_state == HALT {
+        panic!("machine diverged: {} {}\nvs\n{} {}", new_rule_state, rule_tape, normal_state, normal_tape);
+      }
+      normal_state = normal_tape.step(normal_state, machine).expect_right("machine is defined");
+      num_steps_to_match += 1;
+    }
+    return (normal_state, new_rule_state)
   }
 
   fn compare_machine_with_chain<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) {
-    let (mb_state, steps1, tape1) = ExpTape::simulate_from_start(machine, num_steps);
-    let (state2, steps2, tape2) = simulate_machine_with_chain_steps(machine, num_steps);
-    assert_eq!(
-      (mb_state.expect_right("machine is defined"), steps1, tape1),
-      (state2, steps2, tape2)
-    );
-    // assert_eq!((steps1, tape1), (steps2, tape2));
+    let mut normal_tape = ExpTape::new();
+    let mut normal_state = START;
+    let mut rule_tape = ExpTape::new();
+    let mut rule_state = START;
+    let chain_rules = detect_chain_rules(machine);
+    let mut rulebook = Rulebook::new(machine.num_states());
+    rulebook.add_rules(chain_rules);
+    for step in 1..num_steps+1 {
+      (normal_state, rule_state) = simultaneous_steps(machine, &mut normal_tape, normal_state, &mut rule_tape, rule_state, &rulebook, step, false);
+    }
+
   }
 
   #[test]
   fn chain_steps_is_same() {
-    compare_machine_with_chain(&get_machine("sweeper"), 30);
+    compare_machine_with_chain(&get_machine("sweeper"), 100);
+    compare_machine_with_chain(&get_machine("binary_counter"), 100);
   }
 }
