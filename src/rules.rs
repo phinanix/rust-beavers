@@ -479,11 +479,11 @@ pub fn detect_rule<S: TapeSymbol>(history: &Vec<(u32, State, ExpTape<S>)>) -> Ve
   vec![rule]
 }
 
-pub fn one_rule_step<S: TapeSymbol> (
+pub fn one_rule_step<S: TapeSymbol>(
   machine: &impl Turing<S>,
-  exptape: &mut ExpTape<S>, 
+  exptape: &mut ExpTape<S>,
   state: State,
-  rulebook: &Rulebook<S>, 
+  rulebook: &Rulebook<S>,
   step: u32,
   verbose: bool,
 ) -> State {
@@ -1035,9 +1035,9 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
   fn simultaneous_steps<S: TapeSymbol>(
     machine: &impl Turing<S>,
     normal_tape: &mut ExpTape<S>,
-    mut normal_state: State, 
+    mut normal_state: State,
     rule_tape: &mut ExpTape<S>,
-    rule_state: State, 
+    rule_state: State,
     rulebook: &Rulebook<S>,
     step: u32,
     verbose: bool,
@@ -1045,16 +1045,21 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
     assert_eq!(normal_state, rule_state);
     assert_eq!(normal_tape, rule_tape);
     let new_rule_state = one_rule_step(machine, rule_tape, rule_state, rulebook, step, verbose);
-    let mut num_steps_to_match = 0; 
-    
+    let mut num_steps_to_match = 0;
+
     while (new_rule_state, &mut *rule_tape) != (normal_state, normal_tape) {
       if num_steps_to_match > 20 || normal_state == HALT {
-        panic!("machine diverged: {} {}\nvs\n{} {}", new_rule_state, rule_tape, normal_state, normal_tape);
+        panic!(
+          "machine diverged: {} {}\nvs\n{} {}",
+          new_rule_state, rule_tape, normal_state, normal_tape
+        );
       }
-      normal_state = normal_tape.step(normal_state, machine).expect_right("machine is defined");
+      normal_state = normal_tape
+        .step(normal_state, machine)
+        .expect_right("machine is defined");
       num_steps_to_match += 1;
     }
-    return (normal_state, new_rule_state)
+    return (normal_state, new_rule_state);
   }
 
   fn compare_machine_with_chain<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) {
@@ -1065,10 +1070,18 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
     let chain_rules = detect_chain_rules(machine);
     let mut rulebook = Rulebook::new(machine.num_states());
     rulebook.add_rules(chain_rules);
-    for step in 1..num_steps+1 {
-      (normal_state, rule_state) = simultaneous_steps(machine, &mut normal_tape, normal_state, &mut rule_tape, rule_state, &rulebook, step, false);
+    for step in 1..num_steps + 1 {
+      (normal_state, rule_state) = simultaneous_steps(
+        machine,
+        &mut normal_tape,
+        normal_state,
+        &mut rule_tape,
+        rule_state,
+        &rulebook,
+        step,
+        false,
+      );
     }
-
   }
 
   #[test]
