@@ -17,8 +17,15 @@ mod simulate;
 mod turing;
 /*
 high level todo:
-- rule based simulation
+- prove rules by simulating using rules
+- detect rules that are more than additive (mx + b?)
+- prove rules by induction
+- detect counter rules
+- macro machines, or tape compression
+- track step count of rules
+- heuristics based on tape growth
 - bit packed tape?
+- parallelize bb5 search?
 */
 
 fn search_for_translated_cyclers(first_machine: SmallBinMachine, num_steps: u32) {
