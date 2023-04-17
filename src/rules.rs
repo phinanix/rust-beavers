@@ -119,9 +119,12 @@ impl<S> Config<S> {
     }
   }
 
-  fn to_tape_state(self) -> (State, ExpTape<S, AffineVar>) {
+  fn to_tape_state(self) -> (State, ExpTape<S, SymbolVar>) {
     match self {
-      Config { state, left, head, right } => (state, ExpTape { left, head, right }),
+      Config { state, left, head, right } => {
+        let tape = ExpTape { left, head, right };
+        (state, tape.map_first(|avar| avar.into()))
+      }
     }
   }
 }
@@ -613,6 +616,21 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum RuleProof {
   DirectSimulation,
+}
+
+// a var that we use on the tape and are trying to generalize
+// it can be subtracted from, in case that is helpful
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct SymbolVar {
+  pub n: i32,
+  pub a: u32,
+  pub var: Var,
+}
+
+impl From<AffineVar> for SymbolVar {
+  fn from(AffineVar { n, a, var }: AffineVar) -> Self {
+    SymbolVar { n: n as i32, a, var }
+  }
 }
 
 pub fn prove_rule<S: TapeSymbol>(

@@ -206,6 +206,28 @@ impl<S: Copy, N: Copy> ExpTape<S, N> {
   // pub fn left(&self) -> &Vec<(S, u32)>
 }
 
+impl<S, N> ExpTape<S, N> {
+  pub fn map_first<M, F: Fn(N) -> M>(self: Self, f: F) -> ExpTape<S, M> {
+    match self {
+      Self { left, head, right } => ExpTape {
+        left: left.into_iter().map(|(s, n)| (s, f(n))).collect(),
+        head: head,
+        right: right.into_iter().map(|(s, n)| (s, f(n))).collect(),
+      },
+    }
+  }
+
+  pub fn map_second<T, F: Fn(S) -> T>(self: Self, f: F) -> ExpTape<T, N> {
+    match self {
+      Self { left, head, right } => ExpTape {
+        left: left.into_iter().map(|(s, n)| (f(s), n)).collect(),
+        head: f(head),
+        right: right.into_iter().map(|(s, n)| (f(s), n)).collect(),
+      },
+    }
+  }
+}
+
 impl<S: TapeSymbol> ExpTape<S, u32> {
   pub fn new() -> Self {
     ExpTape {

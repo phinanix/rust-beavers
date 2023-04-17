@@ -2,6 +2,7 @@
 #![allow(unused_imports)]
 use crate::{
   linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
+  rules::AffineVar,
   simulate::Tape,
   turing::HALT,
 };
