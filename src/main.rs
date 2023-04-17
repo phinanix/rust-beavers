@@ -17,7 +17,10 @@ mod simulate;
 mod turing;
 /*
 high level todo:
+- exptape tells you when empty symbols are brought in from the end?
+- detect rules with the empty symbols that are used
 - prove rules by simulating using rules
+
 - detect rules that are more than additive (mx + b?)
 - prove rules by induction
 - detect counter rules

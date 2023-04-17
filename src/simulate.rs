@@ -183,10 +183,10 @@ impl<S: TapeSymbol> Display for Tape<S> {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct ExpTape<S> {
-  pub left: Vec<(S, u32)>,
+pub struct ExpTape<S, N> {
+  pub left: Vec<(S, N)>,
   pub head: S,
-  pub right: Vec<(S, u32)>,
+  pub right: Vec<(S, N)>,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -196,7 +196,7 @@ pub struct Signature<S> {
   pub right: Vec<S>,
 }
 
-impl<S: Copy> ExpTape<S> {
+impl<S: Copy, N: Copy> ExpTape<S, N> {
   pub fn signature(&self) -> Signature<S> {
     let left = self.left.iter().map(|&(s, _n)| s).collect();
     let right = self.right.iter().map(|&(s, _n)| s).collect();
@@ -206,7 +206,7 @@ impl<S: Copy> ExpTape<S> {
   // pub fn left(&self) -> &Vec<(S, u32)>
 }
 
-impl<S: TapeSymbol> ExpTape<S> {
+impl<S: TapeSymbol> ExpTape<S, u32> {
   pub fn new() -> Self {
     ExpTape {
       left: vec![],
@@ -317,7 +317,7 @@ impl<S: TapeSymbol> ExpTape<S> {
     out
   }
 
-  fn to_tape(ExpTape { left, head, right }: &ExpTape<S>) -> Tape<S> {
+  fn to_tape(ExpTape { left, head, right }: &ExpTape<S, u32>) -> Tape<S> {
     Tape {
       left: Self::splat(left),
       head: *head,
@@ -326,7 +326,7 @@ impl<S: TapeSymbol> ExpTape<S> {
   }
 }
 
-impl<S: TapeSymbol> Display for ExpTape<S> {
+impl<S: TapeSymbol> Display for ExpTape<S, u32> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     for &(s, n) in self.left.iter() {
       write!(f, "({}, {}) ", s, n)?;
@@ -339,7 +339,7 @@ impl<S: TapeSymbol> Display for ExpTape<S> {
   }
 }
 
-impl ExpTape<Bit> {
+impl ExpTape<Bit, u32> {
   pub fn from_bools(left: Vec<(bool, u32)>, head: bool, right: Vec<(bool, u32)>) -> Self {
     Self {
       left: left.into_iter().map(|(b, n)| (Bit(b), n)).collect(),

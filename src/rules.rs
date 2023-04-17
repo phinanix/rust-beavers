@@ -102,9 +102,29 @@ impl<S: Display + Copy> Display for Config<S> {
   }
 }
 //todo: figure out like modules or something
-// impl Config<S> {
-//   fn from_tape_state(state: State, exptape : ExpTape)
-// }
+impl<S> Config<S> {
+  fn vec_u32_to_avar(u32s: Vec<(S, u32)>) -> Vec<(S, AffineVar)> {
+    u32s
+      .into_iter()
+      .map(|(s, u32)| (s, AffineVar::constant(u32)))
+      .collect()
+  }
+
+  fn from_tape_state(state: State, ExpTape { left, head, right }: ExpTape<S, u32>) -> Self {
+    Self {
+      state,
+      left: Config::vec_u32_to_avar(left),
+      head,
+      right: Config::vec_u32_to_avar(right),
+    }
+  }
+
+  fn to_tape_state(self) -> (State, ExpTape<S, AffineVar>) {
+    match self {
+      Config { state, left, head, right } => (state, ExpTape { left, head, right }),
+    }
+  }
+}
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Rule<S> {
@@ -319,7 +339,7 @@ pub fn append_rule_tape<S: TapeSymbol>(
 }
 
 pub fn apply_rule<S: TapeSymbol>(
-  tape: &mut ExpTape<S>,
+  tape: &mut ExpTape<S, u32>,
   cur_state: State,
   Rule { start: Config { state, left, head, right }, end }: &Rule<S>,
   verbose: bool,
@@ -349,7 +369,7 @@ pub fn apply_rule<S: TapeSymbol>(
 }
 
 pub fn apply_rules<S: TapeSymbol>(
-  tape: &mut ExpTape<S>,
+  tape: &mut ExpTape<S, u32>,
   state: State,
   rulebook: &Rulebook<S>,
   verbose: bool,
@@ -370,7 +390,7 @@ pub fn simulate_using_rules<S: TapeSymbol>(
   num_steps: u32,
   rulebook: &Rulebook<S>,
   verbose: bool,
-) -> (State, u32, ExpTape<S>) {
+) -> (State, u32, ExpTape<S, u32>) {
   let mut exptape = ExpTape::new();
   let mut state = START;
   for step in 1..num_steps + 1 {
@@ -448,7 +468,7 @@ fn make_side<S: TapeSymbol>(
   (start_out, end_out, var_used)
 }
 
-pub fn detect_rule<S: TapeSymbol>(history: &Vec<(u32, State, ExpTape<S>)>) -> Vec<Rule<S>> {
+pub fn detect_rule<S: TapeSymbol>(history: &Vec<(u32, State, ExpTape<S, u32>)>) -> Vec<Rule<S>> {
   /* we're detecting an additive rule, so any numbers that don't change, we guess don't change
   and any numbers that do change, we guess change by that constant each time
   so we need to
@@ -481,7 +501,7 @@ pub fn detect_rule<S: TapeSymbol>(history: &Vec<(u32, State, ExpTape<S>)>) -> Ve
 
 pub fn one_rule_step<S: TapeSymbol>(
   machine: &impl Turing<S>,
-  exptape: &mut ExpTape<S>,
+  exptape: &mut ExpTape<S, u32>,
   state: State,
   rulebook: &Rulebook<S>,
   step: u32,
@@ -515,7 +535,7 @@ pub fn simulate_detect_rules<S: TapeSymbol>(
   let mut exptape = ExpTape::new();
   let mut state = START;
   // let mut rulebook = Rulebook::new(machine.num_states());
-  let mut signatures: DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S>)>> =
+  let mut signatures: DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>> =
     defaulthashmap!();
   for step in 1..num_steps + 1 {
     state = one_rule_step(machine, &mut exptape, state, rulebook, step, verbose);
@@ -588,6 +608,30 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
     }
   }
   out
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum RuleProof {
+  DirectSimulation,
+}
+
+pub fn prove_rule<S: TapeSymbol>(
+  machine: &impl Turing<S>,
+  Rule { start, end }: Rule<S>,
+  rulebook: &Rulebook<S>,
+  prover_steps: u32,
+) -> Option<RuleProof> {
+  /* basic structure:
+  1) set up tape with rule start
+  2) simulate forward until rule end or step limit
+  caveats:
+    we have most of the simulation code written, but it will need to be generalized
+    right now the tape freely adds symbols from the left and right implicit ends of the tape,
+     but we don't want this behavior
+    exptape right now only has u32s on it
+  */
+
+  todo!()
 }
 
 pub mod parse {
@@ -707,7 +751,7 @@ pub mod parse {
     separated_list0(char(' '), parse_u32_tuple)(input)
   }
 
-  pub fn parse_tape(input: &str) -> IResult<&str, ExpTape<Bit>> {
+  pub fn parse_tape(input: &str) -> IResult<&str, ExpTape<Bit, u32>> {
     let (input, (left, _, head, _, mut right)) = (
       parse_tape_side,
       tag(" |>"),
@@ -1034,9 +1078,9 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
 
   fn simultaneous_steps<S: TapeSymbol>(
     machine: &impl Turing<S>,
-    normal_tape: &mut ExpTape<S>,
+    normal_tape: &mut ExpTape<S, u32>,
     mut normal_state: State,
-    rule_tape: &mut ExpTape<S>,
+    rule_tape: &mut ExpTape<S, u32>,
     rule_state: State,
     rulebook: &Rulebook<S>,
     step: u32,
