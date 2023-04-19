@@ -13,8 +13,9 @@ use std::{
   vec,
 };
 
-use crate::turing::{
-  Bit, Dir, Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, START,
+use crate::{
+  rules::TapeCount,
+  turing::{Bit, Dir, Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, START},
 };
 
 // tape has two stacks and a symbol the machine is currently reading
@@ -228,7 +229,7 @@ impl<S, N> ExpTape<S, N> {
   }
 }
 
-impl<S: TapeSymbol> ExpTape<S, u32> {
+impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
   pub fn new() -> Self {
     ExpTape {
       left: vec![],
@@ -236,36 +237,42 @@ impl<S: TapeSymbol> ExpTape<S, u32> {
       right: vec![],
     }
   }
+}
 
-  fn push_rle(stack: &mut Vec<(S, u32)>, item: S) {
+impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
+  // impl<S: TapeSymbol> ExpTape<S, u32> {
+  fn push_rle(stack: &mut Vec<(S, C)>, item: S) {
     match stack.last_mut() {
       // if the stack is empty and the symbol we're pushing is empty, then we can just drop the
       // symbol on the ground since we're adding an empty to the infinite empty stack
       None => {
         if item != TapeSymbol::empty() {
-          stack.push((item, 1))
+          stack.push((item, 1.into()))
         }
       }
       Some((s, count)) => {
         if item == *s {
-          *count += 1;
+          *count = C::add(*count, 1.into());
         } else {
-          stack.push((item, 1));
+          stack.push((item, 1.into()));
         }
       }
     }
   }
 
-  fn pop_rle(stack: &mut Vec<(S, u32)>) -> S {
+  fn pop_rle(stack: &mut Vec<(S, C)>) -> S {
     let ans = match stack.last_mut() {
       None => return TapeSymbol::empty(),
       Some((s, count)) => {
-        *count -= 1;
+        *count = C::sub_one(*count);
         *s
       }
     };
-    if let Some((_s, 0)) = stack.last() {
-      stack.pop();
+    match stack.last() {
+      Some(&(_s, c)) if c == C::zero() => {
+        stack.pop();
+      }
+      _ => (),
     }
     return ans;
   }
@@ -319,7 +326,9 @@ impl<S: TapeSymbol> ExpTape<S, u32> {
     }
     (Right(state), num_steps)
   }
+}
 
+impl<S: TapeSymbol> ExpTape<S, u32> {
   pub fn simulate_from_start(
     machine: &impl Turing<S>,
     num_steps: u32,
@@ -348,7 +357,7 @@ impl<S: TapeSymbol> ExpTape<S, u32> {
   }
 }
 
-impl<S: TapeSymbol> Display for ExpTape<S, u32> {
+impl<S: TapeSymbol, C: TapeCount> Display for ExpTape<S, C> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     for &(s, n) in self.left.iter() {
       write!(f, "({}, {}) ", s, n)?;

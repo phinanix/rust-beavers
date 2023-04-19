@@ -36,7 +36,12 @@ use either::Either::{Left, Right};
 use itertools::Itertools;
 use proptest::{prelude::*, sample::select};
 use smallvec::{smallvec, SmallVec};
-use std::{cmp::Ordering::*, collections::HashMap, fmt::Display, iter::zip};
+use std::hash::Hash;
+use std::{cmp::Ordering::*, collections::HashMap, iter::zip};
+use std::{
+  fmt::{Debug, Display, Write},
+  ops::AddAssign,
+};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Var(pub u8);
@@ -48,7 +53,7 @@ impl Display for Var {
 }
 
 //ax + n
-#[derive(Debug, Eq, Hash, Clone, Copy)]
+#[derive(Debug, Hash, Clone, Copy)]
 pub struct AffineVar {
   pub n: u32,
   pub a: u32,
@@ -60,17 +65,21 @@ impl PartialEq for AffineVar {
     self.n == other.n && self.a == other.a && (self.var == other.var || self.a == 0)
   }
 }
+
+impl Eq for AffineVar {}
+
 impl AffineVar {
   pub fn constant(n: u32) -> Self {
     Self { n, a: 0, var: Var(0) }
   }
 
-  pub fn sub(&self, x: u32) -> u32 {
-    let AffineVar { n, a, var: _var } = self;
-    return n + a * x;
+  pub fn sub<C: TapeCount>(&self, x: C) -> C {
+    let &AffineVar { n, a, var: _var } = self;
+    // return n + a * x;
+    return C::add(n.into(), x.mul_const(a));
   }
 
-  pub fn sub_map(&self, hm: &HashMap<Var, u32>) -> u32 {
+  pub fn sub_map<C: TapeCount>(&self, hm: &HashMap<Var, C>) -> C {
     let &x = hm.get(&self.var).unwrap();
     self.sub(x)
   }
@@ -182,6 +191,21 @@ impl<S: TapeSymbol> Rulebook<S> {
   }
 }
 
+pub trait TapeCount: Copy + Eq + Hash + Debug + Display + From<u32> {
+  fn zero() -> Self;
+  fn add(x: Self, y: Self) -> Self;
+  fn mul_const(self, n: u32) -> Self;
+  fn match_var(avar: AffineVar, count: Self, verbose: bool) -> Option<(Self, Option<(Var, Self)>)>;
+  fn sub_one(self) -> Self;
+}
+
+// illegal, very sad
+// impl<C: TapeCount> AddAssign for C {
+//   fn add_assign(&mut self, rhs: Self) {
+//     *self = Self::add(self, rhs)
+//   }
+// }
+
 pub fn match_var_num(
   AffineVar { n, a, var }: AffineVar,
   mut num: u32,
@@ -204,24 +228,46 @@ pub fn match_var_num(
   Some((num % a, Some((var, num / a))))
 }
 
+impl TapeCount for u32 {
+  fn zero() -> Self {
+    0
+  }
+
+  fn add(x: Self, y: Self) -> Self {
+    x + y
+  }
+
+  fn mul_const(self, n: u32) -> Self {
+    self * n
+  }
+
+  fn match_var(avar: AffineVar, count: Self, verbose: bool) -> Option<(Self, Option<(Var, Self)>)> {
+    match_var_num(avar, count, verbose)
+  }
+
+  fn sub_one(self) -> Self {
+    self - 1
+  }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum RuleTapeMatch {
+pub enum RuleTapeMatch<C> {
   ConsumedEnd,
-  Leftover(u32),
+  Leftover(C),
 }
 use RuleTapeMatch::*;
 
-pub fn match_rule_tape<S: TapeSymbol>(
-  hm: &mut HashMap<Var, u32>,
+pub fn match_rule_tape<S: TapeSymbol, C: TapeCount>(
+  hm: &mut HashMap<Var, C>,
   rule: &[(S, AffineVar)],
-  tape: &[(S, u32)],
+  tape: &[(S, C)],
   verbose: bool,
-) -> Option<RuleTapeMatch> {
+) -> Option<RuleTapeMatch<C>> {
   // if rule applies, returns
   // 0: how much of the last elt is leftover
   // 1: how many elements
   // else returns none
-  let mut leftover = 0;
+  let mut leftover = C::zero();
   if rule.len() > tape.len() + 1 {
     if verbose {
       println!("rule too long")
@@ -252,7 +298,7 @@ pub fn match_rule_tape<S: TapeSymbol>(
   for (&(rule_symbol, avar), &(tape_symbol, num)) in
     zip(rule[rule_slice_start..].iter().rev(), tape.iter().rev())
   {
-    if leftover != 0 {
+    if leftover != C::zero() {
       if verbose {
         println!("some bits leftover")
       };
@@ -270,7 +316,7 @@ pub fn match_rule_tape<S: TapeSymbol>(
       };
       return None;
     }
-    let (new_leftover, mb_new_var) = match_var_num(avar, num, verbose)?;
+    let (new_leftover, mb_new_var) = C::match_var(avar, num, verbose)?;
 
     leftover = new_leftover;
     if let Some((var, var_num)) = mb_new_var {
@@ -290,7 +336,7 @@ pub fn match_rule_tape<S: TapeSymbol>(
     }
   }
   if last_elt_empty_tape {
-    if leftover != 0 {
+    if leftover != C::zero() {
       return None;
     } else {
       return Some(ConsumedEnd);
@@ -304,14 +350,14 @@ pub fn remove<T>(vec: &mut Vec<T>, to_remove: usize) {
   vec.truncate(vec.len() - to_remove)
 }
 
-pub fn consume_tape_from_rulematch<S: TapeSymbol>(
-  tape: &mut Vec<(S, u32)>,
-  tape_match: RuleTapeMatch,
+pub fn consume_tape_from_rulematch<S: TapeSymbol, C: TapeCount>(
+  tape: &mut Vec<(S, C)>,
+  tape_match: RuleTapeMatch<C>,
   rule_len: usize,
 ) {
   match tape_match {
     ConsumedEnd => remove(tape, rule_len - 1),
-    Leftover(0) => remove(tape, rule_len),
+    Leftover(leftover) if leftover == TapeCount::zero() => remove(tape, rule_len),
     Leftover(leftover) => {
       remove(tape, rule_len - 1);
       tape.last_mut().unwrap().1 = leftover;
@@ -319,10 +365,10 @@ pub fn consume_tape_from_rulematch<S: TapeSymbol>(
   }
 }
 
-pub fn append_rule_tape<S: TapeSymbol>(
-  hm: &HashMap<Var, u32>,
+pub fn append_rule_tape<S: TapeSymbol, C: TapeCount>(
+  hm: &HashMap<Var, C>,
   rule: &[(S, AffineVar)],
-  tape: &mut Vec<(S, u32)>,
+  tape: &mut Vec<(S, C)>,
 ) {
   let slice_to_append = match rule.get(0) {
     None => return,
@@ -330,7 +376,7 @@ pub fn append_rule_tape<S: TapeSymbol>(
       None => &rule[..],
       Some((t, num)) => {
         if s == t {
-          *num += avar.sub_map(hm);
+          *num = C::add(*num, avar.sub_map(hm));
           &rule[1..]
         } else {
           &rule[..]
@@ -345,8 +391,8 @@ pub fn append_rule_tape<S: TapeSymbol>(
   );
 }
 
-pub fn apply_rule<S: TapeSymbol>(
-  tape: &mut ExpTape<S, u32>,
+pub fn apply_rule<S: TapeSymbol, C: TapeCount>(
+  tape: &mut ExpTape<S, C>,
   cur_state: State,
   Rule { start: Config { state, left, head, right }, end }: &Rule<S>,
   verbose: bool,
@@ -375,8 +421,8 @@ pub fn apply_rule<S: TapeSymbol>(
   }
 }
 
-pub fn apply_rules<S: TapeSymbol>(
-  tape: &mut ExpTape<S, u32>,
+pub fn apply_rules<S: TapeSymbol, C: TapeCount>(
+  tape: &mut ExpTape<S, C>,
   state: State,
   rulebook: &Rulebook<S>,
   verbose: bool,
@@ -392,12 +438,12 @@ pub fn apply_rules<S: TapeSymbol>(
   return None;
 }
 
-pub fn simulate_using_rules<S: TapeSymbol>(
+pub fn simulate_using_rules<S: TapeSymbol, C: TapeCount>(
   machine: &impl Turing<S>,
   num_steps: u32,
   rulebook: &Rulebook<S>,
   verbose: bool,
-) -> (State, u32, ExpTape<S, u32>) {
+) -> (State, u32, ExpTape<S, C>) {
   let mut exptape = ExpTape::new();
   let mut state = START;
   for step in 1..num_steps + 1 {
@@ -625,7 +671,7 @@ use RuleProof::*;
 
 // a var that we use on the tape and are trying to generalize
 // it can be subtracted from, in case that is helpful
-#[derive(Debug, Hash, Eq, Clone, Copy)]
+#[derive(Debug, Hash, Clone, Copy)]
 pub struct SymbolVar {
   pub n: i32,
   pub a: u32,
@@ -638,9 +684,55 @@ impl PartialEq for SymbolVar {
   }
 }
 
+impl Eq for SymbolVar {}
+
+impl Display for SymbolVar {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    todo!();
+    Ok(())
+  }
+}
+
+impl From<u32> for SymbolVar {
+  fn from(value: u32) -> Self {
+    SymbolVar::constant(value.try_into().unwrap())
+  }
+}
+
 impl SymbolVar {
   pub fn constant(n: i32) -> Self {
     Self { n, a: 0, var: Var(0) }
+  }
+}
+
+impl TapeCount for SymbolVar {
+  fn zero() -> Self {
+    SymbolVar::constant(0)
+  }
+
+  fn add(SymbolVar { n, a, var }: Self, SymbolVar { n: m, a: b, var: var2 }: Self) -> Self {
+    //todo oh no this is a mess
+    if var != var2 {
+      panic!("added incompatible symbolvars")
+    }
+    SymbolVar { n: n + m, a: a + b, var }
+  }
+
+  fn mul_const(self, multiplier: u32) -> Self {
+    let SymbolVar { n, a, var } = self;
+    SymbolVar {
+      n: n * i32::try_from(multiplier).unwrap(),
+      a: a * multiplier,
+      var: var,
+    }
+  }
+  fn match_var(avar: AffineVar, count: Self, verbose: bool) -> Option<(Self, Option<(Var, Self)>)> {
+    match_avar_svar(avar, count)
+  }
+
+  fn sub_one(self) -> Self {
+    let Self { n, a, var } = self;
+    Self { n: n - 1, a, var }
   }
 }
 
@@ -721,6 +813,12 @@ pub fn prove_rule<S: TapeSymbol>(
   for step in 1..prover_steps + 1 {
     // here is where we have to do a step but our current code doesn't really do that
     // because apply_rule takes an ExpTape<S, u32>, but we have an ExpTape<S, SymbolVar>
+
+    /* things we need the u32 to do: eq
+    append_rule_tape: add two of them
+    consume_tape_from_rulematch: have a "zero" element
+    match_rule_tape: match_var_num,
+     */
 
     // check if we succeeded
     if state == goal_state && proving_tape == goal_tape {

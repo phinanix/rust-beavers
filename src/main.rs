@@ -72,7 +72,7 @@ fn main() {
   println!("vanilla");
   ExpTape::simulate_from_start(machine, num_steps);
   println!("using rules");
-  simulate_using_rules(machine, num_steps, &rulebook, false);
+  simulate_using_rules::<Bit, u32>(machine, num_steps, &rulebook, false);
   println!("detecting rules");
   simulate_detect_rules(machine, num_steps, &rulebook, false);
 }
