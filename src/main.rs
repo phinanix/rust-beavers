@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 use crate::{
   linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
-  rules::AffineVar,
+  rules::{simulate_proving_rules, AffineVar},
   simulate::Tape,
   turing::HALT,
 };
@@ -20,7 +20,6 @@ mod turing;
 high level todo:
 - exptape tells you when empty symbols are brought in from the end?
 - detect rules with the empty symbols that are used
-- prove rules by simulating using rules
 
 - detect rules that are more than additive (mx + b?)
 - prove rules by induction
@@ -31,6 +30,27 @@ high level todo:
 - bit packed tape?
 - parallelize bb5 search?
 */
+
+/*
+rule proving status: it "mostly" "works"
+current issues that need fixing:
+1) it tries to prove the same rule over and over, which is obviously a big waste of time
+2) relatedly, it doesn't know when a rule means it can run forever, so we need to detect that
+3) biggest issue, it guesses and proves rules that are not "conserving" of tape symbols. there are
+   two sub-issues here, essentially.
+   a) it guesses rules based on reduced tape signatures (that don't include the infinite ends), but
+   the rule (T, x) -> (T, x+1) of course can't hold in a vacuum, it can only hold in the context of
+   eating an F from the edge of the tape. ideally we would just prove rules that hold in all
+   contexts (this is what readshift is doing in Haskell-bbs but I don't know if that's the easiest
+   way to fix this).
+   b) when proving a rule, it also freely grabs symbols from the edge of the tape.
+
+   as is, these two issues balance each other out, but it seems perhaps better to fix both of them.
+   path to fixing:
+   - make Exptape.step return whether you grew/shrunk the tape from the infinite edge
+   - in proving, explode if the tape would grow
+   - in rule-guessing, track the growing and shrinking such that we can guess a conserving-rule
+ */
 
 fn search_for_translated_cyclers(first_machine: SmallBinMachine, num_steps: u32) {
   let machines = tnf_simulate(first_machine, 130);
@@ -61,18 +81,23 @@ fn main() {
   // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
   // let num_steps = 1300;
   // search_for_translated_cyclers(first_machine, num_steps);
-  let machine = &get_machine("binary_counter");
+  let machine = &get_machine("sweeper");
   let chain_rules = detect_chain_rules(machine);
-  for chain_rule in &chain_rules {
-    println!("{}", chain_rule);
+  println!("{} chain rules:", chain_rules.len());
+  for (i, chain_rule) in chain_rules.iter().enumerate() {
+    println!("{}: {}", i, chain_rule);
   }
+  println!();
+
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
-  let num_steps = 100;
-  println!("vanilla");
-  ExpTape::simulate_from_start(machine, num_steps);
+  let num_steps = 20;
+  // println!("vanilla");
+  // ExpTape::simulate_from_start(machine, num_steps);
   println!("using rules");
   simulate_using_rules::<Bit, u32>(machine, num_steps, &rulebook, false);
-  println!("detecting rules");
-  simulate_detect_rules(machine, num_steps, &rulebook, false);
+  // println!("detecting rules");
+  // simulate_detect_rules(machine, num_steps, &rulebook, false);
+  println!("proving rules");
+  simulate_proving_rules(machine, num_steps, &mut rulebook, true);
 }

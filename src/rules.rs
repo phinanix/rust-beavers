@@ -87,7 +87,11 @@ impl AffineVar {
 
 impl Display for AffineVar {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{} + {}*{}", self.n, self.a, self.var)
+    if self.a == 0 {
+      write!(f, "{}", self.n)
+    } else {
+      write!(f, "{} + {}*{}", self.n, self.a, self.var)
+    }
   }
 }
 
@@ -458,7 +462,7 @@ pub fn one_rule_step<S: TapeSymbol, C: TapeCount>(
   step: u32,
   verbose: bool,
 ) -> (State, HashMap<Var, C>) {
-  let (new_state, hm) = match apply_rules(exptape, state, rulebook, verbose) {
+  let (new_state, hm) = match apply_rules(exptape, state, rulebook, false) {
     Some(res) => {
       println!("rule_applied");
       res
@@ -468,7 +472,9 @@ pub fn one_rule_step<S: TapeSymbol, C: TapeCount>(
       Right(state) => (state, HashMap::default()),
     },
   };
-  println!("step: {} phase: {} tape: {}", step, new_state, exptape);
+  if verbose {
+    println!("step: {} phase: {} tape: {}", step, new_state, exptape);
+  }
   return (new_state, hm);
 }
 
@@ -577,6 +583,28 @@ pub fn detect_rule<S: TapeSymbol>(history: &Vec<(u32, State, ExpTape<S, u32>)>) 
   vec![rule]
 }
 
+pub fn detect_rules<S: TapeSymbol>(
+  step: u32,
+  state: State,
+  exptape: &ExpTape<S, u32>,
+  signatures: &mut DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>>,
+) -> Vec<Rule<S>> {
+  let cur_sig_vec = &mut signatures[exptape.signature()];
+  cur_sig_vec.push((step, state, exptape.clone()));
+  if cur_sig_vec.len() > 1 {
+    let rules = detect_rule(cur_sig_vec);
+    if rules.len() > 0 {
+      println!(
+        "using steps: {:?} detected rule:\n{}\n",
+        cur_sig_vec.iter().map(|(s, _, _)| s).collect_vec(),
+        rules.first().unwrap()
+      );
+    }
+    return rules;
+  }
+  return vec![];
+}
+
 pub fn simulate_detect_rules<S: TapeSymbol>(
   machine: &impl Turing<S>,
   num_steps: u32,
@@ -598,19 +626,9 @@ pub fn simulate_detect_rules<S: TapeSymbol>(
     if state == HALT {
       return (HALT, step);
     }
-    let cur_sig_vec = &mut signatures[exptape.signature()];
-    cur_sig_vec.push((step, state, exptape.clone()));
-    if cur_sig_vec.len() > 1 {
-      let rules = detect_rule(cur_sig_vec);
-      if rules.len() > 0 {
-        println!(
-          "using steps: {:?} detected rule:\n{}\n",
-          cur_sig_vec.iter().map(|(s, _, _)| s).collect_vec(),
-          rules.first().unwrap()
-        );
-      }
-    }
+    detect_rules(step, state, &exptape, &mut signatures);
   }
+
   return (state, num_steps);
 }
 
@@ -691,7 +709,11 @@ impl Eq for SymbolVar {}
 
 impl Display for SymbolVar {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "sym({} + {}*{})", self.n, self.a, self.var)
+    if self.a == 0 {
+      write!(f, "{}", self.n)
+    } else {
+      write!(f, "{} + {}*a_{}", self.n, self.a, self.var.0)
+    }
   }
 }
 
@@ -801,11 +823,12 @@ pub fn match_avar_svar(
 
 pub fn prove_rule<S: TapeSymbol>(
   machine: &impl Turing<S>,
-  Rule { start, end }: Rule<S>,
+  rule: Rule<S>,
   rulebook: &Rulebook<S>,
   prover_steps: u32,
   too_negative: i32,
-) -> Option<RuleProof> {
+  verbose: bool,
+) -> Option<(Rule<S>, RuleProof)> {
   /* basic structure:
   1) set up tape with rule start
   2) simulate forward until rule end or step limit
@@ -814,13 +837,18 @@ pub fn prove_rule<S: TapeSymbol>(
     right now the tape freely adds symbols from the left and right implicit ends of the tape,
      but we don't want this behavior
   */
+  if verbose {
+    println!("working to prove rule: {}", &rule);
+  }
+
+  let Rule { start, end } = rule;
   let (mut state, mut proving_tape) = start.clone().to_tape_state();
   let (goal_state, goal_tape) = end.clone().to_tape_state();
 
   let mut neg_map: DefaultHashMap<Var, i32> = defaulthashmap! {0};
 
   for step in 1..prover_steps + 1 {
-    let (new_state, hm) = one_rule_step(machine, &mut proving_tape, state, rulebook, step, false);
+    let (new_state, hm) = one_rule_step(machine, &mut proving_tape, state, rulebook, step, verbose);
     state = new_state;
     /*
     we need to track over time how negative each symbolvar has become, so that we can later
@@ -837,16 +865,89 @@ pub fn prove_rule<S: TapeSymbol>(
     ) {
       neg_map[var] = neg_map[var].min(n);
       if neg_map[var] < too_negative {
+        println!("proving the rule failed due to negativity");
         return None;
       }
     }
 
     // check if we succeeded
     if state == goal_state && proving_tape == goal_tape {
-      return Some(DirectSimulation(step));
+      println!("proving the rule suceeded");
+      return Some((
+        package_rule(Rule { start, end }, &neg_map),
+        DirectSimulation(step),
+      ));
     }
   }
+  println!("proving the rule failed");
   return None;
+}
+
+fn update_affine_var(
+  AffineVar { n, a, var }: AffineVar,
+  neg_map: &DefaultHashMap<Var, i32>,
+) -> AffineVar {
+  let amt_to_add: u32 = neg_map[var].abs().try_into().unwrap();
+  AffineVar { n: n + amt_to_add, a, var }
+}
+
+fn update_config<S>(
+  Config { state, left, head, right }: Config<S>,
+  neg_map: &DefaultHashMap<Var, i32>,
+) -> Config<S> {
+  Config {
+    state,
+    left: left
+      .into_iter()
+      .map(|(s, avar)| (s, update_affine_var(avar, neg_map)))
+      .collect(),
+    head: head,
+    right: right
+      .into_iter()
+      .map(|(s, avar)| (s, update_affine_var(avar, neg_map)))
+      .collect(),
+  }
+}
+
+fn package_rule<S: TapeSymbol>(
+  Rule { start, end }: Rule<S>,
+  neg_map: &DefaultHashMap<Var, i32>,
+) -> Rule<S> {
+  Rule {
+    start: update_config(start, neg_map),
+    end: update_config(end, neg_map),
+  }
+}
+
+pub fn simulate_proving_rules<S: TapeSymbol>(
+  machine: &impl Turing<S>,
+  num_steps: u32,
+  rulebook: &mut Rulebook<S>,
+  verbose: bool,
+) -> (State, u32) {
+  /*
+  the plan to detect rules:
+  store the signatures of everything seen so far
+  if you see the same signature more than once, there is a possible rule
+  */
+  let mut exptape = ExpTape::new();
+  let mut state = START;
+  let mut signatures: DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>> =
+    defaulthashmap!();
+  for step in 1..num_steps + 1 {
+    state = one_rule_step(machine, &mut exptape, state, rulebook, step, verbose).0;
+    if state == HALT {
+      return (HALT, step);
+    }
+    let rules = detect_rules(step, state, &exptape, &mut signatures);
+    for rule in rules {
+      if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, verbose) {
+        println!("proved rule: {}\nvia proof{:?}", final_rule, pf);
+        rulebook.add_rule(final_rule);
+      }
+    }
+  }
+  return (state, num_steps);
 }
 
 pub mod parse {
