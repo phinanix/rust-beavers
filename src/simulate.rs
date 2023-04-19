@@ -412,7 +412,7 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<Small
 mod test {
   use super::*;
   use crate::{
-    rules::parse::{parse_avar, parse_rule},
+    rules::parse::{parse_avar_gen, parse_rule},
     turing::{get_machine, HALT},
   };
 

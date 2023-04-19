@@ -23,13 +23,6 @@
  0 1^n >0< -> 1^(n+1) >0<
 */
 
-use defaultmap::{defaulthashmap, DefaultHashMap};
-use either::Either::{Left, Right};
-use itertools::Itertools;
-use proptest::{prelude::*, sample::select};
-use smallvec::{smallvec, SmallVec};
-use std::{cmp::Ordering::*, collections::HashMap, fmt::Display, iter::zip};
-
 use crate::{
   simulate::{ExpTape, Signature},
   turing::{
@@ -38,6 +31,12 @@ use crate::{
     Edge, State, TapeSymbol, Trans, Turing, HALT, START,
   },
 };
+use defaultmap::{defaulthashmap, DefaultHashMap};
+use either::Either::{Left, Right};
+use itertools::Itertools;
+use proptest::{prelude::*, sample::select};
+use smallvec::{smallvec, SmallVec};
+use std::{cmp::Ordering::*, collections::HashMap, fmt::Display, iter::zip};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct Var(pub u8);
@@ -49,13 +48,18 @@ impl Display for Var {
 }
 
 //ax + n
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, Eq, Hash, Clone, Copy)]
 pub struct AffineVar {
   pub n: u32,
   pub a: u32,
   pub var: Var,
 }
 
+impl PartialEq for AffineVar {
+  fn eq(&self, other: &Self) -> bool {
+    self.n == other.n && self.a == other.a && (self.var == other.var || self.a == 0)
+  }
+}
 impl AffineVar {
   pub fn constant(n: u32) -> Self {
     Self { n, a: 0, var: Var(0) }
@@ -101,7 +105,7 @@ impl<S: Display + Copy> Display for Config<S> {
     Ok(())
   }
 }
-//todo: figure out like modules or something
+
 impl<S> Config<S> {
   fn vec_u32_to_avar(u32s: Vec<(S, u32)>) -> Vec<(S, AffineVar)> {
     u32s
@@ -615,16 +619,29 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum RuleProof {
-  DirectSimulation,
+  DirectSimulation(u32),
 }
+use RuleProof::*;
 
 // a var that we use on the tape and are trying to generalize
 // it can be subtracted from, in case that is helpful
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, Hash, Eq, Clone, Copy)]
 pub struct SymbolVar {
   pub n: i32,
   pub a: u32,
   pub var: Var,
+}
+
+impl PartialEq for SymbolVar {
+  fn eq(&self, other: &Self) -> bool {
+    self.n == other.n && self.a == other.a && (self.var == other.var || self.a == 0)
+  }
+}
+
+impl SymbolVar {
+  pub fn constant(n: i32) -> Self {
+    Self { n, a: 0, var: Var(0) }
+  }
 }
 
 impl From<AffineVar> for SymbolVar {
@@ -633,9 +650,60 @@ impl From<AffineVar> for SymbolVar {
   }
 }
 
+pub fn match_avar_svar(
+  AffineVar { n, a, var: avar }: AffineVar,
+  mut svar: SymbolVar,
+) -> Option<(SymbolVar, Option<(Var, SymbolVar)>)> {
+  // returns the svar left on the tape and what to send the var in the affinevar to
+  /*
+  examples (avar match svar)
+  5 match 6 returns 1
+  5 match 4 returns -1
+  5 match a returns a - 5
+
+  x match _ returns (0, (x -> _))
+
+  2x match 6 returns (0, (x -> 3))
+  2x match 7 returns (1, (x -> 3))
+  2x match a returns None
+  2x match 3a returns (a, (x -> a))
+  2x match 2a - 1 returns (1, (x -> a-1))
+
+  2x+3 match 6 returns (1, (x -> 1))
+  2x+3 match 7 returns (0, (x -> 2))
+  2x+3 match a returns None
+  2x+3 match 2a returns (1, (x -> a-2))
+  2x+3 match 3a returns (a-3, (x -> a))
+
+
+  general rule: the integer always applies
+  the var leaves the smallest non-negative integer possible,
+  and the smallest non-negative coefficient of the symbolvar
+   */
+  svar.n -= i32::try_from(n).unwrap();
+  if a == 0 {
+    return Some((svar, None));
+  }
+  if svar.a > 0 && a > svar.a {
+    return None;
+  }
+  let coeff_a_in_x = svar.a / a;
+  svar.a = svar.a % a;
+  let a_i32 = i32::try_from(a).unwrap();
+  let integer_in_x = svar.n.div_euclid(a_i32);
+  svar.n = svar.n.rem_euclid(a_i32);
+  Some((
+    svar,
+    Some((
+      avar,
+      SymbolVar { n: integer_in_x, a: coeff_a_in_x, var: svar.var },
+    )),
+  ))
+}
+
 pub fn prove_rule<S: TapeSymbol>(
   machine: &impl Turing<S>,
-  Rule { start, end }: Rule<S>,
+  Rule { start, end }: &Rule<S>,
   rulebook: &Rulebook<S>,
   prover_steps: u32,
 ) -> Option<RuleProof> {
@@ -646,10 +714,20 @@ pub fn prove_rule<S: TapeSymbol>(
     we have most of the simulation code written, but it will need to be generalized
     right now the tape freely adds symbols from the left and right implicit ends of the tape,
      but we don't want this behavior
-    exptape right now only has u32s on it
   */
+  let (mut state, mut proving_tape) = start.clone().to_tape_state();
+  let (goal_state, goal_tape) = end.clone().to_tape_state();
 
-  todo!()
+  for step in 1..prover_steps + 1 {
+    // here is where we have to do a step but our current code doesn't really do that
+    // because apply_rule takes an ExpTape<S, u32>, but we have an ExpTape<S, SymbolVar>
+
+    // check if we succeeded
+    if state == goal_state && proving_tape == goal_tape {
+      return Some(DirectSimulation(step));
+    }
+  }
+  return None;
 }
 
 pub mod parse {
@@ -702,7 +780,7 @@ pub mod parse {
   phase: 1  (T, 1) |>F<|(F, 0 + 1*x_0 ) (T, 1)
   */
 
-  pub fn parse_avar<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
+  pub fn parse_avar_gen<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
     input: &'a str,
   ) -> IResult<&str, AffineVar, E> {
     // 3 + 2*x_0
@@ -710,6 +788,10 @@ pub mod parse {
       (parse_u32, tag(" + "), parse_u32, tag("*x_"), parse_var).parse(input)?;
     let avar = AffineVar { n, a, var };
     Ok((input, avar))
+  }
+
+  pub fn parse_avar(input: &str) -> IResult<&str, AffineVar> {
+    parse_avar_gen(input)
   }
 
   pub fn parse_count<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
@@ -720,7 +802,7 @@ pub mod parse {
       a: 0,
       var: Var(0),
     });
-    alt((parse_avar, parse_u32_to_avar))(input)
+    alt((parse_avar_gen, parse_u32_to_avar))(input)
   }
 
   pub fn parse_bit<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, Bit, E> {
@@ -816,18 +898,18 @@ pub mod parse {
 
     #[test]
     fn test_parse_avar() {
-      let ans = parse_avar::<nom::error::Error<&str>>("3 + 5*x_0");
+      let ans = parse_avar_gen::<nom::error::Error<&str>>("3 + 5*x_0");
       assert_eq!(ans, Ok(("", AffineVar { n: 3, a: 5, var: Var(0) })));
       assert_eq!(
-        parse_avar::<nom::error::Error<&str>>("7 + 234*x_11"),
+        parse_avar_gen::<nom::error::Error<&str>>("7 + 234*x_11"),
         Ok(("", AffineVar { n: 7, a: 234, var: Var(11) }))
       );
       assert_eq!(
-        parse_avar::<nom::error::Error<&str>>("118 + 5*x_0"),
+        parse_avar_gen::<nom::error::Error<&str>>("118 + 5*x_0"),
         Ok(("", AffineVar { n: 118, a: 5, var: Var(0) }))
       );
 
-      assert!(parse_avar::<nom::error::Error<&str>>("3 + 5* x_0").is_err());
+      assert!(parse_avar_gen::<nom::error::Error<&str>>("3 + 5* x_0").is_err());
     }
 
     #[test]
@@ -946,7 +1028,7 @@ pub mod parse {
     proptest! {
       #[test]
       fn avar_roundtrip(avar in avar_strategy()) {
-        assert_eq!(parse_avar::<nom::error::Error<&str>>(&format!("{}", avar)), Ok(("", avar)));
+        assert_eq!(parse_avar_gen::<nom::error::Error<&str>>(&format!("{}", avar)), Ok(("", avar)));
       }
     }
   }
@@ -956,7 +1038,7 @@ mod test {
   use nom::Finish;
 
   use crate::{
-    rules::parse::{parse_avar, parse_rule, parse_tape},
+    rules::parse::{parse_avar, parse_avar_gen, parse_rule, parse_tape},
     turing::{get_machine, Bit},
   };
 
@@ -1025,11 +1107,11 @@ mod test {
 
   #[test]
   fn test_match_var_num() {
-    let (_leftover, var) = parse_avar::<nom::error::Error<&str>>(&"3 + 2*x_0").unwrap();
+    let (_leftover, var) = parse_avar_gen::<nom::error::Error<&str>>(&"3 + 2*x_0").unwrap();
     assert_eq!(match_var_num(var, 3, false), None);
     assert_eq!(match_var_num(var, 5, false), Some((0, Some((Var(0), 1)))));
     assert_eq!(match_var_num(var, 6, false), Some((1, Some((Var(0), 1)))));
-    let (_leftover, var) = parse_avar::<nom::error::Error<&str>>(&"3 + 0*x_0").unwrap();
+    let (_leftover, var) = parse_avar_gen::<nom::error::Error<&str>>(&"3 + 0*x_0").unwrap();
     assert_eq!(match_var_num(var, 3, false), Some((0, None)));
     assert_eq!(match_var_num(var, 5, false), Some((2, None)));
   }
@@ -1150,5 +1232,161 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
   fn chain_steps_is_same() {
     compare_machine_with_chain(&get_machine("sweeper"), 100);
     compare_machine_with_chain(&get_machine("binary_counter"), 100);
+  }
+
+  #[test]
+  fn svar_eq() {
+    assert!(SymbolVar { n: 2, a: 3, var: Var(0) } == SymbolVar { n: 2, a: 3, var: Var(0) });
+    assert!(SymbolVar { n: 2, a: 3, var: Var(0) } != SymbolVar { n: 2, a: 4, var: Var(0) });
+    assert!(SymbolVar { n: 2, a: 3, var: Var(0) } != SymbolVar { n: 1, a: 3, var: Var(0) });
+    assert!(SymbolVar { n: 2, a: 3, var: Var(0) } != SymbolVar { n: 2, a: 3, var: Var(1) });
+    //a = 0 is a special case
+    assert!(SymbolVar { n: 2, a: 0, var: Var(0) } == SymbolVar { n: 2, a: 0, var: Var(0) });
+    assert!(SymbolVar { n: 2, a: 0, var: Var(0) } == SymbolVar { n: 2, a: 0, var: Var(1) });
+    assert!(SymbolVar { n: 2, a: 0, var: Var(0) } != SymbolVar { n: 1, a: 0, var: Var(0) });
+    assert!(SymbolVar { n: 2, a: 0, var: Var(0) } != SymbolVar { n: 2, a: 3, var: Var(0) });
+  }
+
+  #[test]
+  fn avar_eq() {
+    assert!(AffineVar { n: 2, a: 3, var: Var(0) } == AffineVar { n: 2, a: 3, var: Var(0) });
+    assert!(AffineVar { n: 2, a: 3, var: Var(0) } != AffineVar { n: 2, a: 4, var: Var(0) });
+    assert!(AffineVar { n: 2, a: 3, var: Var(0) } != AffineVar { n: 1, a: 3, var: Var(0) });
+    assert!(AffineVar { n: 2, a: 3, var: Var(0) } != AffineVar { n: 2, a: 3, var: Var(1) });
+    //a = 0 is a special case
+    assert!(AffineVar { n: 2, a: 0, var: Var(0) } == AffineVar { n: 2, a: 0, var: Var(0) });
+    assert!(AffineVar { n: 2, a: 0, var: Var(0) } == AffineVar { n: 2, a: 0, var: Var(1) });
+    assert!(AffineVar { n: 2, a: 0, var: Var(0) } != AffineVar { n: 1, a: 0, var: Var(0) });
+    assert!(AffineVar { n: 2, a: 0, var: Var(0) } != AffineVar { n: 2, a: 3, var: Var(0) });
+  }
+
+  #[test]
+  fn test_match_avar_svar() {
+    let a5 = AffineVar::constant(5);
+    assert_eq!(
+      match_avar_svar(a5, SymbolVar::constant(6)),
+      Some((SymbolVar::constant(1), None))
+    );
+    assert_eq!(
+      match_avar_svar(a5, SymbolVar::constant(4)),
+      Some((SymbolVar::constant(-1), None))
+    );
+    assert_eq!(
+      match_avar_svar(a5, SymbolVar { n: 0, a: 1, var: Var(0) }),
+      Some((SymbolVar { n: -5, a: 1, var: Var(0) }, None))
+    );
+
+    let x = AffineVar { n: 0, a: 1, var: Var(0) };
+    let stuff = SymbolVar { n: 3, a: 2, var: Var(1) };
+    assert_eq!(
+      match_avar_svar(x, stuff),
+      Some((SymbolVar::constant(0), Some((Var(0), stuff))))
+    );
+
+    /*
+     2x match 6 returns (0, (x -> 3))
+     2x match 7 returns (1, (x -> 3))
+     2x match a returns None
+     2x match 3a returns (a, (x -> a))
+     2x match 2a - 1 returns (1, (x -> a-1))
+    */
+    let two_x = AffineVar { n: 0, a: 2, var: Var(0) };
+    assert_eq!(
+      match_avar_svar(two_x, SymbolVar::constant(6)),
+      Some((
+        SymbolVar::constant(0),
+        Some((Var(0), SymbolVar::constant(3)))
+      ))
+    );
+    assert_eq!(
+      match_avar_svar(two_x, SymbolVar::constant(7)),
+      Some((
+        SymbolVar::constant(1),
+        Some((Var(0), SymbolVar::constant(3)))
+      ))
+    );
+    assert_eq!(
+      match_avar_svar(two_x, SymbolVar { n: 0, a: 1, var: Var(0) }),
+      None
+    );
+    assert_eq!(
+      match_avar_svar(two_x, SymbolVar { n: 0, a: 3, var: Var(0) }),
+      Some((
+        SymbolVar { n: 0, a: 1, var: Var(0) },
+        Some((Var(0), SymbolVar { n: 0, a: 1, var: Var(0) }))
+      ))
+    );
+    assert_eq!(
+      match_avar_svar(two_x, SymbolVar { n: -1, a: 2, var: Var(0) }),
+      Some((
+        SymbolVar { n: 1, a: 0, var: Var(0) },
+        Some((Var(0), SymbolVar { n: -1, a: 1, var: Var(0) }))
+      ))
+    );
+
+    /*
+     2x+3 match 6 returns (1, (x -> 1))
+     2x+3 match 7 returns (0, (x -> 2))
+     2x+3 match a returns None
+     2x+3 match 2a returns (1, (x -> a-2))
+    */
+    let (_leftover, two_x_p3) = parse_avar("3 + 2*x_0").unwrap();
+    assert_eq!(
+      match_avar_svar(two_x_p3, SymbolVar::constant(6)),
+      Some((
+        SymbolVar::constant(1),
+        Some((Var(0), SymbolVar::constant(1)))
+      ))
+    );
+    assert_eq!(
+      match_avar_svar(two_x_p3, SymbolVar::constant(7)),
+      Some((
+        SymbolVar::constant(0),
+        Some((Var(0), SymbolVar::constant(2)))
+      ))
+    );
+    assert_eq!(
+      match_avar_svar(two_x_p3, SymbolVar { n: 0, a: 1, var: Var(0) }),
+      None
+    );
+    assert_eq!(
+      match_avar_svar(two_x_p3, SymbolVar { n: 0, a: 2, var: Var(0) }),
+      Some((
+        SymbolVar::constant(1),
+        Some((Var(0), SymbolVar { n: -2, a: 1, var: Var(0) }))
+      ))
+    );
+    /*
+
+    ??
+    2x+3 match 3a returns (a-1, (x -> a-1))
+    2x+5 match 3a returns (a-1, (x -> a-2))
+    2x+7 match 3a returns (a-3, (x -> a-2)) or (a-1, (x -> a-3))
+
+    5x+4 match 7a returns (2a-4, (x -> a)) or (2a+1, (x -> a-1))
+    5x+5 match 7a returns (2a-5, (x -> a)) or (2a, (x -> a-1))
+
+    so the fundamental confusing thing here, is if we want to optimize for the smallest
+    amount subtracted from a at any point, this is at least a little bit a global optimization
+    problem. like you can either subtract more from one place or the other, and sometimes
+    one or the other is better. see examples.
+
+    but I don't think it actually matters to exactly optimize the value subtracted from a.
+    because if you set the minimum value of a for the rule to apply slightly too high, you
+    only miss a finite number of cases, which you can solve by brute force if the rule is real.
+
+    for even more simplicity you could maybe even say x is only allowed to be sent to
+    positive values of a, which I might do later. but you still have to track the minimum value
+    of a pretty carefully so it doesn't seem obviously that helpful
+    */
+
+    // 2x+3 match 3a returns (a+1, (x -> a-2))
+    assert_eq!(
+      match_avar_svar(two_x_p3, SymbolVar { n: 0, a: 3, var: Var(0) }),
+      Some((
+        SymbolVar { n: 1, a: 1, var: Var(0) },
+        Some((Var(0), SymbolVar { n: -2, a: 1, var: Var(0) }))
+      ))
+    );
   }
 }
