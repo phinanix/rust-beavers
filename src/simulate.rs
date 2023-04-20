@@ -257,7 +257,7 @@ pub fn combine_one_step_tape_change(tc1: TapeChange, tc2: TapeChange) -> TapeCha
   }
 }
 
-type TapeChange = Option<(Dir, TapeChangeKind)>;
+pub type TapeChange = Option<(Dir, TapeChangeKind)>;
 
 impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
   // impl<S: TapeSymbol> ExpTape<S, u32> {

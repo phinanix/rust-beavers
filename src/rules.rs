@@ -24,10 +24,10 @@
 */
 
 use crate::{
-  simulate::{ExpTape, Signature},
+  simulate::{ExpTape, Signature, TapeChange, TapeChangeKind},
   turing::{
     Bit,
-    Dir::{L, R},
+    Dir::{self, L, R},
     Edge, State, TapeSymbol, Trans, Turing, HALT, START,
   },
 };
@@ -256,7 +256,7 @@ impl TapeCount for u32 {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RuleTapeMatch<C> {
-  ConsumedEnd,
+  ConsumedEnd(AffineVar),
   Leftover(C),
 }
 use RuleTapeMatch::*;
@@ -280,6 +280,7 @@ pub fn match_rule_tape<S: TapeSymbol, C: TapeCount>(
   };
 
   let mut last_elt_empty_tape = false;
+  let mut tape_change_val = None;
   if rule.len() == tape.len() + 1 {
     let last_rule_pair = rule.first().unwrap();
     if last_rule_pair.0 == S::empty() {
@@ -291,6 +292,7 @@ pub fn match_rule_tape<S: TapeSymbol, C: TapeCount>(
         )
       };
       last_elt_empty_tape = true;
+      tape_change_val = Some(last_rule_pair.1);
     } else {
       if verbose {
         println!("rule too long")
@@ -339,14 +341,17 @@ pub fn match_rule_tape<S: TapeSymbol, C: TapeCount>(
       }
     }
   }
-  if last_elt_empty_tape {
-    if leftover != C::zero() {
-      return None;
-    } else {
-      return Some(ConsumedEnd);
+  match tape_change_val {
+    Some(tape_change_val) => {
+      if leftover != C::zero() {
+        return None;
+      } else {
+        return Some(ConsumedEnd(tape_change_val));
+      }
     }
-  } else {
-    return Some(Leftover(leftover));
+    None => {
+      return Some(Leftover(leftover));
+    }
   }
 }
 
@@ -360,7 +365,7 @@ pub fn consume_tape_from_rulematch<S: TapeSymbol, C: TapeCount>(
   rule_len: usize,
 ) {
   match tape_match {
-    ConsumedEnd => remove(tape, rule_len - 1),
+    ConsumedEnd(_avar) => remove(tape, rule_len - 1),
     Leftover(leftover) if leftover == TapeCount::zero() => remove(tape, rule_len),
     Leftover(leftover) => {
       remove(tape, rule_len - 1);
@@ -373,17 +378,24 @@ pub fn append_rule_tape<S: TapeSymbol, C: TapeCount>(
   hm: &HashMap<Var, C>,
   rule: &[(S, AffineVar)],
   tape: &mut Vec<(S, C)>,
-) {
-  let slice_to_append = match rule.get(0) {
-    None => return,
+) -> Option<AffineVar> {
+  // the avar is the amount we shrank the tape by, if any
+  let (slice_to_append, shrink_amount) = match rule.get(0) {
+    None => return None,
     Some((s, avar)) => match tape.last_mut() {
-      None => &rule[..],
+      None => {
+        if *s == S::empty() {
+          (&rule[1..], Some(*avar))
+        } else {
+          (&rule[..], None)
+        }
+      }
       Some((t, num)) => {
         if s == t {
           *num = C::add(*num, avar.sub_map(hm));
-          &rule[1..]
+          (&rule[1..], None)
         } else {
-          &rule[..]
+          (&rule[..], None)
         }
       }
     },
@@ -393,14 +405,69 @@ pub fn append_rule_tape<S: TapeSymbol, C: TapeCount>(
       .iter()
       .map(|&(s, avar)| (s, avar.sub_map(hm))),
   );
+  shrink_amount
 }
 
-pub fn apply_rule_hm<S: TapeSymbol, C: TapeCount>(
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct RuleTapeChangeSide {
+  grew: Option<AffineVar>,
+  shrunk: Option<AffineVar>,
+}
+
+impl RuleTapeChangeSide {
+  pub fn empty() -> Self {
+    Self { grew: None, shrunk: None }
+  }
+
+  pub fn from_tapechangekind(tck: TapeChangeKind) -> Self {
+    match tck {
+      TapeChangeKind::Grew => Self { grew: Some(AffineVar::constant(1)), shrunk: None },
+      TapeChangeKind::Shrunk => Self { grew: None, shrunk: Some(AffineVar::constant(1)) },
+    }
+  }
+
+  pub fn from_ruletapematch_and_shrink_amount<C>(
+    rtm: RuleTapeMatch<C>,
+    shrink_amount: Option<AffineVar>,
+  ) -> Self {
+    let grow_amount = match rtm {
+      ConsumedEnd(avar) => Some(avar),
+      Leftover(_) => None,
+    };
+    Self { grew: grow_amount, shrunk: shrink_amount }
+  }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct RuleTapeChange {
+  left: RuleTapeChangeSide,
+  right: RuleTapeChangeSide,
+}
+
+impl RuleTapeChange {
+  pub fn from_tapechange(tc: TapeChange) -> Self {
+    match tc {
+      None => Self {
+        left: RuleTapeChangeSide::empty(),
+        right: RuleTapeChangeSide::empty(),
+      },
+      Some((Dir::L, tck)) => Self {
+        left: RuleTapeChangeSide::from_tapechangekind(tck),
+        right: RuleTapeChangeSide::empty(),
+      },
+      Some((Dir::R, tck)) => Self {
+        left: RuleTapeChangeSide::empty(),
+        right: RuleTapeChangeSide::from_tapechangekind(tck),
+      },
+    }
+  }
+}
+pub fn apply_rule_extra_info<S: TapeSymbol, C: TapeCount>(
   tape: &mut ExpTape<S, C>,
   cur_state: State,
   Rule { start: Config { state, left, head, right }, end }: &Rule<S>,
   verbose: bool,
-) -> Option<(State, HashMap<Var, C>)> {
+) -> Option<(State, HashMap<Var, C>, RuleTapeChange)> {
   if cur_state == *state && tape.head == *head {
     let mut hm = HashMap::new();
     if verbose {
@@ -416,10 +483,14 @@ pub fn apply_rule_hm<S: TapeSymbol, C: TapeCount>(
     };
     consume_tape_from_rulematch(&mut tape.left, left_match, left.len());
     consume_tape_from_rulematch(&mut tape.right, right_match, right.len());
-    append_rule_tape(&hm, &end.left, &mut tape.left);
-    append_rule_tape(&hm, &end.right, &mut tape.right);
+    let shrink_left = append_rule_tape(&hm, &end.left, &mut tape.left);
+    let shrink_right = append_rule_tape(&hm, &end.right, &mut tape.right);
     tape.head = end.head;
-    return Some((end.state, hm));
+    let rule_tape_change = RuleTapeChange {
+      left: RuleTapeChangeSide::from_ruletapematch_and_shrink_amount(left_match, shrink_left),
+      right: RuleTapeChangeSide::from_ruletapematch_and_shrink_amount(right_match, shrink_right),
+    };
+    return Some((end.state, hm, rule_tape_change));
   } else {
     return None;
   }
@@ -431,9 +502,9 @@ pub fn apply_rule<S: TapeSymbol, C: TapeCount>(
   rule: &Rule<S>,
   verbose: bool,
 ) -> Option<State> {
-  match apply_rule_hm(tape, cur_state, rule, verbose) {
+  match apply_rule_extra_info(tape, cur_state, rule, verbose) {
     None => None,
-    Some((s, _hm)) => Some(s),
+    Some((s, _hm, _rtc)) => Some(s),
   }
 }
 
@@ -442,13 +513,13 @@ pub fn apply_rules<S: TapeSymbol, C: TapeCount>(
   state: State,
   rulebook: &Rulebook<S>,
   verbose: bool,
-) -> Option<(State, HashMap<Var, C>)> {
+) -> Option<(State, HashMap<Var, C>, RuleTapeChange)> {
   let edge = Edge(state, tape.head);
   let rules = rulebook.get_rules(edge);
   for rule in rules {
-    match apply_rule_hm(tape, state, rule, verbose) {
+    match apply_rule_extra_info(tape, state, rule, verbose) {
       None => (),
-      Some((new_state, hm)) => return Some((new_state, hm)),
+      Some(ans) => return Some(ans),
     }
   }
   return None;
@@ -461,21 +532,25 @@ pub fn one_rule_step<S: TapeSymbol, C: TapeCount>(
   rulebook: &Rulebook<S>,
   step: u32,
   verbose: bool,
-) -> (State, HashMap<Var, C>) {
-  let (new_state, hm) = match apply_rules(exptape, state, rulebook, false) {
+) -> (State, HashMap<Var, C>, RuleTapeChange) {
+  let (new_state, hm, rtc) = match apply_rules(exptape, state, rulebook, false) {
     Some(res) => {
       println!("rule_applied");
       res
     }
-    None => match exptape.step(state, machine) {
+    None => match exptape.step_extra_info(state, machine) {
       Left(_edge) => unreachable!("machine is defined"),
-      Right(state) => (state, HashMap::default()),
+      Right((state, tc)) => (
+        state,
+        HashMap::default(),
+        RuleTapeChange::from_tapechange(tc),
+      ),
     },
   };
   if verbose {
     println!("step: {} phase: {} tape: {}", step, new_state, exptape);
   }
-  return (new_state, hm);
+  return (new_state, hm, rtc);
 }
 
 pub fn simulate_using_rules<S: TapeSymbol, C: TapeCount>(
@@ -845,7 +920,9 @@ pub fn prove_rule<S: TapeSymbol>(
   let mut neg_map: DefaultHashMap<Var, i32> = defaulthashmap! {0};
 
   for step in 1..prover_steps + 1 {
-    let (new_state, hm) = one_rule_step(machine, &mut proving_tape, state, rulebook, step, verbose);
+    let (new_state, hm, tc) =
+      one_rule_step(machine, &mut proving_tape, state, rulebook, step, verbose);
+    todo!("use tc to determine whether we have grown/shrunk too much");
     state = new_state;
     /*
     we need to track over time how negative each symbolvar has become, so that we can later
@@ -1343,7 +1420,10 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
     let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
     let tape_copy = tape.clone();
     println!("app1");
-    assert_eq!(apply_rule_hm(&mut tape, State(3), &rule, true), None);
+    assert_eq!(
+      apply_rule_extra_info(&mut tape, State(3), &rule, true),
+      None
+    );
     assert_eq!(tape, tape_copy);
     //now we apply the rule to a tape that works
     let tape_str = "(T, 2) |>T<| (T, 7)";

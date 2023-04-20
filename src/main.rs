@@ -47,9 +47,12 @@ current issues that need fixing:
 
    as is, these two issues balance each other out, but it seems perhaps better to fix both of them.
    path to fixing:
-   - make Exptape.step return whether you grew/shrunk the tape from the infinite edge
+   - make Exptape.step return whether you grew/shrunk the tape from the infinite edge (done)
+   - make rule application return whether you grew/shrunk the tape
    - in proving, explode if the tape would grow
    - in rule-guessing, track the growing and shrinking such that we can guess a conserving-rule
+
+
  */
 
 fn search_for_translated_cyclers(first_machine: SmallBinMachine, num_steps: u32) {
