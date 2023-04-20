@@ -239,15 +239,43 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
   }
 }
 
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
+pub enum TapeChangeKind {
+  Grew,
+  Shrunk,
+}
+use TapeChangeKind::*;
+
+impl TapeChangeKind {
+  pub fn combine(
+    tc1: Option<TapeChangeKind>,
+    tc2: Option<TapeChangeKind>,
+  ) -> Option<TapeChangeKind> {
+    match (tc1, tc2) {
+      (None, _) => tc2,
+      (_, None) => tc1,
+      (Some(tc1), Some(tc2)) => {
+        assert_eq!((tc1, tc2), (Shrunk, Grew));
+        None
+      }
+    }
+  }
+}
+type TapeChange = Option<(Dir, TapeChangeKind)>;
+
 impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
   // impl<S: TapeSymbol> ExpTape<S, u32> {
-  fn push_rle(stack: &mut Vec<(S, C)>, item: S) {
+  fn push_rle(stack: &mut Vec<(S, C)>, item: S) -> Option<TapeChangeKind> {
     match stack.last_mut() {
       // if the stack is empty and the symbol we're pushing is empty, then we can just drop the
       // symbol on the ground since we're adding an empty to the infinite empty stack
+      // if so, we return Shrunk to indicate we did that, else None
       None => {
         if item != TapeSymbol::empty() {
-          stack.push((item, 1.into()))
+          stack.push((item, 1.into()));
+          None
+        } else {
+          Some(TapeChangeKind::Shrunk)
         }
       }
       Some((s, count)) => {
@@ -256,13 +284,15 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
         } else {
           stack.push((item, 1.into()));
         }
+        None
       }
     }
   }
 
-  fn pop_rle(stack: &mut Vec<(S, C)>) -> S {
+  fn pop_rle(stack: &mut Vec<(S, C)>) -> (S, Option<TapeChangeKind>) {
+    // if we grew the tape from the edge, return Some(Grew), else None
     let ans = match stack.last_mut() {
-      None => return TapeSymbol::empty(),
+      None => return (TapeSymbol::empty(), Some(TapeChangeKind::Grew)),
       Some((s, count)) => {
         *count = C::sub_one(*count);
         *s
@@ -274,36 +304,49 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
       }
       _ => (),
     }
-    return ans;
+    return (ans, None);
   }
 
-  fn move_right(&mut self) {
-    Self::push_rle(&mut self.left, self.head);
-    self.head = Self::pop_rle(&mut self.right);
+  fn move_right(&mut self) -> Option<TapeChangeKind> {
+    let tc1 = Self::push_rle(&mut self.left, self.head);
+    let (new_head, tc2) = Self::pop_rle(&mut self.right);
+    self.head = new_head;
+    TapeChangeKind::combine(tc1, tc2)
   }
 
-  fn move_left(&mut self) {
-    Self::push_rle(&mut self.right, self.head);
-    self.head = Self::pop_rle(&mut self.left);
+  fn move_left(&mut self) -> Option<TapeChangeKind> {
+    let tc1 = Self::push_rle(&mut self.right, self.head);
+    let (new_head, tc2) = Self::pop_rle(&mut self.left);
+    self.head = new_head;
+    TapeChangeKind::combine(tc1, tc2)
   }
 
-  fn move_dir(&mut self, d: Dir) {
+  fn move_dir(&mut self, d: Dir) -> TapeChange {
     match d {
-      Dir::L => self.move_left(),
-      Dir::R => self.move_right(),
+      Dir::L => self.move_left().map(|t| (Dir::L, t)),
+      Dir::R => self.move_right().map(|t| (Dir::R, t)),
     }
   }
 
   //todo: these 3 functions are duplicated, some chance we want to dedub with Tape, not sure
-  pub fn step(&mut self, state: State, t: &impl Turing<S>) -> Either<Edge<S>, State> {
+  pub fn step_extra_info(
+    &mut self,
+    state: State,
+    t: &impl Turing<S>,
+  ) -> Either<Edge<S>, (State, TapeChange)> {
+    // extra info: tape grew, shrank or nothing, on the L/R
     let edge = Edge(state, self.head);
     let Trans { state, symbol, dir } = match t.step(edge) {
       Some(trans) => trans,
       None => return Left(edge),
     };
     self.head = symbol;
-    self.move_dir(dir);
-    Right(state)
+    let tc = self.move_dir(dir);
+    Right((state, tc))
+  }
+
+  pub fn step(&mut self, state: State, t: &impl Turing<S>) -> Either<Edge<S>, State> {
+    self.step_extra_info(state, t).map_right(|(s, _tc)| s)
   }
 
   fn simulate(
@@ -421,9 +464,40 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<Small
 mod test {
   use super::*;
   use crate::{
-    rules::parse::{parse_avar_gen, parse_rule},
+    rules::parse::{parse_avar_gen, parse_rule, parse_tape},
     turing::{get_machine, HALT},
   };
+
+  #[test]
+  fn step_extra_info() {
+    // ("binary_counter", "0LB0RA_1LC1LH_1RA1LC"),
+    // we want a grow, shrink, nothing, both in both directions ideally
+    // nothing: B T >F<
+    // grow:    B   >F< F
+    // shrink:  A T >F<
+    // both:    A   >F<
+    let machine = get_machine("binary_counter");
+
+    let mut nothing_tape = parse_tape("(T, 2) |>F<| ").unwrap().1;
+    let res = nothing_tape.step_extra_info(State(2), &machine);
+    assert_eq!(res, Right((State(3), None)));
+    assert_eq!(nothing_tape, parse_tape("(T, 1) |>T<| (T, 1)").unwrap().1);
+
+    let mut grow_tape = parse_tape(" |>F<| (F, 1)").unwrap().1;
+    let res = grow_tape.step_extra_info(State(2), &machine);
+    assert_eq!(res, Right((State(3), Some((Dir::L, Grew)))));
+    assert_eq!(grow_tape, parse_tape(" |>F<| (T, 1) (F, 1)").unwrap().1);
+
+    let mut shrink_tape = parse_tape("(T, 1) |>F<| ").unwrap().1;
+    let res = shrink_tape.step_extra_info(State(1), &machine);
+    assert_eq!(res, Right((State(2), Some((Dir::R, Shrunk)))));
+    assert_eq!(shrink_tape, parse_tape(" |>T<| ").unwrap().1);
+
+    let mut both_tape = parse_tape(" |>F<| ").unwrap().1;
+    let res = both_tape.step_extra_info(State(1), &machine);
+    assert_eq!(res, Right((State(2), None)));
+    assert_eq!(both_tape, parse_tape(" |>F<| ").unwrap().1);
+  }
 
   #[test]
   fn exptape_to_tape() {

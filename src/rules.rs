@@ -829,11 +829,8 @@ pub fn prove_rule<S: TapeSymbol>(
   too_negative: i32,
   verbose: bool,
 ) -> Option<(Rule<S>, RuleProof)> {
-  /* basic structure:
-  1) set up tape with rule start
-  2) simulate forward until rule end or step limit
+  /*
   caveats:
-    we have most of the simulation code written, but it will need to be generalized
     right now the tape freely adds symbols from the left and right implicit ends of the tape,
      but we don't want this behavior
   */
