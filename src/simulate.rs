@@ -495,6 +495,27 @@ mod test {
     let res = both_tape.step_extra_info(State(1), &machine);
     assert_eq!(res, Right((State(2), None)));
     assert_eq!(both_tape, parse_tape(" |>F<| ").unwrap().1);
+
+    //
+    let mut nothing2_tape = parse_tape("(T, 2) |>F<| (F, 1) (T, 1)").unwrap().1;
+    let res = nothing2_tape.step_extra_info(State(3), &machine);
+    assert_eq!(res, Right((State(1), None)));
+    assert_eq!(nothing2_tape, parse_tape("(T, 3) |>F<| (T, 1)").unwrap().1);
+
+    let mut grow2_tape = parse_tape("(T, 1) |>T<| ").unwrap().1;
+    let res = grow2_tape.step_extra_info(State(1), &machine);
+    assert_eq!(res, Right((State(1), Some((Dir::R, Grew)))));
+    assert_eq!(grow2_tape, parse_tape("(T, 1) (F, 1) |>F<| ").unwrap().1);
+
+    let mut shrink2_tape = parse_tape(" |>T<| (T, 1)").unwrap().1;
+    let res = shrink2_tape.step_extra_info(State(1), &machine);
+    assert_eq!(res, Right((State(1), Some((Dir::L, Shrunk)))));
+    assert_eq!(shrink2_tape, parse_tape(" |>T<| ").unwrap().1);
+
+    let mut both_tape = parse_tape(" |>T<| ").unwrap().1;
+    let res = both_tape.step_extra_info(State(1), &machine);
+    assert_eq!(res, Right((State(1), None)));
+    assert_eq!(both_tape, parse_tape(" |>F<| ").unwrap().1);
   }
 
   #[test]
