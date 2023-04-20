@@ -246,21 +246,17 @@ pub enum TapeChangeKind {
 }
 use TapeChangeKind::*;
 
-impl TapeChangeKind {
-  pub fn combine(
-    tc1: Option<TapeChangeKind>,
-    tc2: Option<TapeChangeKind>,
-  ) -> Option<TapeChangeKind> {
-    match (tc1, tc2) {
-      (None, _) => tc2,
-      (_, None) => tc1,
-      (Some(tc1), Some(tc2)) => {
-        assert_eq!((tc1, tc2), (Shrunk, Grew));
-        None
-      }
+pub fn combine_one_step_tape_change(tc1: TapeChange, tc2: TapeChange) -> TapeChange {
+  match (tc1, tc2) {
+    (None, _) => tc2,
+    (_, None) => tc1,
+    (Some((d1, tc1)), Some((d2, tc2))) => {
+      assert_eq!((tc1, tc2), (Shrunk, Grew));
+      None
     }
   }
 }
+
 type TapeChange = Option<(Dir, TapeChangeKind)>;
 
 impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
@@ -307,24 +303,26 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
     return (ans, None);
   }
 
-  fn move_right(&mut self) -> Option<TapeChangeKind> {
-    let tc1 = Self::push_rle(&mut self.left, self.head);
-    let (new_head, tc2) = Self::pop_rle(&mut self.right);
+  fn move_right(&mut self) -> TapeChange {
+    let tc1 = Self::push_rle(&mut self.left, self.head).map(|tc| (Dir::L, tc));
+    let (new_head, tck2) = Self::pop_rle(&mut self.right);
+    let tc2 = tck2.map(|tc| (Dir::R, tc));
     self.head = new_head;
-    TapeChangeKind::combine(tc1, tc2)
+    combine_one_step_tape_change(tc1, tc2)
   }
 
-  fn move_left(&mut self) -> Option<TapeChangeKind> {
-    let tc1 = Self::push_rle(&mut self.right, self.head);
-    let (new_head, tc2) = Self::pop_rle(&mut self.left);
+  fn move_left(&mut self) -> TapeChange {
+    let tc1 = Self::push_rle(&mut self.right, self.head).map(|tc| (Dir::R, tc));
+    let (new_head, tck2) = Self::pop_rle(&mut self.left);
+    let tc2 = tck2.map(|tc| (Dir::L, tc));
     self.head = new_head;
-    TapeChangeKind::combine(tc1, tc2)
+    combine_one_step_tape_change(tc1, tc2)
   }
 
   fn move_dir(&mut self, d: Dir) -> TapeChange {
     match d {
-      Dir::L => self.move_left().map(|t| (Dir::L, t)),
-      Dir::R => self.move_right().map(|t| (Dir::R, t)),
+      Dir::L => self.move_left(),
+      Dir::R => self.move_right(),
     }
   }
 
