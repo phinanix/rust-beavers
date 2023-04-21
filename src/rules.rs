@@ -896,6 +896,45 @@ pub fn match_avar_svar(
   ))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AVarSum {
+  n: u32,
+  var_map: DefaultHashMap<Var, u32>,
+}
+
+impl AVarSum {
+  fn new() -> Self {
+    AVarSum { n: 0, var_map: defaulthashmap! {0} }
+  }
+
+  fn add_avar(&mut self, AffineVar { n, a, var }: AffineVar) {
+    self.n += n;
+    self.var_map[var] += a;
+  }
+
+  fn mb_sub_avar(&mut self, AffineVar { n, a, var }: AffineVar) -> Option<()> {
+    if a > self.var_map[var] || n > self.n {
+      return None;
+    }
+    self.n -= n;
+    self.var_map[var] -= a;
+    Some(())
+  }
+
+  fn modify_tapechange(
+    &mut self,
+    RuleTapeChangeSide { grew, shrunk }: RuleTapeChangeSide,
+  ) -> Option<()> {
+    if let Some(grew) = grew {
+      self.mb_sub_avar(grew)?;
+    }
+    if let Some(shrunk) = shrunk {
+      self.add_avar(shrunk);
+    }
+    Some(())
+  }
+}
+
 pub fn prove_rule<S: TapeSymbol>(
   machine: &impl Turing<S>,
   rule: Rule<S>,
@@ -918,11 +957,23 @@ pub fn prove_rule<S: TapeSymbol>(
   let (goal_state, goal_tape) = end.clone().to_tape_state();
 
   let mut neg_map: DefaultHashMap<Var, i32> = defaulthashmap! {0};
+  let mut left_shrink = AVarSum::new();
+  let mut right_shrink = AVarSum::new();
 
   for step in 1..prover_steps + 1 {
     let (new_state, hm, tc) =
       one_rule_step(machine, &mut proving_tape, state, rulebook, step, verbose);
-    todo!("use tc to determine whether we have grown/shrunk too much");
+    // if we ever try to grow the tape more than we have already shrunk it, then we
+    // immediately fail
+    let ls_res = left_shrink.modify_tapechange(tc.left);
+    let rs_res = right_shrink.modify_tapechange(tc.right);
+    if ls_res.is_none() || rs_res.is_none() {
+      if verbose {
+        println!("proving the rule failed because we hit the end of the tape")
+      }
+      return None;
+    }
+
     state = new_state;
     /*
     we need to track over time how negative each symbolvar has become, so that we can later
@@ -939,21 +990,27 @@ pub fn prove_rule<S: TapeSymbol>(
     ) {
       neg_map[var] = neg_map[var].min(n);
       if neg_map[var] < too_negative {
-        println!("proving the rule failed due to negativity");
+        if verbose {
+          println!("proving the rule failed due to negativity");
+        }
         return None;
       }
     }
 
     // check if we succeeded
     if state == goal_state && proving_tape == goal_tape {
-      println!("proving the rule suceeded");
+      if verbose {
+        println!("proving the rule suceeded");
+      }
       return Some((
         package_rule(Rule { start, end }, &neg_map),
         DirectSimulation(step),
       ));
     }
   }
-  println!("proving the rule failed");
+  if verbose {
+    println!("proving the rule failed");
+  }
   return None;
 }
 
