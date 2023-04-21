@@ -36,6 +36,7 @@ pub struct State(pub u8);
 
 pub const HALT: State = State(0);
 pub const START: State = State(1);
+pub const INFINITE: State = State(255);
 
 impl Display for State {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

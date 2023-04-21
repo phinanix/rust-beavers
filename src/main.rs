@@ -50,7 +50,7 @@ current issues that need fixing:
    - make Exptape.step return whether you grew/shrunk the tape from the infinite edge (done)
    - make rule application return whether you grew/shrunk the tape (done)
    - in proving, explode if the tape would grow (done)
-   - in rule-guessing, track the growing and shrinking such that we can guess a conserving-rule
+   - in rule-guessing, track the growing and shrinking such that we can guess a conserving-rule (done)
 
 
  */
@@ -94,7 +94,7 @@ fn main() {
 
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
-  let num_steps = 20;
+  let num_steps = 10;
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
   println!("using rules");

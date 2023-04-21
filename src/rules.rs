@@ -28,7 +28,7 @@ use crate::{
   turing::{
     Bit,
     Dir::{self, L, R},
-    Edge, State, TapeSymbol, Trans, Turing, HALT, START,
+    Edge, State, TapeSymbol, Trans, Turing, HALT, INFINITE, START,
   },
 };
 use defaultmap::{defaulthashmap, DefaultHashMap};
@@ -79,9 +79,17 @@ impl AffineVar {
     return C::add(n.into(), x.mul_const(a));
   }
 
+  pub fn sub_map_maybe<C: TapeCount>(&self, hm: &HashMap<Var, C>) -> Option<C> {
+    if self.a == 0 {
+      Some(self.sub(C::zero()))
+    } else {
+      let &x = hm.get(&self.var)?;
+      Some(self.sub(x))
+    }
+  }
+
   pub fn sub_map<C: TapeCount>(&self, hm: &HashMap<Var, C>) -> C {
-    let &x = hm.get(&self.var).unwrap();
-    self.sub(x)
+    self.sub_map_maybe(hm).unwrap()
   }
 }
 
@@ -626,10 +634,29 @@ fn collate<S: TapeSymbol>(
 fn make_side<S: TapeSymbol>(
   start: &[(S, u32)],
   end: &[(S, u32)],
+  final_size: i32,
+  max_size: i32,
 ) -> (Vec<(S, AffineVar)>, Vec<(S, AffineVar)>, bool) {
   assert_eq!(start.len(), end.len());
-  let mut start_out = vec![];
-  let mut end_out = vec![];
+  let start_grow_amount = max_size;
+  let end_grow_amount = max_size - final_size;
+  let mut start_out = if start_grow_amount != 0 {
+    vec![(
+      S::empty(),
+      AffineVar::constant(start_grow_amount.try_into().unwrap()),
+    )]
+  } else {
+    vec![]
+  };
+  let mut end_out = if end_grow_amount != 0 {
+    vec![(
+      S::empty(),
+      AffineVar::constant(end_grow_amount.try_into().unwrap()),
+    )]
+  } else {
+    vec![]
+  };
+
   let mut var_used = false;
   for (&s, &e) in zip(start, end) {
     let (s_var, e_var, was_var) = collate(s, e);
@@ -640,7 +667,52 @@ fn make_side<S: TapeSymbol>(
   (start_out, end_out, var_used)
 }
 
-pub fn detect_rule<S: TapeSymbol>(history: &Vec<(u32, State, ExpTape<S, u32>)>) -> Vec<Rule<S>> {
+/*
+ we need to figure out how to deal with the fact that the tape shrinks and grows
+ if the tape has overall shrunk, then we need to expand the end of the rule
+ if the tape has overall grown, we need to expand the start of the rule
+ but that's not sufficient, if a tape grows by 1 then shrinks by 1, we need to grow both the
+ start and the end by 1
+ so essentially we need to track the maximum size that side of the tape has ever been
+ then grow both the start and the end to there
+ so that looks like
+ tape_changes : [int]
+ tape_sizes = [0]
+ for tc in tape_changes:
+   tape_sizes.append(tape_sizes[-1] + tc)
+ maximum_size_of_tape = max(tape_sizes)
+
+ amount_to_grow_start = maximum_size_of_tape
+ amount_to_grow_end = maximum_size_of_tape - tape_sizes[-1]
+*/
+pub fn accumulate_tape_diffs(tape_diffs: &[SmallVec<[TapeDiff; 4]>]) -> (i32, i32, i32, i32) {
+  let mut left_size = 0;
+  let mut max_left_size = 0;
+
+  let mut right_size = 0;
+  let mut max_right_size = 0;
+
+  for sv_tape_diff in tape_diffs {
+    for tape_diff in sv_tape_diff {
+      match tape_diff {
+        TapeDiff(Dir::L, diff) => {
+          left_size += diff;
+          max_left_size = max_left_size.max(left_size);
+        }
+        TapeDiff(Dir::R, diff) => {
+          right_size += diff;
+          max_right_size = max_right_size.max(right_size);
+        }
+      }
+    }
+  }
+  (left_size, max_left_size, right_size, max_right_size)
+}
+
+pub fn detect_rule<S: TapeSymbol>(
+  history: &Vec<(u32, State, ExpTape<S, u32>)>,
+  (final_left_size, max_left_size, final_right_size, max_right_size): (i32, i32, i32, i32),
+) -> Vec<Rule<S>> {
   /* we're detecting an additive rule, so any numbers that don't change, we guess don't change
   and any numbers that do change, we guess change by that constant each time
   so we need to
@@ -649,8 +721,18 @@ pub fn detect_rule<S: TapeSymbol>(history: &Vec<(u32, State, ExpTape<S, u32>)>) 
   */
   let second_last = &history[history.len() - 2];
   let last = &history[history.len() - 1];
-  let (start_left, end_left, var_used_left) = make_side(&second_last.2.left, &last.2.left);
-  let (start_right, end_right, var_used_right) = make_side(&second_last.2.right, &last.2.right);
+  let (start_left, end_left, var_used_left) = make_side(
+    &second_last.2.left,
+    &last.2.left,
+    final_left_size,
+    max_left_size,
+  );
+  let (start_right, end_right, var_used_right) = make_side(
+    &second_last.2.right,
+    &last.2.right,
+    final_right_size,
+    max_right_size,
+  );
   if !var_used_left && !var_used_right {
     return vec![];
   }
@@ -676,21 +758,79 @@ pub fn detect_rules<S: TapeSymbol>(
   state: State,
   exptape: &ExpTape<S, u32>,
   signatures: &mut DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>>,
+  tape_diffs: &Vec<SmallVec<[TapeDiff; 4]>>,
 ) -> Vec<Rule<S>> {
   let cur_sig_vec = &mut signatures[exptape.signature()];
   cur_sig_vec.push((step, state, exptape.clone()));
   if cur_sig_vec.len() > 1 {
-    let rules = detect_rule(cur_sig_vec);
+    let steps = cur_sig_vec.iter().map(|(s, _, _)| s).collect_vec();
+    let second_last_step = *steps[steps.len() - 2] as usize;
+    let last_step = *steps[steps.len() - 1] as usize;
+    let tape_diff_range = &tape_diffs[second_last_step..last_step];
+    let tape_sizes = accumulate_tape_diffs(tape_diff_range);
+    let rules = detect_rule(cur_sig_vec, tape_sizes);
     if rules.len() > 0 {
       println!(
         "using steps: {:?} detected rule:\n{}\n",
-        cur_sig_vec.iter().map(|(s, _, _)| s).collect_vec(),
+        steps,
         rules.first().unwrap()
       );
     }
     return rules;
   }
   return vec![];
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TapeDiffError {
+  GrewArb,
+  ShrunkArb,
+}
+use TapeDiffError::*;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TapeDiff(Dir, i32);
+
+fn rtcs_to_ints(
+  out: &mut SmallVec<[TapeDiff; 4]>,
+  hm: &HashMap<Var, u32>,
+  d: Dir,
+  RuleTapeChangeSide { grew, shrunk }: RuleTapeChangeSide,
+) -> Result<(), TapeDiffError> {
+  if let Some(grew) = grew {
+    match grew.sub_map_maybe(hm) {
+      None => {
+        return Err(TapeDiffError::GrewArb);
+      }
+      Some(c) => out.push(TapeDiff(d, c.try_into().unwrap())),
+    }
+  }
+  if let Some(shrunk) = shrunk {
+    match shrunk.sub_map_maybe(hm) {
+      None => return Err(TapeDiffError::ShrunkArb),
+      Some(c) => out.push(TapeDiff(d, i32::try_from(c).unwrap() * -1)),
+    }
+  }
+  Ok(())
+}
+
+fn rtc_to_tape_diffs(
+  hm: &HashMap<Var, u32>,
+  RuleTapeChange { left, right }: RuleTapeChange,
+) -> Result<SmallVec<[TapeDiff; 4]>, TapeDiffError> {
+  // unfortuantely you can both grow and shrink the tape
+  // and you have to process that sequentially, not all at once
+  let mut out = smallvec![];
+  let left_res = rtcs_to_ints(&mut out, hm, Dir::L, left);
+  let right_res = rtcs_to_ints(&mut out, hm, Dir::R, right);
+  match (left_res, right_res) {
+    (Err(GrewArb), _) => return Err(GrewArb),
+    (_, Err(GrewArb)) => return Err(GrewArb),
+    (Err(ShrunkArb), _) => panic!("shrunkarb without grewarb"),
+    (_, Err(ShrunkArb)) => panic!("shrunkarb without grewarb"),
+    (Ok(()), Ok(())) => (),
+  }
+  Ok(out)
 }
 
 pub fn simulate_detect_rules<S: TapeSymbol>(
@@ -709,12 +849,20 @@ pub fn simulate_detect_rules<S: TapeSymbol>(
   // let mut rulebook = Rulebook::new(machine.num_states());
   let mut signatures: DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>> =
     defaulthashmap!();
+  let mut tape_diffs = vec![];
   for step in 1..num_steps + 1 {
-    state = one_rule_step(machine, &mut exptape, state, rulebook, step, verbose).0;
+    let (new_state, hm, rtc) = one_rule_step(machine, &mut exptape, state, rulebook, step, verbose);
+    state = new_state;
+    match rtc_to_tape_diffs(&hm, rtc) {
+      Err(GrewArb) => return (INFINITE, step),
+      Err(ShrunkArb) => unreachable!("never returned"),
+      Ok(tape_diff) => tape_diffs.push(tape_diff),
+    }
+
     if state == HALT {
       return (HALT, step);
     }
-    detect_rules(step, state, &exptape, &mut signatures);
+    detect_rules(step, state, &exptape, &mut signatures, &tape_diffs);
   }
 
   return (state, num_steps);
@@ -1114,12 +1262,24 @@ pub fn simulate_proving_rules<S: TapeSymbol>(
   let mut state = START;
   let mut signatures: DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>> =
     defaulthashmap!();
+  let mut tape_diffs = vec![];
   for step in 1..num_steps + 1 {
-    state = one_rule_step(machine, &mut exptape, state, rulebook, step, verbose).0;
+    let (new_state, hm, rtc) = one_rule_step(machine, &mut exptape, state, rulebook, step, verbose);
+    state = new_state;
+    match rtc_to_tape_diffs(&hm, rtc) {
+      Err(GrewArb) => return (INFINITE, step),
+      Err(ShrunkArb) => unreachable!("never returned"),
+      Ok(tape_diff) => tape_diffs.push(tape_diff),
+    }
+    if verbose {
+      println!("tape diffs: {:?}", tape_diffs.last())
+    }
+
     if state == HALT {
       return (HALT, step);
     }
-    let rules = detect_rules(step, state, &exptape, &mut signatures);
+
+    let rules = detect_rules(step, state, &exptape, &mut signatures, &tape_diffs);
     for rule in rules {
       if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, verbose) {
         println!("proved rule: {}\nvia proof{:?}", final_rule, pf);
