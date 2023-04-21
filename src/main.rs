@@ -18,9 +18,6 @@ mod simulate;
 mod turing;
 /*
 high level todo:
-- exptape tells you when empty symbols are brought in from the end?
-- detect rules with the empty symbols that are used
-
 - detect rules that are more than additive (mx + b?)
 - prove rules by induction
 - detect counter rules
@@ -30,6 +27,16 @@ high level todo:
 - bit packed tape?
 - parallelize bb5 search?
 */
+
+/* lower level todo 21 Apr 23
+1) test rule prover works on any other machine
+2) test rule prover works on a machine that needs a "second level" rule (a rule to prove a rule)
+3) detect when a rule runs forever (using iterate_rule)
+4) mb fix proving same rule more than once
+5) scan tm3 and tm4 (mb tm5)
+6) counters / rule induction
+7) fixed size macro machines
+ */
 
 /*
 rule proving status: it "mostly" "works"
