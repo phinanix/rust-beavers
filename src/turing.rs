@@ -88,7 +88,7 @@ pub struct Trans<S> {
 
 pub const HALT_TRANS: Trans<Bit> = Trans { state: HALT, symbol: Bit(true), dir: R };
 
-const AB: &str = "HABCDEFG";
+pub const AB: &str = "HABCDEFG";
 
 impl Trans<Bit> {
   fn possible_trans(max_state: u8) -> Vec<Self> {

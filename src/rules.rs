@@ -111,7 +111,13 @@ impl<S: Display + Copy> Display for Config<S> {
     for &(s, v) in self.left.iter() {
       write!(f, "({}, {}) ", s, v)?;
     }
+    if self.left.is_empty() {
+      write!(f, " ")?;
+    }
     write!(f, "|>{}<|", self.head)?;
+    if self.right.is_empty() {
+      write!(f, " ")?;
+    }
     for &(s, v) in self.right.iter().rev() {
       write!(f, " ({}, {})", s, v)?;
     }
@@ -154,7 +160,7 @@ pub struct Rule<S> {
 
 impl<S: Display + Copy> Display for Rule<S> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    write!(f, "{}\ninto\n{}", self.start, self.end)
+    write!(f, "{}\ninto:\n{}", self.start, self.end)
   }
 }
 
@@ -192,6 +198,13 @@ impl<S: TapeSymbol> Rulebook<S> {
   }
   pub fn get_rules(&self, edge: Edge<S>) -> &Vec<Rule<S>> {
     &self.1[edge.edge_index()]
+  }
+
+  pub fn chain_rulebook(machine: &impl Turing<S>) -> Self {
+    let chain_rules = detect_chain_rules(machine);
+    let mut rulebook = Rulebook::new(machine.num_states());
+    rulebook.add_rules(chain_rules);
+    rulebook
   }
 }
 
@@ -909,7 +922,9 @@ impl AVarSum {
 
   fn add_avar(&mut self, AffineVar { n, a, var }: AffineVar) {
     self.n += n;
-    self.var_map[var] += a;
+    if a > 0 {
+      self.var_map[var] += a;
+    }
   }
 
   fn mb_sub_avar(&mut self, AffineVar { n, a, var }: AffineVar) -> Option<()> {
@@ -935,6 +950,36 @@ impl AVarSum {
   }
 }
 
+fn process_tape_side<S: TapeSymbol>(side: &mut Vec<(S, SymbolVar)>) -> AVarSum {
+  match side.get(0).map(|x| x.clone()) {
+    Some((sym, sv)) if sym == S::empty() => {
+      side.remove(0);
+      let mut sum = AVarSum::new();
+      if sv.a > 0 {
+        panic!("can't handle nonzero sv")
+      }
+      sum.n += u32::try_from(sv.n).unwrap();
+      sum
+    }
+    Some((_sym, _sv)) => AVarSum::new(),
+    None => AVarSum::new(),
+  }
+}
+
+fn process_goal_tape<S: TapeSymbol>(
+  ExpTape { mut left, head, mut right }: ExpTape<S, SymbolVar>,
+) -> (ExpTape<S, SymbolVar>, AVarSum, AVarSum) {
+  /* if you're trying to prove a goal tape like
+   |>F<| (T, 1 + 1*x_0) (F, 1)
+  you will have the problem the (F, 1) gets dropped into the void
+  so this processes that into the tape with no empty symbols at the end
+  and also what the dropped variables should be
+  */
+  let left_sum = process_tape_side(&mut left);
+  let right_sum = process_tape_side(&mut right);
+  (ExpTape { left, right, head }, left_sum, right_sum)
+}
+
 pub fn prove_rule<S: TapeSymbol>(
   machine: &impl Turing<S>,
   rule: Rule<S>,
@@ -943,11 +988,6 @@ pub fn prove_rule<S: TapeSymbol>(
   too_negative: i32,
   verbose: bool,
 ) -> Option<(Rule<S>, RuleProof)> {
-  /*
-  caveats:
-    right now the tape freely adds symbols from the left and right implicit ends of the tape,
-     but we don't want this behavior
-  */
   if verbose {
     println!("working to prove rule: {}", &rule);
   }
@@ -955,6 +995,7 @@ pub fn prove_rule<S: TapeSymbol>(
   let Rule { start, end } = rule;
   let (mut state, mut proving_tape) = start.clone().to_tape_state();
   let (goal_state, goal_tape) = end.clone().to_tape_state();
+  let (goal_tape, left_goal_sum, right_goal_sum) = process_goal_tape(goal_tape);
 
   let mut neg_map: DefaultHashMap<Var, i32> = defaulthashmap! {0};
   let mut left_shrink = AVarSum::new();
@@ -972,6 +1013,9 @@ pub fn prove_rule<S: TapeSymbol>(
         println!("proving the rule failed because we hit the end of the tape")
       }
       return None;
+    }
+    if verbose {
+      // println!("ls: {:?} rs: {:?}", left_shrink, right_shrink);
     }
 
     state = new_state;
@@ -998,7 +1042,11 @@ pub fn prove_rule<S: TapeSymbol>(
     }
 
     // check if we succeeded
-    if state == goal_state && proving_tape == goal_tape {
+    if state == goal_state
+      && proving_tape == goal_tape
+      && left_shrink == left_goal_sum
+      && right_shrink == right_goal_sum
+    {
       if verbose {
         println!("proving the rule suceeded");
       }
@@ -1018,7 +1066,8 @@ fn update_affine_var(
   AffineVar { n, a, var }: AffineVar,
   neg_map: &DefaultHashMap<Var, i32>,
 ) -> AffineVar {
-  let amt_to_add: u32 = neg_map[var].abs().try_into().unwrap();
+  let amt_changed: u32 = neg_map[var].abs().try_into().unwrap();
+  let amt_to_add = a * amt_changed;
   AffineVar { n: n + amt_to_add, a, var }
 }
 
@@ -1091,13 +1140,13 @@ pub mod parse {
     error::{FromExternalError, ParseError},
     multi::{many0, many1, separated_list0},
     sequence::{delimited, separated_pair, terminated, Tuple},
-    IResult,
+    IResult, InputIter,
   };
   use std::num::ParseIntError;
 
   use crate::{
     simulate::ExpTape,
-    turing::{Bit, State},
+    turing::{Bit, State, AB, HALT},
   };
 
   use super::{AffineVar, Config, Rule, Var};
@@ -1116,6 +1165,18 @@ pub mod parse {
     input: &'a str,
   ) -> IResult<&str, u8, E> {
     map_res(parse_int, |out: &str| u8::from_str_radix(out, 10))(input)
+  }
+
+  fn parse_state_number<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
+    input: &'a str,
+  ) -> IResult<&str, State, E> {
+    map(parse_u8, |out| State(out))(input)
+  }
+
+  fn parse_state_letter<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&str, State, E> {
+    let (input, letter) = one_of(AB)(input)?;
+    let state = State(AB.find(letter).unwrap().try_into().unwrap());
+    Ok((input, state))
   }
 
   fn parse_var<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
@@ -1218,9 +1279,9 @@ pub mod parse {
   pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
     input: &'a str,
   ) -> IResult<&str, Config<Bit>, E> {
-    let (input, (_, state_digit, _, left, _, head, _, mut right)) = (
+    let (input, (_, state, _, left, _, head, _, mut right)) = (
       tag("phase: "),
-      parse_u8,
+      alt((parse_state_number, parse_state_letter)),
       tag("  "),
       parse_config_tape_side,
       tag(" |>"),
@@ -1230,10 +1291,7 @@ pub mod parse {
     )
       .parse(input)?;
     right.reverse();
-    Ok((
-      input,
-      Config { state: State(state_digit), left, head, right },
-    ))
+    Ok((input, Config { state, left, head, right }))
   }
 
   pub fn parse_rule(input: &str) -> IResult<&str, Rule<Bit>> {
@@ -1742,5 +1800,54 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
         Some((Var(0), SymbolVar { n: -2, a: 1, var: Var(0) }))
       ))
     );
+  }
+
+  #[test]
+  fn prove_rule_test() {
+    let machine = get_machine("sweeper");
+
+    let rulebook = Rulebook::chain_rulebook(&machine);
+
+    let non_conserving_rule = parse_rule(
+      "phase: A   |>F<| (T, 0 + 1*x_0)
+into:
+phase: A   |>F<| (T, 1 + 1*x_0)",
+    )
+    .unwrap()
+    .1;
+    assert_eq!(
+      prove_rule(&machine, non_conserving_rule, &rulebook, 100, -5, true),
+      None
+    );
+    let wrong_conserving_rule = parse_rule(
+      "phase: A   |>F<| (T, 0 + 1*x_0) (F, 1)
+into:
+phase: A   |>F<| (T, 1 + 1*x_0)",
+    )
+    .unwrap()
+    .1;
+    assert_eq!(
+      prove_rule(&machine, wrong_conserving_rule, &rulebook, 100, -5, true),
+      None
+    );
+    let conserving_rule = parse_rule(
+      "phase: A  (F, 1) |>F<| (T, 0 + 1*x_0) (F, 1)
+into:
+phase: A   |>F<| (T, 1 + 1*x_0) (F, 1)",
+    )
+    .unwrap()
+    .1;
+    let obs = prove_rule(&machine, conserving_rule, &rulebook, 100, -5, true);
+    let proved_conserving_rule = parse_rule(
+      "phase: A  (F, 1) |>F<| (T, 1 + 1*x_0) (F, 1)
+into:
+phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
+    )
+    .unwrap()
+    .1;
+    let ans = Some((proved_conserving_rule, RuleProof::DirectSimulation(7)));
+    println!("\n\nproved: {}\n", obs.clone().unwrap().0);
+    println!("goal: {}\n", ans.clone().unwrap().0);
+    assert_eq!(obs, ans);
   }
 }

@@ -48,8 +48,8 @@ current issues that need fixing:
    as is, these two issues balance each other out, but it seems perhaps better to fix both of them.
    path to fixing:
    - make Exptape.step return whether you grew/shrunk the tape from the infinite edge (done)
-   - make rule application return whether you grew/shrunk the tape
-   - in proving, explode if the tape would grow
+   - make rule application return whether you grew/shrunk the tape (done)
+   - in proving, explode if the tape would grow (done)
    - in rule-guessing, track the growing and shrinking such that we can guess a conserving-rule
 
 
@@ -84,8 +84,8 @@ fn main() {
   // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
   // let num_steps = 1300;
   // search_for_translated_cyclers(first_machine, num_steps);
-  let machine = &get_machine("sweeper");
-  let chain_rules = detect_chain_rules(machine);
+  let machine = get_machine("sweeper");
+  let chain_rules = detect_chain_rules(&machine);
   println!("{} chain rules:", chain_rules.len());
   for (i, chain_rule) in chain_rules.iter().enumerate() {
     println!("{}: {}", i, chain_rule);
@@ -98,9 +98,9 @@ fn main() {
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
   println!("using rules");
-  simulate_using_rules::<Bit, u32>(machine, num_steps, &rulebook, false);
+  simulate_using_rules::<Bit, u32>(&machine, num_steps, &rulebook, false);
   // println!("detecting rules");
   // simulate_detect_rules(machine, num_steps, &rulebook, false);
   println!("proving rules");
-  simulate_proving_rules(machine, num_steps, &mut rulebook, true);
+  simulate_proving_rules(&machine, num_steps, &mut rulebook, true);
 }
