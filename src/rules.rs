@@ -68,6 +68,12 @@ impl PartialEq for AffineVar {
 
 impl Eq for AffineVar {}
 
+impl From<SymbolVar> for AffineVar {
+  fn from(SymbolVar { n, a, var }: SymbolVar) -> Self {
+    AffineVar { n: n.try_into().unwrap(), a, var }
+  }
+}
+
 impl AffineVar {
   pub fn constant(n: u32) -> Self {
     Self { n, a: 0, var: Var(0) }
@@ -90,6 +96,15 @@ impl AffineVar {
 
   pub fn sub_map<C: TapeCount>(&self, hm: &HashMap<Var, C>) -> C {
     self.sub_map_maybe(hm).unwrap()
+  }
+
+  pub fn times_var(self, var: Var) -> Option<Self> {
+    if self.a == 0 {
+      Some(Self { n: 0, a: self.n, var })
+    } else {
+      println!("var times var {}", self);
+      None
+    }
   }
 }
 
@@ -276,18 +291,29 @@ impl TapeCount for u32 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum RuleTapeMatch<C> {
-  ConsumedEnd(AffineVar),
+pub enum RuleTapeMatch<S, C> {
+  ConsumedEnd((S, AffineVar)),
   Leftover(C),
 }
 use RuleTapeMatch::*;
+
+impl<S: TapeSymbol, C> RuleTapeMatch<S, C> {
+  fn empty_ify(opt_rtm: Option<RuleTapeMatch<S, C>>) -> Option<RuleTapeMatch<S, C>> {
+    if let Some(ConsumedEnd((s, avar))) = opt_rtm {
+      if s != S::empty() {
+        return None;
+      }
+    }
+    return opt_rtm;
+  }
+}
 
 pub fn match_rule_tape<S: TapeSymbol, C: TapeCount>(
   hm: &mut HashMap<Var, C>,
   rule: &[(S, AffineVar)],
   tape: &[(S, C)],
   verbose: bool,
-) -> Option<RuleTapeMatch<C>> {
+) -> Option<RuleTapeMatch<S, C>> {
   // if rule applies, returns
   // 0: how much of the last elt is leftover
   // 1: how many elements
@@ -301,25 +327,26 @@ pub fn match_rule_tape<S: TapeSymbol, C: TapeCount>(
   };
 
   let mut last_elt_empty_tape = false;
-  let mut tape_change_val = None;
+  let mut tape_change_val_sym = None;
   if rule.len() == tape.len() + 1 {
     let last_rule_pair = rule.first().unwrap();
-    if last_rule_pair.0 == S::empty() {
-      //we can match the empty characters implicitly represented by the end of the tape
-      if verbose {
-        println!(
-          "matched {}, {} to empty",
-          last_rule_pair.0, last_rule_pair.1
-        )
-      };
-      last_elt_empty_tape = true;
-      tape_change_val = Some(last_rule_pair.1);
-    } else {
-      if verbose {
-        println!("rule too long")
-      };
-      return None;
-    }
+    // if last_rule_pair.0 == S::empty() {
+    //we can match the empty characters implicitly represented by the end of the tape
+    if verbose {
+      println!(
+        "matched {}, {} to empty",
+        last_rule_pair.0, last_rule_pair.1
+      )
+    };
+    last_elt_empty_tape = true;
+    tape_change_val_sym = Some(last_rule_pair);
+
+    // } else {
+    //   if verbose {
+    //     println!("rule too long")
+    //   };
+    // return None;
+    // }
   }
   let rule_slice_start = if last_elt_empty_tape { 1 } else { 0 };
   for (&(rule_symbol, avar), &(tape_symbol, num)) in
@@ -362,12 +389,12 @@ pub fn match_rule_tape<S: TapeSymbol, C: TapeCount>(
       }
     }
   }
-  match tape_change_val {
-    Some(tape_change_val) => {
+  match tape_change_val_sym {
+    Some(tape_change_val_sym) => {
       if leftover != C::zero() {
         return None;
       } else {
-        return Some(ConsumedEnd(tape_change_val));
+        return Some(ConsumedEnd(*tape_change_val_sym));
       }
     }
     None => {
@@ -382,7 +409,7 @@ pub fn remove<T>(vec: &mut Vec<T>, to_remove: usize) {
 
 pub fn consume_tape_from_rulematch<S: TapeSymbol, C: TapeCount>(
   tape: &mut Vec<(S, C)>,
-  tape_match: RuleTapeMatch<C>,
+  tape_match: RuleTapeMatch<S, C>,
   rule_len: usize,
 ) {
   match tape_match {
@@ -447,12 +474,12 @@ impl RuleTapeChangeSide {
     }
   }
 
-  pub fn from_ruletapematch_and_shrink_amount<C>(
-    rtm: RuleTapeMatch<C>,
+  pub fn from_ruletapematch_and_shrink_amount<S: TapeSymbol, C>(
+    rtm: RuleTapeMatch<S, C>,
     shrink_amount: Option<AffineVar>,
   ) -> Self {
     let grow_amount = match rtm {
-      ConsumedEnd(avar) => Some(avar),
+      ConsumedEnd((_, avar)) => Some(avar),
       Leftover(_) => None,
     };
     Self { grew: grow_amount, shrunk: shrink_amount }
@@ -494,11 +521,12 @@ pub fn apply_rule_extra_info<S: TapeSymbol, C: TapeCount>(
     if verbose {
       println!("left")
     };
-    let left_match = match_rule_tape(&mut hm, left, &tape.left, verbose)?;
+    let left_match = RuleTapeMatch::empty_ify(match_rule_tape(&mut hm, left, &tape.left, verbose))?;
     if verbose {
       println!("right")
     };
-    let right_match = match_rule_tape(&mut hm, right, &tape.right, verbose)?;
+    let right_match =
+      RuleTapeMatch::empty_ify(match_rule_tape(&mut hm, right, &tape.right, verbose))?;
     if verbose {
       println!("succeeded")
     };
@@ -1288,6 +1316,117 @@ pub fn simulate_proving_rules<S: TapeSymbol>(
     }
   }
   return (state, num_steps);
+}
+
+pub fn chain_side<S: TapeSymbol>(
+  start: &Vec<(S, AffineVar)>,
+  end: &Vec<(S, AffineVar)>,
+) -> Option<(Vec<(S, AffineVar)>, Vec<(S, AffineVar)>)> {
+  if start.len().abs_diff(end.len()) > 1 {
+    return None;
+  }
+  enum StartEnd {
+    Start,
+    End,
+  }
+  use StartEnd::*;
+
+  let mut hm = HashMap::new();
+  let end_sv = end
+    .iter()
+    .map(|&(s, avar)| (s, SymbolVar::from(avar)))
+    .collect_vec();
+  let rtm = match_rule_tape(&mut hm, start, &end_sv, false)?;
+
+  let new_var: Var = Var(0);
+  let ans: (StartEnd, S, AffineVar) = match rtm {
+    // in this case, we add (s, avar)*n to the start
+    ConsumedEnd((s, avar)) => (Start, s, avar.times_var(new_var)?),
+    // in this case, we add (?, svar)*n to the end, but also have to fuck around to
+    // make sure about the end of the tape
+    /* three cases:
+    if tape is shorter than rule, we have to be in the above
+    if tape is equal to rule, we can have zero leftover, or positive leftover and multiply it
+    if tape is longer than rule, we can only have zero leftover, or we fail
+    */
+    Leftover(svar) => {
+      if end.len() == start.len() + 1 {
+        if svar == SymbolVar::constant(0) {
+          let (end_s, end_v) = end.get(0).unwrap();
+          (End, *end_s, end_v.times_var(new_var)?)
+        } else {
+          return None;
+        }
+      } else {
+        assert_eq!(end.len(), start.len());
+        (
+          End,
+          end.get(0).unwrap().0,
+          AffineVar::from(svar).times_var(new_var)?,
+        )
+      }
+    }
+  };
+  let (start_out, end_out) = match ans {
+    (Start, s, v) => (vec![(s, v)], vec![]),
+    (End, s, v) => (vec![], vec![(s, v)]),
+  };
+
+  for (&(s_sym, s_var), &(e_sym, e_var)) in zip(start.iter(), end.iter()) {
+    /*
+    (3, 3) => (3, 3)
+    (3, x) => (3, 3)
+    (x, x+2) => (x, x+2y)
+     */
+    todo!()
+  }
+  todo!("new_var, zip is not matched lengths");
+
+  todo!()
+}
+
+pub fn chain_rule<S: TapeSymbol>(
+  Rule {
+    start:
+      Config {
+        state: state_start,
+        left: left_start,
+        head: head_start,
+        right: right_start,
+      },
+    end:
+      Config {
+        state: state_end,
+        left: left_end,
+        head: head_end,
+        right: right_end,
+      },
+  }: &Rule<S>,
+) -> Option<Rule<S>> {
+  // we're going to match the start to the end
+  // and then have to deal with all the ends in a nasty way
+  if state_start != state_end {
+    return None;
+  }
+  if head_start != head_end {
+    return None;
+  }
+  let (left_start_out, left_end_out) = chain_side(left_start, left_end)?;
+  let (right_start_out, right_end_out) = chain_side(right_start, right_end)?;
+  Some(Rule {
+    start: Config {
+      state: *state_start,
+      left: left_start_out,
+      head: *head_start,
+      right: right_start_out,
+    },
+    end: Config {
+      state: *state_start,
+      left: left_end_out,
+      head: *head_start,
+      right: right_end_out,
+    },
+  })
 }
 
 pub mod parse {

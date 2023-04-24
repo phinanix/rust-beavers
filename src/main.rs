@@ -19,6 +19,7 @@ mod turing;
 /*
 high level todo:
 - detect rules that are more than additive (mx + b?)
+- rules which consume part of end are probably broken (should maybe emit ConsumedEnd)
 - prove rules by induction
 - detect counter rules
 - macro machines, or tape compression
