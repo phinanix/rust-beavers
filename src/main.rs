@@ -23,6 +23,7 @@ high level todo:
 - prove rules by induction
 - detect counter rules
 - macro machines, or tape compression
+- implicit end of tape -> explicit (?)
 - track step count of rules
 - heuristics based on tape growth
 - bit packed tape?

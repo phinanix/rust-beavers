@@ -218,6 +218,22 @@ impl<S, N> ExpTape<S, N> {
     }
   }
 
+  pub fn map_first_maybe<M, F: Fn(N) -> Option<M>>(self: Self, f: F) -> Option<ExpTape<S, M>> {
+    match self {
+      Self { left, head, right } => Some(ExpTape {
+        left: left
+          .into_iter()
+          .map(|(s, n)| f(n).map(|n| (s, n)))
+          .collect::<Option<Vec<(S, M)>>>()?,
+        head: head,
+        right: right
+          .into_iter()
+          .map(|(s, n)| f(n).map(|n| (s, n)))
+          .collect::<Option<Vec<(S, M)>>>()?,
+      }),
+    }
+  }
+
   pub fn map_second<T, F: Fn(S) -> T>(self: Self, f: F) -> ExpTape<T, N> {
     match self {
       Self { left, head, right } => ExpTape {

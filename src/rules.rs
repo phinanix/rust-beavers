@@ -118,20 +118,38 @@ impl Display for AffineVar {
   }
 }
 
+trait Subbable {
+  // fn sub<C: TapeCount>(&self, x: C) -> C;
+  // fn sub_map_maybe<C: TapeCount>(&self, hm: &HashMap<Var, C>) -> Option<C>;
+  // fn sub_map<C: TapeCount>(&self, hm: &HashMap<Var, C>) -> C {
+  //   self.sub_map_maybe(hm).unwrap()
+  // }
+  fn update_var(self, neg_map: &DefaultHashMap<Var, i32>) -> Self;
+}
+
+impl Subbable for AffineVar {
+  // fn sub_map_maybe<C: TapeCount>(&self, hm: &HashMap<Var, C>) -> Option<C> {
+  //   self.sub_map_maybe(hm)
+  // }
+  fn update_var(self, neg_map: &DefaultHashMap<Var, i32>) -> Self {
+    update_affine_var(self, neg_map)
+  }
+}
+
 // much like Tape / ExpTape, the *last* thing in the Vec is the closest to the head,
 // for both left and right
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct Config<S> {
+pub struct Config<S, V> {
   pub state: State,
-  pub left: Vec<(S, AffineVar)>,
+  pub left: Vec<(S, V)>,
   pub head: S,
-  pub right: Vec<(S, AffineVar)>,
+  pub right: Vec<(S, V)>,
 }
 
-impl<S: Display + Copy> Display for Config<S> {
+impl<S: Display + Copy, V: Display> Display for Config<S, V> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "phase: {}  ", self.state)?;
-    for &(s, v) in self.left.iter() {
+    for (s, v) in self.left.iter() {
       write!(f, "({}, {}) ", s, v)?;
     }
     if self.left.is_empty() {
@@ -141,14 +159,14 @@ impl<S: Display + Copy> Display for Config<S> {
     if self.right.is_empty() {
       write!(f, " ")?;
     }
-    for &(s, v) in self.right.iter().rev() {
+    for (s, v) in self.right.iter().rev() {
       write!(f, " ({}, {})", s, v)?;
     }
     Ok(())
   }
 }
 
-impl<S> Config<S> {
+impl<S> Config<S, AffineVar> {
   fn vec_u32_to_avar(u32s: Vec<(S, u32)>) -> Vec<(S, AffineVar)> {
     u32s
       .into_iter()
@@ -175,10 +193,49 @@ impl<S> Config<S> {
   }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+impl<S> Config<S, AVarSum> {
+  pub fn from_avars(
+    Config { state, left, head, right }: Config<S, AffineVar>,
+  ) -> Config<S, AVarSum> {
+    Self::new_from_avars(state, left, head, right)
+  }
+  pub fn new_from_avars(
+    state: State,
+    left: Vec<(S, AffineVar)>,
+    head: S,
+    right: Vec<(S, AffineVar)>,
+  ) -> Self {
+    Self {
+      state,
+      left: left
+        .into_iter()
+        .map(|(s, avar)| (s, AVarSum::from(avar)))
+        .collect(),
+      head,
+      right: right
+        .into_iter()
+        .map(|(s, avar)| (s, AVarSum::from(avar)))
+        .collect(),
+    }
+  }
+
+  fn to_tape_state(self) -> Option<(State, ExpTape<S, SymbolVar>)> {
+    println!("hi1");
+    match self {
+      Config { state, left, head, right } => {
+        let tape = ExpTape { left, head, right };
+        let new_tape: ExpTape<S, SymbolVar> = tape
+          .map_first_maybe(|avar| TryInto::<AffineVar>::try_into(avar).ok().map(|x| x.into()))?;
+        Some((state, new_tape))
+      }
+    }
+  }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Rule<S> {
-  pub start: Config<S>,
-  pub end: Config<S>,
+  pub start: Config<S, AffineVar>,
+  pub end: Config<S, AVarSum>,
 }
 
 impl<S: Display + Copy> Display for Rule<S> {
@@ -198,7 +255,7 @@ impl<S: TapeSymbol> Rule<S> {
   }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Rulebook<S>(u8, SmallVec<[Vec<Rule<S>>; 14]>);
 
 impl<S: TapeSymbol> Rulebook<S> {
@@ -299,7 +356,7 @@ use RuleTapeMatch::*;
 
 impl<S: TapeSymbol, C> RuleTapeMatch<S, C> {
   fn empty_ify(opt_rtm: Option<RuleTapeMatch<S, C>>) -> Option<RuleTapeMatch<S, C>> {
-    if let Some(ConsumedEnd((s, avar))) = opt_rtm {
+    if let Some(ConsumedEnd((s, _avar))) = opt_rtm {
       if s != S::empty() {
         return None;
       }
@@ -424,16 +481,16 @@ pub fn consume_tape_from_rulematch<S: TapeSymbol, C: TapeCount>(
 
 pub fn append_rule_tape<S: TapeSymbol, C: TapeCount>(
   hm: &HashMap<Var, C>,
-  rule: &[(S, AffineVar)],
+  rule: &[(S, AVarSum)],
   tape: &mut Vec<(S, C)>,
-) -> Option<AffineVar> {
+) -> Option<AVarSum> {
   // the avar is the amount we shrank the tape by, if any
   let (slice_to_append, shrink_amount) = match rule.get(0) {
     None => return None,
     Some((s, avar)) => match tape.last_mut() {
       None => {
         if *s == S::empty() {
-          (&rule[1..], Some(*avar))
+          (&rule[1..], Some(avar.clone()))
         } else {
           (&rule[..], None)
         }
@@ -451,15 +508,15 @@ pub fn append_rule_tape<S: TapeSymbol, C: TapeCount>(
   tape.extend(
     slice_to_append
       .iter()
-      .map(|&(s, avar)| (s, avar.sub_map(hm))),
+      .map(|(s, avar)| (*s, avar.sub_map(hm))),
   );
   shrink_amount
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RuleTapeChangeSide {
   grew: Option<AffineVar>,
-  shrunk: Option<AffineVar>,
+  shrunk: Option<AVarSum>,
 }
 
 impl RuleTapeChangeSide {
@@ -470,13 +527,13 @@ impl RuleTapeChangeSide {
   pub fn from_tapechangekind(tck: TapeChangeKind) -> Self {
     match tck {
       TapeChangeKind::Grew => Self { grew: Some(AffineVar::constant(1)), shrunk: None },
-      TapeChangeKind::Shrunk => Self { grew: None, shrunk: Some(AffineVar::constant(1)) },
+      TapeChangeKind::Shrunk => Self { grew: None, shrunk: Some(AVarSum::constant(1)) },
     }
   }
 
   pub fn from_ruletapematch_and_shrink_amount<S: TapeSymbol, C>(
     rtm: RuleTapeMatch<S, C>,
-    shrink_amount: Option<AffineVar>,
+    shrink_amount: Option<AVarSum>,
   ) -> Self {
     let grow_amount = match rtm {
       ConsumedEnd((_, avar)) => Some(avar),
@@ -486,7 +543,7 @@ impl RuleTapeChangeSide {
   }
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct RuleTapeChange {
   left: RuleTapeChangeSide,
   right: RuleTapeChangeSide,
@@ -771,12 +828,7 @@ pub fn detect_rule<S: TapeSymbol>(
       head: second_last.2.head,
       right: start_right,
     },
-    end: Config {
-      state: last.1,
-      left: end_left,
-      head: last.2.head,
-      right: end_right,
-    },
+    end: Config::new_from_avars(last.1, end_left, last.2.head, end_right),
   };
   vec![rule]
 }
@@ -918,12 +970,7 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
               head: symbol_in,
               right: vec![],
             };
-            let end = Config {
-              state: state_in,
-              left: vec![],
-              head: symbol_in,
-              right: half_tape_out,
-            };
+            let end = Config::new_from_avars(state_in, vec![], symbol_in, half_tape_out);
             out.push(Rule { start, end });
           }
           R => {
@@ -933,12 +980,7 @@ pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S
               head: symbol_in,
               right: half_tape_in,
             };
-            let end = Config {
-              state: state_in,
-              left: half_tape_out,
-              head: symbol_in,
-              right: vec![],
-            };
+            let end = Config::new_from_avars(state_in, half_tape_out, symbol_in, vec![]);
             out.push(Rule { start, end });
           }
         }
@@ -984,6 +1026,31 @@ impl Display for SymbolVar {
 impl From<u32> for SymbolVar {
   fn from(value: u32) -> Self {
     SymbolVar::constant(value.try_into().unwrap())
+  }
+}
+
+impl TryFrom<AVarSum> for SymbolVar {
+  type Error = ();
+  fn try_from(avarsum: AVarSum) -> Result<Self, Self::Error> {
+    println!("hi");
+    dbg!(&avarsum);
+    let avar = dbg!(AffineVar::try_from(avarsum))?;
+    Ok(avar.into())
+  }
+}
+
+impl TryFrom<AVarSum> for AffineVar {
+  type Error = ();
+
+  fn try_from(value: AVarSum) -> Result<Self, Self::Error> {
+    if value.var_map.is_empty() {
+      return Ok(AffineVar { n: value.n, a: 0, var: Var(0) });
+    }
+
+    match value.var_map.iter().exactly_one() {
+      Err(_) => return Err(()),
+      Ok((&v, &a)) => return Ok(AffineVar { n: value.n, a, var: v }),
+    }
   }
 }
 
@@ -1086,14 +1153,56 @@ pub fn match_avar_svar(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct AVarSum {
-  n: u32,
-  var_map: DefaultHashMap<Var, u32>,
+pub struct AVarSum {
+  pub n: u32,
+  pub var_map: DefaultHashMap<Var, u32>,
+}
+
+impl Display for AVarSum {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.n)?;
+    for (v, a) in self.var_map.iter() {
+      write!(f, " + {}*{}", v, a)?;
+    }
+    Ok(())
+  }
+}
+
+impl From<AffineVar> for AVarSum {
+  fn from(avar: AffineVar) -> Self {
+    let mut out = Self::new();
+    out.add_avar(avar);
+    out
+  }
 }
 
 impl AVarSum {
   fn new() -> Self {
     AVarSum { n: 0, var_map: defaulthashmap! {0} }
+  }
+
+  fn constant(n: u32) -> Self {
+    AVarSum { n, var_map: defaulthashmap! {0} }
+  }
+
+  fn sub_map_maybe<C: TapeCount>(&self, hm: &HashMap<Var, C>) -> Option<C> {
+    let mut out: C = self.n.into();
+    for (v, a) in self.var_map.iter() {
+      let &c = hm.get(v)?;
+      out = C::add(out, c.mul_const(*a));
+    }
+    Some(out)
+  }
+
+  fn sub_map<C: TapeCount>(&self, hm: &HashMap<Var, C>) -> C {
+    self.sub_map_maybe(hm).unwrap()
+  }
+
+  fn add(&mut self, AVarSum { n, var_map }: AVarSum) {
+    self.n += n;
+    for (v, a) in var_map.iter() {
+      self.var_map[*v] += a;
+    }
   }
 
   fn add_avar(&mut self, AffineVar { n, a, var }: AffineVar) {
@@ -1120,9 +1229,26 @@ impl AVarSum {
       self.mb_sub_avar(grew)?;
     }
     if let Some(shrunk) = shrunk {
-      self.add_avar(shrunk);
+      self.add(shrunk);
     }
     Some(())
+  }
+
+  fn times_var(&self, var: Var) -> Option<AffineVar> {
+    if self.var_map.len() > 0 {
+      return None;
+    }
+    return Some(AffineVar { n: 0, a: self.n, var });
+  }
+}
+
+impl Subbable for AVarSum {
+  fn update_var(mut self, neg_map: &DefaultHashMap<Var, i32>) -> Self {
+    for (v, a) in self.var_map.iter() {
+      let amt_changed: u32 = neg_map[v].abs().try_into().unwrap();
+      self.n += a * amt_changed;
+    }
+    self
   }
 }
 
@@ -1170,7 +1296,15 @@ pub fn prove_rule<S: TapeSymbol>(
 
   let Rule { start, end } = rule;
   let (mut state, mut proving_tape) = start.clone().to_tape_state();
-  let (goal_state, goal_tape) = end.clone().to_tape_state();
+  let (goal_state, goal_tape) = match end.clone().to_tape_state() {
+    Some(ans) => ans,
+    None => {
+      if verbose {
+        println!("failed to prove rule, because end did not convert to svars")
+      }
+      return None;
+    }
+  };
   let (goal_tape, left_goal_sum, right_goal_sum) = process_goal_tape(goal_tape);
 
   let mut neg_map: DefaultHashMap<Var, i32> = defaulthashmap! {0};
@@ -1247,20 +1381,20 @@ fn update_affine_var(
   AffineVar { n: n + amt_to_add, a, var }
 }
 
-fn update_config<S>(
-  Config { state, left, head, right }: Config<S>,
+fn update_config<S, V: Subbable>(
+  Config { state, left, head, right }: Config<S, V>,
   neg_map: &DefaultHashMap<Var, i32>,
-) -> Config<S> {
+) -> Config<S, V> {
   Config {
     state,
     left: left
       .into_iter()
-      .map(|(s, avar)| (s, update_affine_var(avar, neg_map)))
+      .map(|(s, avar)| (s, V::update_var(avar, neg_map)))
       .collect(),
     head: head,
     right: right
       .into_iter()
-      .map(|(s, avar)| (s, update_affine_var(avar, neg_map)))
+      .map(|(s, avar)| (s, V::update_var(avar, neg_map)))
       .collect(),
   }
 }
@@ -1318,10 +1452,63 @@ pub fn simulate_proving_rules<S: TapeSymbol>(
   return (state, num_steps);
 }
 
+pub fn chain_var(
+  hm: &HashMap<Var, SymbolVar>,
+  start: AffineVar,
+  end: &AVarSum,
+) -> Option<(AffineVar, AVarSum)> {
+  /*
+  (3, 3) => (3, 3)
+  (3, x) => (3, 3)
+  (x, x+2) => (x, x+2y)
+  // todo:
+  // decreases are trickier
+  (x+1, x) => (x, 0) + x = y
+  (x+3, x) => [(3x, 0), (3x+1, 1), (3x+2, 2)]
+  maybe you write the above as x -> x mod 3 or something?
+
+  // also, note that (x, 0) is going as far as possible, which is usually what you want, but not
+  always, in particular, if you are proving a rule
+   */
+
+  match start {
+    AffineVar { n, a: 0, var: _var } => {
+      if end.var_map.is_empty() {
+        assert_eq!(n, end.n);
+        Some((start, end.clone()))
+      } else {
+        assert_eq!(SymbolVar::from(start), end.sub_map(hm));
+        Some((start, start.into()))
+      }
+    }
+    AffineVar { n: n, a, var: var } => {
+      if end.var_map.is_empty() {
+        let sub_start = start.sub_map(hm);
+        assert_eq!(&AVarSum::from(AffineVar::from(sub_start)), end);
+        return Some((sub_start.into(), AVarSum::from(AffineVar::from(sub_start))));
+      }
+      match end.var_map.iter().exactly_one() {
+        Err(_) => {
+          // warning
+          println!("tried to chain {} into {} and couldn't", start, end);
+          return None;
+        }
+        Ok((&var2, &b)) => {
+          if var != var2 || a != b || n > end.n {
+            println!("tried to chain {} into {} and couldn't", start, end);
+            return None;
+          }
+          todo!()
+        }
+      }
+    }
+  }
+}
+
 pub fn chain_side<S: TapeSymbol>(
   start: &Vec<(S, AffineVar)>,
-  end: &Vec<(S, AffineVar)>,
-) -> Option<(Vec<(S, AffineVar)>, Vec<(S, AffineVar)>)> {
+  end: &Vec<(S, AVarSum)>,
+) -> Option<(Vec<(S, AffineVar)>, Vec<(S, AVarSum)>)> {
   if start.len().abs_diff(end.len()) > 1 {
     return None;
   }
@@ -1334,8 +1521,13 @@ pub fn chain_side<S: TapeSymbol>(
   let mut hm = HashMap::new();
   let end_sv = end
     .iter()
-    .map(|&(s, avar)| (s, SymbolVar::from(avar)))
-    .collect_vec();
+    .map(|(s, avar)| {
+      SymbolVar::try_from(avar.clone())
+        .ok()
+        .map(|svar| (*s, svar))
+    })
+    .collect::<Option<Vec<(S, SymbolVar)>>>()?;
+
   let rtm = match_rule_tape(&mut hm, start, &end_sv, false)?;
 
   let new_var: Var = Var(0);
@@ -1367,18 +1559,15 @@ pub fn chain_side<S: TapeSymbol>(
       }
     }
   };
-  let (start_out, end_out) = match ans {
+  let (mut start_out, mut end_out) = match ans {
     (Start, s, v) => (vec![(s, v)], vec![]),
-    (End, s, v) => (vec![], vec![(s, v)]),
+    (End, s, v) => (vec![], vec![(s, v.into())]),
   };
 
-  for (&(s_sym, s_var), &(e_sym, e_var)) in zip(start.iter(), end.iter()) {
-    /*
-    (3, 3) => (3, 3)
-    (3, x) => (3, 3)
-    (x, x+2) => (x, x+2y)
-     */
-    todo!()
+  for (&(s_sym, s_var), (e_sym, e_var)) in zip(start.iter(), end.iter()) {
+    let (s_var_out, e_var_out) = chain_var(&mut hm, s_var, e_var)?;
+    start_out.push((s_sym, s_var_out));
+    end_out.push((*e_sym, e_var_out));
   }
   todo!("new_var, zip is not matched lengths");
 
@@ -1577,7 +1766,7 @@ pub mod parse {
 
   pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
     input: &'a str,
-  ) -> IResult<&str, Config<Bit>, E> {
+  ) -> IResult<&str, Config<Bit, AffineVar>, E> {
     let (input, (_, state, _, left, _, head, _, mut right)) = (
       tag("phase: "),
       alt((parse_state_number, parse_state_letter)),
@@ -1595,7 +1784,7 @@ pub mod parse {
 
   pub fn parse_rule(input: &str) -> IResult<&str, Rule<Bit>> {
     let (input, (start, _, end)) = (parse_config, tag("\ninto:\n"), parse_config).parse(input)?;
-    Ok((input, Rule { start, end }))
+    Ok((input, Rule { start, end: Config::from_avars(end) }))
   }
 
   mod test {
@@ -1697,7 +1886,7 @@ pub mod parse {
         right: vec![],
       };
       let inp = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| ";
-      let ans: Result<(&str, Config<Bit>), nom::error::VerboseError<&str>> =
+      let ans: Result<(&str, Config<Bit, AffineVar>), nom::error::VerboseError<&str>> =
         parse_config(inp).finish();
       assert_eq!(ans, Ok(("", start)));
     }
@@ -1723,7 +1912,10 @@ pub mod parse {
         ],
       };
       let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| \ninto:\nphase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
-      assert_eq!(parse_rule(rule_str), Ok(("", Rule { start, end })));
+      assert_eq!(
+        parse_rule(rule_str),
+        Ok(("", Rule { start, end: Config::from_avars(end) }))
+      );
     }
     fn avar_strategy() -> impl Strategy<Value = AffineVar> {
       (any::<u32>(), any::<u32>(), any::<u8>()).prop_map(|(n, a, v_num)| AffineVar {
@@ -1789,12 +1981,12 @@ mod test {
         head: Bit(true),
         right: vec![(Bit(true), AffineVar { n: 0, a: 1, var: Var(0) })],
       },
-      end: Config {
-        state: State(1),
-        left: vec![(Bit(false), AffineVar { n: 0, a: 1, var: Var(0) })],
-        head: Bit(true),
-        right: vec![],
-      },
+      end: Config::new_from_avars(
+        State(1),
+        vec![(Bit(false), AffineVar { n: 0, a: 1, var: Var(0) })],
+        Bit(true),
+        vec![],
+      ),
     };
     let rule2 = Rule {
       start: Config {
@@ -1803,12 +1995,12 @@ mod test {
         head: Bit(true),
         right: vec![],
       },
-      end: Config {
-        state: State(3),
-        left: vec![],
-        head: Bit(true),
-        right: vec![(Bit(true), AffineVar { n: 0, a: 1, var: Var(0) })],
-      },
+      end: Config::new_from_avars(
+        State(3),
+        vec![],
+        Bit(true),
+        vec![(Bit(true), AffineVar { n: 0, a: 1, var: Var(0) })],
+      ),
     };
     assert_eq!(detected_rules, vec![rule1, rule2]);
   }
@@ -2148,5 +2340,26 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     println!("\n\nproved: {}\n", obs.clone().unwrap().0);
     println!("goal: {}\n", ans.clone().unwrap().0);
     assert_eq!(obs, ans);
+  }
+
+  #[test]
+  fn chaining_rules_test() {
+    /*
+    phase: A  (F, 1) |>F<| (T, x) (F, 1)
+    into:
+    phase: A   |>F<| (T, 1 + x) (F, 1)
+
+    chained n times:
+    phase: A  (F, n) |>F<| (T, x) (F, 1)
+    into:
+    phase: A   |>F<| (T, n + x) (F, 1)
+
+    chain (x, x+1) (x, x+n)
+
+    chain (x+1, x) (x+n, x)
+    no!
+    chain (x+1, x) (x, 0) + x = n
+
+     */
   }
 }
