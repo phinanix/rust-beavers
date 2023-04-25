@@ -1537,7 +1537,6 @@ pub fn chain_var(
   // also, note that (x, 0) is going as far as possible, which is usually what you want, but not
   always, in particular, if you are proving a rule
    */
-  dbg!(start, end);
   match start {
     AffineVar { n, a: 0, var: _var } => {
       if end.var_map.is_empty() {
@@ -1548,7 +1547,7 @@ pub fn chain_var(
         Some((start, start.into()))
       }
     }
-    AffineVar { n: n, a, var: var } => {
+    AffineVar { n, a, var } => {
       if end.var_map.is_empty() {
         let sub_start = start.sub_map(hm);
         assert_eq!(&AVarSum::from(AffineVar::from(sub_start)), end);
@@ -1655,9 +1654,7 @@ pub fn chain_side<S: TapeSymbol>(
     })
     .collect::<Option<Vec<(S, SymbolVar)>>>()?;
 
-  dbg!(start, &end_sv);
   let rtm = match_rule_tape(&mut hm, start, &end_sv, false)?;
-  dbg!(rtm);
   let new_var: Var = get_newest_var(start, end);
   //two usize are where to iterate from in start and end resp.
   let (ans, start_slice, end_slice): ((StartEnd, S, AffineVar), usize, usize) = match rtm {
@@ -1708,7 +1705,6 @@ pub fn chain_side<S: TapeSymbol>(
       }
     }
   };
-  dbg!(start_slice, end_slice, ans);
   let (mut start_out, mut end_out) = match ans {
     (_, _s, AffineVar { n: 0, a: 0, var: _var }) => (vec![], vec![]),
     (Start, s, v) => (vec![(s, v)], vec![]),
@@ -1718,7 +1714,6 @@ pub fn chain_side<S: TapeSymbol>(
   for (i, (&(s_sym, s_var), (e_sym, e_var))) in
     zip_eq(start[start_slice..].iter(), end[end_slice..].iter()).enumerate()
   {
-    dbg!((s_sym, s_var), (e_sym, e_var));
     let (s_var_out, e_var_out) = chain_var(&mut hm, s_var, e_var, new_var)?;
     if i == 0 {
       append_exptape(&mut start_out, (s_sym, s_var_out));
@@ -2726,7 +2721,7 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     // ([(T, 3), (F, x+1), (T, 1+k)], [(T, 3), (F, 1+x+k), (T, 1)])
     let start = parse_half_tape("(T, 3) (F, 1 + 1*x_0) (T, 2)");
     assert_eq!(start.len(), 3);
-    let end = av_to_avs(parse_half_tape("(T, 3) (F, 2 + 1*x_0) (T, 1)"));
+    let end = parse_end_half_tape("(T, 3) (F, 2 + 1*x_0) (T, 1)");
     assert_eq!(end.len(), 3);
     let start_out = parse_half_tape("(T, 3) (F, 1 + 1*x_0) (T, 1 + 1*x_1)");
     let end_out = parse_end_half_tape("(T, 3) (F, 1 + 1*x_0 + 1*x_1) (T, 1)");
@@ -2737,6 +2732,35 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
       TapeHalf(Dir::R, &end_ans)
     );
     assert_eq!((start_ans, end_ans), (start_out, end_out));
+
+    // ([(F, 1), (T, 4)], [(F, 1), (T, 4), (F, 1)])
+    // ([(F, 1), (T, 4)], [(F, 1), (T, 4), (F, x)])
+    let start = parse_half_tape("(F, 1) (T, 4)");
+    assert_eq!(start.len(), 2);
+    let end = parse_end_half_tape("(F, 1) (T, 4) (F, 1)");
+    assert_eq!(end.len(), 3);
+    let end_out = parse_end_half_tape("(F, 1) (T, 4) (F, 0 + 1*x_0)");
+    let (start_ans, end_ans) = chain_side(&start, &end).unwrap();
+    println!(
+      "3 got ans\n{}\ninto\n{}",
+      TapeHalf(Dir::R, &start_ans),
+      TapeHalf(Dir::R, &end_ans)
+    );
+    assert_eq!((start_ans, end_ans), (start, end_out));
+
+    // ([(F, 1), (T, 3)], [(F, 1), (T, 4), (F, 1)]) -> None
+    let start = parse_half_tape("(F, 1) (T, 3)");
+    assert_eq!(start.len(), 2, "{:?}", start);
+    let end = av_to_avs(parse_half_tape("(F, 1) (T, 4) (F, 1)"));
+    assert_eq!(end.len(), 3);
+    assert_eq!(chain_side(&start, &end), None);
+
+    // ([(F, 1), (T, 4)], [(F, 1), (T, 3), (F, 1)]) -> None
+    let start = parse_half_tape("(F, 1) (T, 4)");
+    assert_eq!(start.len(), 2, "{:?}", start);
+    let end = av_to_avs(parse_half_tape("(F, 1) (T, 3) (F, 1)"));
+    assert_eq!(end.len(), 3);
+    assert_eq!(chain_side(&start, &end), None);
 
     // ([(T, 2), (F, 4)] [(T, 2), (F, 3), (T, 1)]) -> None
     let start = parse_half_tape("(T, 2) (F, 4)");

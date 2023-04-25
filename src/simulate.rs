@@ -266,7 +266,7 @@ pub fn combine_one_step_tape_change(tc1: TapeChange, tc2: TapeChange) -> TapeCha
   match (tc1, tc2) {
     (None, _) => tc2,
     (_, None) => tc1,
-    (Some((d1, tc1)), Some((d2, tc2))) => {
+    (Some((_d1, tc1)), Some((_d2, tc2))) => {
       assert_eq!((tc1, tc2), (Shrunk, Grew));
       None
     }

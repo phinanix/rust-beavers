@@ -70,7 +70,7 @@ fn search_for_translated_cyclers(first_machine: SmallBinMachine, num_steps: u32)
   dbg!(machines.len());
   let mut lr_results = vec![];
   for m in machines {
-    let m_str = SmallBinMachine::to_compact_format(&m);
+    // let m_str = SmallBinMachine::to_compact_format(&m);
     let lr_res = lr_simulate(&m, num_steps);
     lr_results.push(lr_res);
     let (final_state, normal_num_steps, _tape) = Tape::simulate_from_start(&m, num_steps, false);
