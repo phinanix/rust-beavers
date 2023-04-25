@@ -1038,9 +1038,7 @@ impl From<u32> for SymbolVar {
 impl TryFrom<AVarSum> for SymbolVar {
   type Error = ();
   fn try_from(avarsum: AVarSum) -> Result<Self, Self::Error> {
-    println!("hi");
-    dbg!(&avarsum);
-    let avar = dbg!(AffineVar::try_from(avarsum))?;
+    let avar = AffineVar::try_from(avarsum)?;
     Ok(avar.into())
   }
 }
@@ -1565,6 +1563,7 @@ pub fn chain_side<S: TapeSymbol>(
   if start.len().abs_diff(end.len()) > 1 {
     return None;
   }
+  #[derive(Debug, Clone, Copy)]
   enum StartEnd {
     Start,
     End,
@@ -1622,11 +1621,10 @@ pub fn chain_side<S: TapeSymbol>(
     }
   };
   let (mut start_out, mut end_out) = match ans {
-    (_, _s, AffineVar { n: 0, a: _a, var: _var }) => (vec![], vec![]),
+    (_, _s, AffineVar { n: 0, a: 0, var: _var }) => (vec![], vec![]),
     (Start, s, v) => (vec![(s, v)], vec![]),
     (End, s, v) => (vec![], vec![(s, v.into())]),
   };
-
   for (&(s_sym, s_var), (e_sym, e_var)) in
     zip_eq(start[start_slice..].iter(), end[end_slice..].iter())
   {
@@ -2463,33 +2461,57 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     assert_eq!(chain_side::<Bit>(&start, &end), Some((start, end)));
 
     // ([(F, 1)], []) -> ([(F, x)], [])
-    let start = parse_config_tape_side("[(F, 1)]").unwrap().1;
-    let start_out = parse_config_tape_side("[(F, 0 + 1*x_0)]").unwrap().1;
+    let start = parse_config_tape_side("(F, 1)").unwrap().1;
+    assert_eq!(start.len(), 1);
+    let start_out = parse_config_tape_side("(F, 0 + 1*x_0)").unwrap().1;
+    assert_eq!(start_out.len(), 1);
     let end = vec![];
     assert_eq!(chain_side(&start, &end), Some((start_out, end)));
 
     // ([], [(T, 1)]) -> ([], [(T, x)])
     let start = vec![];
-    let end = av_to_avs(parse_config_tape_side("[(T, 1)]").unwrap().1);
-    let end_out = av_to_avs(parse_config_tape_side("[(T, 0 + 1*x_0)]").unwrap().1);
+    let end = av_to_avs(parse_config_tape_side("(T, 1)").unwrap().1);
+    let end_out = av_to_avs(parse_config_tape_side("(T, 0 + 1*x_0)").unwrap().1);
     assert_eq!(chain_side(&start, &end), Some((start, end_out)));
 
     // ([(T, 3), (F, x+1), (T, 2)], '') -> ('', '')
-    let start = parse_config_tape_side("[(T, 3), (F, 1 + 1*x_0), (T, 2)]")
+    let start = parse_config_tape_side("(T, 3) (F, 1 + 1*x_0) (T, 2)")
       .unwrap()
       .1;
+    assert_eq!(start.len(), 3);
     let end = av_to_avs(start.clone());
     assert_eq!(chain_side(&start, &end), Some((start, end)));
 
     // ([(T, 3), (F, x+1), (T, 1)], [(T, 3), (F, x+2), (T, 3)])
     // ([(T, 3), (F, x+1), (T, 1)], [(T, 3), (F, x+k), (T, 1+2k)])
+    let start = parse_config_tape_side("(T, 3) (F, 1 + 1*x_0) (T, 1)")
+      .unwrap()
+      .1;
+    assert_eq!(start.len(), 3);
+    let end = av_to_avs(
+      parse_config_tape_side("(T, 3) (F, 2 + 1*x_0) (T, 3)")
+        .unwrap()
+        .1,
+    );
+    assert_eq!(end.len(), 3);
+    //todo: parse avs
+    // let end_out = av_to_avs(parse_config_tape_side("[(T, 3), (F, 2 + 1*x_0), (T, 3)]").unwrap().1);
+    assert_eq!(chain_side(&start, &end), Some((start, end)));
 
     // ([(T, 3), (F, x+1), (T, 2)], [(T, 3), (F, x+2), (T, 1)])
     // -> ([(T, 3), (F, x+1), (T, 1+k)], [(T, 3), (F, x+k), (T, 1)])
 
     // ([(T, 2), (F, 4)] [(T, 2), (F, 3), (T, 1)]) -> None
+    let start = parse_config_tape_side("(T, 2) (F, 4)").unwrap().1;
+    assert_eq!(start.len(), 2, "{:?}", start);
+    let end = av_to_avs(parse_config_tape_side("(T, 2) (F, 3) (T, 1)").unwrap().1);
+    assert_eq!(end.len(), 3);
+    assert_eq!(chain_side(&start, &end), None);
 
     // ([(T, 2), (F, 3), (T, 1)] [(T, 2), (F, 4)]) -> None
+    let start = parse_config_tape_side("(T, 2) (F, 3) (T, 1)").unwrap().1;
+    let end = av_to_avs(parse_config_tape_side("(T, 2) (F, 4)").unwrap().1);
+    assert_eq!(chain_side(&start, &end), None);
   }
   #[test]
   fn chaining_rules_test() {
