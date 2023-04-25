@@ -9,7 +9,7 @@ use crate::{
 };
 use either::Either::Right;
 use itertools::Itertools;
-use rules::{detect_chain_rules, simulate_detect_rules, simulate_using_rules, Rulebook};
+use rules::{detect_chain_rules, simulate_using_rules, Rulebook};
 use simulate::{tnf_simulate, ExpTape};
 use turing::{get_machine, Bit, SmallBinMachine, Turing};
 
@@ -111,6 +111,6 @@ fn main() {
   simulate_using_rules::<Bit, u32>(&machine, num_steps, &rulebook, false);
   // println!("detecting rules");
   // simulate_detect_rules(machine, num_steps, &rulebook, false);
-  println!("proving rules");
+  println!("\n\nproving rules");
   simulate_proving_rules(&machine, num_steps, &mut rulebook, true);
 }
