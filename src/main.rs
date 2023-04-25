@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
+#![feature(return_position_impl_trait_in_trait)]
 use crate::{
   linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
   rules::{simulate_proving_rules, AffineVar},
