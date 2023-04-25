@@ -414,15 +414,38 @@ impl<S: TapeSymbol> ExpTape<S, u32> {
   }
 }
 
+//currently used only for Display
+pub struct TapeHalf<'a, S, C>(pub Dir, pub &'a Vec<(S, C)>);
+
+impl<'a, S: TapeSymbol, C: Display> Display for TapeHalf<'a, S, C> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self.0 {
+      Dir::L => {
+        for (s, n) in self.1.iter() {
+          write!(f, "({}, {}) ", s, n)?;
+        }
+      }
+      Dir::R => {
+        for (s, n) in self.1.iter().rev() {
+          write!(f, " ({}, {})", s, n)?;
+        }
+      }
+    };
+    Ok(())
+  }
+}
+
 impl<S: TapeSymbol, C: TapeCount> Display for ExpTape<S, C> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    for &(s, n) in self.left.iter() {
-      write!(f, "({}, {}) ", s, n)?;
-    }
+    write!(f, "{}", TapeHalf(Dir::L, &self.left))?;
+    // for &(s, n) in self.left.iter() {
+    //   write!(f, "({}, {}) ", s, n)?;
+    // }
     write!(f, "|>{}<|", self.head)?;
-    for &(s, n) in self.right.iter().rev() {
-      write!(f, " ({}, {})", s, n)?;
-    }
+    write!(f, "{}", TapeHalf(Dir::R, &self.right))?;
+    // for &(s, n) in self.right.iter().rev() {
+    //   write!(f, " ({}, {})", s, n)?;
+    // }
     Ok(())
   }
 }
