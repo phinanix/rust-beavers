@@ -94,7 +94,7 @@ fn main() {
   // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
   // let num_steps = 1300;
   // search_for_translated_cyclers(first_machine, num_steps);
-  let machine = get_machine("sweeper");
+  let machine = get_machine("tailEatingDragonFast");
   let chain_rules = detect_chain_rules(&machine);
   println!("{} chain rules:", chain_rules.len());
   for (i, chain_rule) in chain_rules.iter().enumerate() {
@@ -104,11 +104,11 @@ fn main() {
 
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
-  let num_steps = 10;
+  let num_steps = 300;
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
   println!("using rules");
-  simulate_using_rules::<Bit, u32>(&machine, num_steps, &rulebook, false);
+  simulate_using_rules::<Bit, u32>(&machine, num_steps, &rulebook, true);
   // println!("detecting rules");
   // simulate_detect_rules(machine, num_steps, &rulebook, false);
   println!("\n\nproving rules");

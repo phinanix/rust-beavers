@@ -715,10 +715,12 @@ pub fn one_rule_step<S: TapeSymbol, C: TapeCount>(
   step: u32,
   verbose: bool,
 ) -> Either<Var, (State, HashMap<Var, C>, RuleTapeChange)> {
-  let (new_state, hm, rtc) = match apply_rules(exptape, state, rulebook, verbose) {
+  let (new_state, hm, rtc) = match apply_rules(exptape, state, rulebook, false) {
     Some(Left(var)) => return Left(var),
     Some(Right(res)) => {
-      println!("rule_applied");
+      if verbose {
+        println!("rule_applied");
+      }
       res
     }
     None => match exptape.step_extra_info(state, machine) {
@@ -752,7 +754,7 @@ pub fn simulate_using_rules<S: TapeSymbol, C: TapeCount>(
     if state == HALT {
       return (HALT, step, exptape);
     }
-    println!("step: {} phase: {} tape: {}", step, state, exptape);
+    // println!("step: {} phase: {} tape: {}", step, state, exptape);
   }
   return (state, num_steps, exptape);
 }
@@ -919,6 +921,7 @@ pub fn detect_rules<S: TapeSymbol>(
   exptape: &ExpTape<S, u32>,
   signatures: &mut DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>>,
   tape_diffs: &Vec<SmallVec<[TapeDiff; 4]>>,
+  verbose: bool,
 ) -> Vec<Rule<S>> {
   let cur_sig_vec = &mut signatures[exptape.signature()];
   cur_sig_vec.push((step, state, exptape.clone()));
@@ -929,7 +932,7 @@ pub fn detect_rules<S: TapeSymbol>(
     let tape_diff_range = &tape_diffs[second_last_step..last_step];
     let tape_sizes = accumulate_tape_diffs(tape_diff_range);
     let rules = detect_rule(cur_sig_vec, tape_sizes);
-    if rules.len() > 0 {
+    if rules.len() > 0 && verbose {
       println!(
         "using steps: {:?} detected rule:\n{}\n",
         steps,
@@ -1528,7 +1531,7 @@ pub fn simulate_proving_rules<S: TapeSymbol>(
   let mut tape_diffs = vec![];
   for step in 1..num_steps + 1 {
     if verbose {
-      println!("starting step {}", step);
+      // println!("starting step {}", step);
     }
     let (new_state, hm, rtc) =
       match one_rule_step(machine, &mut exptape, state, rulebook, step, verbose) {
@@ -1554,15 +1557,17 @@ pub fn simulate_proving_rules<S: TapeSymbol>(
       return (HALT, step);
     }
 
-    let rules = detect_rules(step, state, &exptape, &mut signatures, &tape_diffs);
+    let rules = detect_rules(step, state, &exptape, &mut signatures, &tape_diffs, false);
     for rule in rules {
-      if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, verbose) {
-        println!("proved rule: \n{}\nvia proof{:?}", final_rule, pf);
-        if let Some(chained_rule) = chain_rule(&final_rule) {
-          println!("chained the proved rule to: {}", chained_rule);
-          rulebook.add_rule(chained_rule);
+      if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, false) {
+        if pf != DirectSimulation(1) {
+          println!("proved rule: \n{}\nvia proof{:?}", final_rule, pf);
+          if let Some(chained_rule) = chain_rule(&final_rule) {
+            println!("chained the proved rule to: {}", chained_rule);
+            rulebook.add_rule(chained_rule);
+          }
+          rulebook.add_rule(final_rule);
         }
-        rulebook.add_rule(final_rule);
       }
     }
   }

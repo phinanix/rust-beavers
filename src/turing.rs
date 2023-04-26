@@ -296,13 +296,53 @@ impl SmallBinMachine {
   }
 }
 
-const MACHINES: [(&str, &str); 6] = [
+/*
+notes on the machines:
+counter_like is not quite an actual counter I think but the proof is very similar, it is
+in the haskell repo (todo: figure out how to analogize it to a counter)
+
+tailEatingDragonFast satisfies
+A (T, x) >T<
+A (T, 3x) >T<
+(eg 12, 57, 285)
+via subrules such as
+A T >T< F
+A >T< F T
+giving
+A (T, x) >T< F
+A >T< F (T, x)
+as well as
+A >T< (F, 1) (T, 3)
+D (T, 3) (F, 1) >T<
+and the chain rule
+D >T< (T, x)
+D (T, x) >T<
+leading to an overall behavior (57, 95) of *
+A (F, 3)        (T, x) >T<
+A (T, 3) (F, 1) (T, x-1) >T<
+and (95, 130)
+A FF (T, x) (F, 1) (T, y) >T<
+A (T, x+3) (F, 1) (T, y-1) >T<
+which chains to
+A (F, 2y) (T, x) (F, 1) (T, y) >T<
+A (T, x+3y) (F, 1) >T<
+which along with * gives
+A (F, ??) (T, x)
+A (T, 3) (F, 1) (T, x-1)
+A (T, 3x) (F, 1) >T<
+which is almost right if you fiddle a little
+ */
+const MACHINES: [(&str, &str); 10] = [
   ("bb2", "1RB1LB_1LA1RH"),
   ("bb3", "1RB1RH_0RC1RB_1LC1LA"),
   ("bb4", ""),
   ("binary_counter", "0LB0RA_1LC1LH_1RA1LC"),
   ("checkerboard_sweeper", "1RB0LC_0LC1RA_1LH1LA"),
   ("sweeper", "1RB1LH_0LC0RB_1LC1LA"),
+  ("counter_like", "1RB0LC_0LA0RB_1RA1RD_1LA1RH"),
+  ("tailEatingDragonFast", "1RB0RD_1RC1RH_0LA1RA_1LC1RD"),
+  ("tailEatingDragonSlow", "1RB1LA_1RC0RD_1LA1RH_0LA1RD"),
+  ("ternaryCounter", "1RB0LC_1LA1RA_0RA0LD_1RH1LC"),
 ];
 
 pub fn get_machine(name: &str) -> SmallBinMachine {
