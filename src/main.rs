@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 #![feature(return_position_impl_trait_in_trait)]
+use std::{io, process::exit};
+
 use crate::{
   linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
   rules::{simulate_proving_rules, AffineVar},
@@ -9,9 +11,11 @@ use crate::{
 };
 use either::Either::Right;
 use itertools::Itertools;
-use rules::{detect_chain_rules, simulate_using_rules, Rulebook};
+use rules::{
+  aggregate_and_display_proving_res, detect_chain_rules, simulate_using_rules, Rulebook,
+};
 use simulate::{tnf_simulate, ExpTape};
-use turing::{get_machine, Bit, SmallBinMachine, Turing};
+use turing::{get_machine, Bit, SmallBinMachine, Turing, INFINITE};
 
 mod linrecur;
 mod rules;
@@ -65,15 +69,18 @@ current issues that need fixing:
 
  */
 
-fn search_for_translated_cyclers(first_machine: SmallBinMachine, num_steps: u32) {
-  let machines = tnf_simulate(first_machine, 130);
+fn search_for_translated_cyclers(
+  first_machine: &SmallBinMachine,
+  num_steps: u32,
+) -> Vec<(SmallBinMachine, LRResult)> {
+  let machines = tnf_simulate(first_machine.clone(), 130);
   dbg!(machines.len());
   let mut lr_results = vec![];
   for m in machines {
     // let m_str = SmallBinMachine::to_compact_format(&m);
     let lr_res = lr_simulate(&m, num_steps);
-    lr_results.push(lr_res);
     let (final_state, normal_num_steps, _tape) = Tape::simulate_from_start(&m, num_steps, false);
+    lr_results.push((m, lr_res));
 
     // println!("m: {}, res: {:?}", m_str, lr_res);
     match lr_res {
@@ -87,15 +94,13 @@ fn search_for_translated_cyclers(first_machine: SmallBinMachine, num_steps: u32)
       _ => (),
     }
   }
-  aggregate_and_display_lr_res(lr_results);
+  aggregate_and_display_lr_res(lr_results.iter().map(|(_m, res)| *res).collect());
+  lr_results
 }
 
-fn main() {
-  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  // let num_steps = 1300;
-  // search_for_translated_cyclers(first_machine, num_steps);
-  let machine = get_machine("tailEatingDragonFast");
-  let chain_rules = detect_chain_rules(&machine);
+fn run_machine(machine: &SmallBinMachine) {
+  println!("\nrunning machine: {}", machine.to_compact_format());
+  let chain_rules = detect_chain_rules(machine);
   println!("{} chain rules:", chain_rules.len());
   for (i, chain_rule) in chain_rules.iter().enumerate() {
     println!("{}: {}", i, chain_rule);
@@ -104,13 +109,193 @@ fn main() {
 
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
-  let num_steps = 300;
+  let num_steps = 200;
+  Tape::simulate_from_start(machine, num_steps, true);
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
   println!("using rules");
-  simulate_using_rules::<Bit, u32>(&machine, num_steps, &rulebook, true);
-  // println!("detecting rules");
-  // simulate_detect_rules(machine, num_steps, &rulebook, false);
+  simulate_using_rules::<Bit, u32>(machine, num_steps, &rulebook, true);
   println!("\n\nproving rules");
-  simulate_proving_rules(&machine, num_steps, &mut rulebook, true);
+  simulate_proving_rules(machine, num_steps, &mut rulebook, true);
+}
+
+fn get_undecided(res: Vec<(SmallBinMachine, LRResult)>) -> Vec<SmallBinMachine> {
+  res
+    .into_iter()
+    .filter_map(|(m, r)| match r {
+      LRResult::Inconclusive { steps_simulated: _ } => Some(m),
+      _ => None,
+    })
+    .flat_map(|m| m.determinize_machine())
+    .collect_vec()
+}
+
+fn prove_with_rules(
+  machines: Vec<SmallBinMachine>,
+  num_steps: u32,
+  verbose: bool,
+) -> Vec<SmallBinMachine> {
+  let mut results = vec![];
+  for machine in machines {
+    let mut rulebook = Rulebook::chain_rulebook(&machine);
+    let (new_state, steps) = simulate_proving_rules(&machine, num_steps, &mut rulebook, false);
+    if new_state == INFINITE && verbose {
+      println!("\n{}", machine.to_compact_format());
+      simulate_proving_rules(
+        &machine,
+        num_steps,
+        &mut Rulebook::chain_rulebook(&machine),
+        true,
+      );
+    }
+    results.push((machine, new_state, steps));
+  }
+  aggregate_and_display_proving_res(&results);
+  results
+    .into_iter()
+    .filter_map(|(m, s, _steps)| {
+      if s != INFINITE && s != HALT {
+        Some(m)
+      } else {
+        None
+      }
+    })
+    .collect_vec()
+}
+
+fn scan_3_dregs() {
+  let undecided_size_3 = vec![
+    "1RB1RH_1RC0LC_1LB0RB",
+    "1RB1RH_1RC1LB_0LB0RC",
+    "1RB1LA_1RC1RB_1LA1RH",
+    "1RB0RB_1LC1RH_0LA1RC",
+    "1RB1RA_1LC1RH_1RA1LC",
+    "1RB1RA_1LC1RH_0RA1LC",
+    "1RB1RH_1LC1RB_0RB0LC",
+    "1RB1RH_1LC1RB_0RA0LC",
+    "1RB1RH_1LC1RA_0RA0LC",
+    "1RB1RH_1LC0RB_0LC1RB",
+    "1RB1RH_1LC0RC_1RB0LB",
+    "1RB1RH_1LC0RA_1RB0LB",
+    "1RB1RH_1LC0RA_0RB0LB",
+    "1RB1RC_1LC1RH_0RA0LB",
+    "1RB1LA_1LC0LC_1RH1RA",
+    "1RB1LC_1LC1RB_1RH1LA",
+    "1RB0LB_1LC1RB_1RH1LA",
+    "1RB1RH_1LC0RB_1LB1LA",
+    "1RB1RC_0RC1RH_1LC0LA",
+    "1RB0RC_0RC1RH_1LC0LA",
+    "1RB1RH_0RC0LB_1LB1RC",
+    "1RB1RH_0RC1LB_1LA0LA",
+    "1RB1RH_0LC0RB_1RB1LC",
+    "1RB1RH_0LC1RB_1LA1LC",
+    "1RB1RA_0LC1RH_0RA1LC",
+    "1RB1RH_0LC0RA_1LA1LB",
+    "1RB1RH_0LC0RB_0RA1LB",
+    "1RB1RH_0LC0RA_0RA1LB",
+    "1RB0LC_0LC1RA_1RH1LA",
+    "1RB0LC_1LB1RA_1RH1LA",
+    "1RB1RH_0LB1RC_1LB0RC",
+    "1RB0RC_1LA1RB_1RH1LB",
+    "1RB0LC_1LA0RA_1LA1RH",
+    "1RB0LB_1LA0RC_1RB1RH",
+    "1RB1LA_1LA1RC_1RH1RB",
+    "1RB1LA_1LA0LC_1RH1RA",
+    "1RB1LC_0LA0RB_1LA1RH",
+    "1RB0LC_0LA0RA_1LA1RH",
+    "1RB1LA_0LA0LC_1RH1RA",
+  ];
+  for m_str in undecided_size_3 {
+    let machine = SmallBinMachine::from_compact_format(m_str);
+    run_machine(&machine);
+  }
+}
+
+fn scan_3_size_2() {
+  let two_state_no_halt_from_scan_3 = vec![
+    /*
+    A FF FF< (TF, n) FF
+    A FF< (TF, n+2)
+     */
+    "1RB0LB_1LA0RA",
+    /*
+    phase: B  (F, 1) (T, 1 + 1*x_0) |>F<| (F, 1)
+    into:
+    phase: B  (T, 3 + 1*x_0) |>F<|
+     */
+    "1RB1LA_1LA1RB",
+    /*
+    phase: A  (F, 1) |>F<| (T, 1 + 1*x_0) (F, 1)
+    into:
+    phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)
+     */
+    "1RB1LA_0LA1RB",
+    // binary counter, count grows leftwards
+    "1RB1LA_0LA0RB",
+  ];
+  for m_str in two_state_no_halt_from_scan_3 {
+    let machine = SmallBinMachine::from_compact_format(m_str);
+    run_machine(&machine);
+  }
+}
+
+fn scan_from_machine(machine: &SmallBinMachine, num_steps: u32) {
+  let lr_results = search_for_translated_cyclers(machine, num_steps);
+  let undecided_machines = get_undecided(lr_results);
+  let undecided_len = undecided_machines.len();
+  let undecided_with_halt = undecided_machines
+    .into_iter()
+    .filter(|m| m.has_halt_trans())
+    .collect_vec();
+  let remaining_undecided_len = undecided_with_halt.len();
+  let no_halt_trans_count = undecided_len - remaining_undecided_len;
+  println!(
+    "there were {} undecided machines, after determinization.",
+    undecided_len
+  );
+  println!(
+    "{} had no halt trans, leaving {} to be decided",
+    no_halt_trans_count, remaining_undecided_len,
+  );
+  let final_undecided = prove_with_rules(undecided_with_halt, 200, false);
+  println!(
+    "final_undecided:\n{}",
+    final_undecided
+      .iter()
+      .map(|m| m.to_compact_format())
+      .join("\n")
+  );
+
+  loop {
+    println!("Enter the index of a machine you would like to run:");
+    let mut input_text = String::new();
+    io::stdin()
+      .read_line(&mut input_text)
+      .expect("failed to read from stdin");
+
+    let trimmed = input_text.trim();
+    let i = match trimmed.parse::<usize>() {
+      Ok(i) => i,
+      Err(..) => {
+        println!("this was not an integer: {}", trimmed);
+        exit(1)
+      }
+    };
+    let machine = &final_undecided[i];
+    println!("selected machine: {}", machine.to_compact_format());
+    run_machine(machine);
+  }
+}
+fn main() {
+  // let first_machine = SmallBinMachine::start_machine(3, Bit(true));
+  // let num_steps = 500;
+  // scan_from_machine(&first_machine, num_steps);
+
+  // let machine = get_machine("tailEatingDragonFast");
+  let machine = SmallBinMachine::from_compact_format("1RB1LA_0LA0LC_1RH1RA");
+  let lr_res = lr_simulate(&machine, 50);
+  println!("{:?}", lr_res);
+  run_machine(&machine);
+
+  // scan_3_dregs();
 }

@@ -18,7 +18,7 @@ pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> L
 where
   Tape<S>: std::fmt::Display,
 {
-  let to_print = false;
+  let to_print = true;
   let mut tape: Tape<S> = Tape::new();
   let mut state = START;
   let mut cur_displacement = 0;
@@ -102,7 +102,7 @@ where
         let cur_tape_slice =
           tape.get_displaced_slice(leftmost + shift, rightmost + shift, cur_displacement);
         if to_print {
-          dbg!(start_tape_slice, cur_tape_slice);
+          // dbg!(start_tape_slice, cur_tape_slice);
           println!("tape: {} tape_to_check: {}", tape, tape_to_check);
         }
         if start_tape_slice == cur_tape_slice {

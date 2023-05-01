@@ -28,7 +28,7 @@ use crate::{
   turing::{
     Bit,
     Dir::{self, L, R},
-    Edge, State, TapeSymbol, Trans, Turing, HALT, INFINITE, START,
+    Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, INFINITE, START,
   },
 };
 use defaultmap::{defaulthashmap, DefaultHashMap};
@@ -1561,9 +1561,13 @@ pub fn simulate_proving_rules<S: TapeSymbol>(
     for rule in rules {
       if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, false) {
         if pf != DirectSimulation(1) {
-          println!("proved rule: \n{}\nvia proof{:?}", final_rule, pf);
+          if verbose {
+            println!("proved rule: \n{}\nvia proof{:?}", final_rule, pf);
+          }
           if let Some(chained_rule) = chain_rule(&final_rule) {
-            println!("chained the proved rule to: {}", chained_rule);
+            if verbose {
+              println!("chained the proved rule to: {}", chained_rule);
+            }
             rulebook.add_rule(chained_rule);
           }
           rulebook.add_rule(final_rule);
@@ -1572,6 +1576,23 @@ pub fn simulate_proving_rules<S: TapeSymbol>(
     }
   }
   return (state, num_steps);
+}
+
+pub fn aggregate_and_display_proving_res(results: &Vec<(SmallBinMachine, State, u32)>) {
+  let mut halt_count = 0;
+  let mut inf_count = 0;
+  let mut inconclusive_count = 0;
+  for (_m, state, _steps) in results {
+    match *state {
+      HALT => halt_count += 1,
+      INFINITE => inf_count += 1,
+      _ => inconclusive_count += 1,
+    }
+  }
+  println!(
+    "halted: {} infinite: {} inconclusive: {}",
+    halt_count, inf_count, inconclusive_count
+  );
 }
 
 pub fn chain_var(
@@ -1612,12 +1633,12 @@ pub fn chain_var(
       match end.var_map.iter().exactly_one() {
         Err(_) => {
           // warning
-          println!("tried to chain {} into {} and couldn't #1", start, end);
+          // println!("tried to chain {} into {} and couldn't #1", start, end);
           return None;
         }
         Ok((&var2, &b)) => {
           if var != var2 || a != b || n > end.n {
-            println!("tried to chain {} into {} and couldn't #2", start, end);
+            // println!("tried to chain {} into {} and couldn't #2", start, end);
             return None;
           }
           // (ax + n, ax + m) -> (ax + n, ax + n + k*(m - n))

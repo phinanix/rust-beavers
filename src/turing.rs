@@ -1,6 +1,7 @@
+use itertools::Itertools;
 #[allow(unused)]
 use smallvec::{smallvec, SmallVec};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display, Write};
 use std::hash::Hash;
 
@@ -224,6 +225,20 @@ impl SmallBinMachine {
     Some(state + 1)
   }
 
+  pub fn define_trans_in_machine(
+    &self,
+    edge_index: usize,
+    new_transitions: &[Trans<Bit>],
+  ) -> Vec<Self> {
+    let mut out = vec![];
+    for &trans in new_transitions {
+      let mut new_machine = self.clone();
+      new_machine.table[edge_index] = Some(trans);
+      out.push(new_machine);
+    }
+    out
+  }
+
   pub fn branch_on_edge(&self, edge: Edge<Bit>) -> Vec<Self> {
     let edge_index = self.edge_index(edge);
     assert_eq!(self.table[edge_index], None);
@@ -233,7 +248,7 @@ impl SmallBinMachine {
       return vec![cloned];
     }
 
-    let mut out = vec![];
+    // let mut out = vec![];
 
     let mut to_print = false;
     let max_state_index = match self.first_undefined_state() {
@@ -258,12 +273,89 @@ impl SmallBinMachine {
       dbg!(possible_trans.len(), &possible_trans);
       println!();
     }
-    for trans in possible_trans {
-      let mut new_machine = self.clone();
-      new_machine.table[edge_index] = Some(trans);
+    self.define_trans_in_machine(edge_index, &possible_trans)
+  }
+
+  pub fn remove_unused_states(mut self) -> Self {
+    let mut used_states = HashSet::new();
+    used_states.insert(START);
+    for trans in self.table.iter() {
+      match trans {
+        Some(Trans { state, symbol: _, dir: _ }) => {
+          used_states.insert(*state);
+        }
+        None => (),
+      }
+    }
+    let unused_states = self
+      .all_states()
+      .into_iter()
+      .filter(|s| !used_states.contains(s))
+      .collect_vec();
+    for used_state in used_states.iter() {
+      for unused_state in unused_states.iter() {
+        assert!(
+          used_state.0 < unused_state.0,
+          "{:?} vs {:?}",
+          &used_states,
+          &unused_states
+        );
+      }
+    }
+
+    self.num_states = used_states.len().try_into().unwrap();
+    for _ in 0..(unused_states.len() * 2) {
+      self.table.pop();
+    }
+    assert_eq!(self.table.len(), (self.num_states * 2).into());
+    self
+  }
+
+  pub fn determinize_machine(&self) -> Vec<Self> {
+    // let mut out = vec![self.clone()];
+    let base_machine = self.clone().remove_unused_states();
+    if base_machine.num_undefined_trans() == 0 {
+      return vec![base_machine];
+    }
+    let undefined_trans: SmallVec<[usize; 6]> = base_machine
+      .table
+      .iter()
+      .enumerate()
+      .filter_map(|(i, mb_trans)| if mb_trans.is_none() { Some(i) } else { None })
+      .collect();
+    // we have to pick 1 trans to be halt, and the rest are not halt
+    let mut out = vec![];
+    for &trans_selected_to_halt in undefined_trans.iter() {
+      let mut new_machine = base_machine.clone();
+      new_machine.table[trans_selected_to_halt] = Some(HALT_TRANS);
       out.push(new_machine);
     }
-    out
+
+    let possible_trans = Trans::possible_trans(self.num_states);
+    // the other transitions we won't make halt, so this relies on how Trans::possible_trans
+    // returns HALT_TRANS at the head of the vector
+    assert_eq!(possible_trans[0], HALT_TRANS);
+
+    for trans_to_define in undefined_trans {
+      out = out
+        .into_iter()
+        .flat_map(|m| {
+          if m.table[trans_to_define].is_some() {
+            vec![m]
+          } else {
+            m.define_trans_in_machine(trans_to_define, &possible_trans[1..])
+          }
+        })
+        .collect();
+    }
+    return out;
+  }
+
+  pub fn has_halt_trans(&self) -> bool {
+    self
+      .table
+      .iter()
+      .any(|&mb_trans| mb_trans == Some(HALT_TRANS))
   }
 
   pub fn from_compact_format(inp: &str) -> Self {
@@ -300,6 +392,7 @@ impl SmallBinMachine {
 notes on the machines:
 counter_like is not quite an actual counter I think but the proof is very similar, it is
 in the haskell repo (todo: figure out how to analogize it to a counter)
+answer: it's a fibonacci counter, with the invariant that there is no FTF anywhere
 
 tailEatingDragonFast satisfies
 A (T, x) >T<
@@ -355,6 +448,8 @@ pub fn get_machine(name: &str) -> SmallBinMachine {
 }
 
 mod test {
+  use itertools::Itertools;
+
   use super::*;
 
   #[test]
@@ -465,5 +560,74 @@ mod test {
     branched_machines.sort();
     ans.sort();
     assert_eq!(branched_machines, ans);
+  }
+
+  #[test]
+  fn test_remove_unused() {
+    let machine = SmallBinMachine::from_compact_format("1RB0RB_1LA---");
+    let rem_unused_machine = machine.clone().remove_unused_states();
+    assert_eq!(machine, rem_unused_machine);
+
+    let machine = SmallBinMachine::from_compact_format("1RB0LB_1LA0RA_------");
+    let rem_unused_machine = machine.clone().remove_unused_states();
+    let ans_machine = SmallBinMachine::from_compact_format("1RB0LB_1LA0RA");
+    assert_eq!(ans_machine, rem_unused_machine);
+  }
+
+  #[test]
+  fn determinize_test() {
+    let machine_str = "1RB0RB_1LA---";
+    let machine = SmallBinMachine::from_compact_format(machine_str);
+    let det_machine = SmallBinMachine::from_compact_format("1RB0RB_1LA1RH");
+    let det_vec = machine.determinize_machine();
+    assert_eq!(
+      det_vec.clone(),
+      vec![det_machine.clone()],
+      "ans: [{}] actual res: {}",
+      det_machine.to_compact_format(),
+      det_vec
+        .into_iter()
+        .map(|m| m.to_compact_format())
+        .join("\n")
+    );
+
+    let machine_str = "1RB0RB_------";
+    let machine = SmallBinMachine::from_compact_format(machine_str);
+    let det_machine_strs = vec![
+      "1RB0RB_0LA1RH",
+      "1RB0RB_0LB1RH",
+      "1RB0RB_0RA1RH",
+      "1RB0RB_0RB1RH",
+      "1RB0RB_1LA1RH",
+      "1RB0RB_1LB1RH",
+      "1RB0RB_1RA1RH",
+      "1RB0RB_1RB1RH",
+      "1RB0RB_1RH0LA",
+      "1RB0RB_1RH0LB",
+      "1RB0RB_1RH0RA",
+      "1RB0RB_1RH0RB",
+      "1RB0RB_1RH1LA",
+      "1RB0RB_1RH1LB",
+      "1RB0RB_1RH1RA",
+      "1RB0RB_1RH1RB",
+    ];
+    let mut det_machines = det_machine_strs
+      .clone()
+      .into_iter()
+      .map(|s| SmallBinMachine::from_compact_format(s))
+      .collect_vec();
+    let mut det_vec = machine.determinize_machine();
+    det_machines.sort();
+    det_vec.sort();
+    assert_eq!(
+      det_vec.clone(),
+      det_machines,
+      "ans: [{}] actual res: {}",
+      det_machine_strs.join("\n"),
+      det_vec
+        .into_iter()
+        .map(|m| m.to_compact_format())
+        .join("\n")
+    );
   }
 }
