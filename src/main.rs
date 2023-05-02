@@ -122,13 +122,25 @@ fn run_machine(machine: &SmallBinMachine) {
 }
 
 fn get_undecided(res: Vec<(SmallBinMachine, LRResult)>) -> Vec<SmallBinMachine> {
+  let verbose = true;
   res
     .into_iter()
     .filter_map(|(m, r)| match r {
       LRResult::Inconclusive { steps_simulated: _ } => Some(m),
       _ => None,
     })
-    .flat_map(|m| m.determinize_machine())
+    .flat_map(|m| {
+      let ans = m.determinize_machine();
+      if verbose && !(ans.len() == 1 || ans.len() == 32) {
+        println!(
+          "{} -> {} {:?}",
+          m.to_compact_format(),
+          ans.len(),
+          ans.iter().map(|m| m.to_compact_format()).collect_vec()
+        )
+      }
+      ans
+    })
     .collect_vec()
 }
 
