@@ -1413,7 +1413,7 @@ pub fn prove_rule<S: TapeSymbol>(
   verbose: bool,
 ) -> Option<(Rule<S>, RuleProof)> {
   if verbose {
-    println!("working to prove rule: {}", &rule);
+    println!("working to prove rule:\n{}", &rule);
   }
 
   let Rule { start, end } = rule;
@@ -1449,7 +1449,12 @@ pub fn prove_rule<S: TapeSymbol>(
     if verbose {
       // println!("ls: {:?} rs: {:?}", left_shrink, right_shrink);
     }
-
+    if new_state == HALT {
+      if verbose {
+        println!("proving the rule failed because we transitioned to HALT")
+      }
+      return None;
+    }
     state = new_state;
     /*
     we need to track over time how negative each symbolvar has become, so that we can later
@@ -1542,7 +1547,7 @@ pub fn proving_rules_step<S: TapeSymbol>(
   verbose: bool,
 ) -> State {
   if verbose {
-    // println!("starting step {}", step);
+    println!("\nstarting step {}", step);
   }
   let (new_state, hm, rtc) = match one_rule_step(machine, exptape, state, rulebook, step, verbose) {
     Left(_var) => {
@@ -1567,7 +1572,7 @@ pub fn proving_rules_step<S: TapeSymbol>(
     return HALT;
   }
 
-  let rules = detect_rules(step, state, &exptape, signatures, &tape_diffs, false);
+  let rules = detect_rules(step, state, &exptape, signatures, &tape_diffs, verbose);
   for rule in rules {
     if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, false) {
       if pf != DirectSimulation(1) {

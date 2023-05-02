@@ -18,7 +18,7 @@ pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> L
 where
   Tape<S>: std::fmt::Display,
 {
-  let to_print = true;
+  let to_print = false;
   let mut tape: Tape<S> = Tape::new();
   let mut state = START;
   let mut cur_displacement = 0;

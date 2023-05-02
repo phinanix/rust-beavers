@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 #![feature(return_position_impl_trait_in_trait)]
-use std::{io, process::exit};
+use std::{collections::HashSet, io, process::exit};
 
 use crate::{
   linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
@@ -66,7 +66,9 @@ current issues that need fixing:
    - in proving, explode if the tape would grow (done)
    - in rule-guessing, track the growing and shrinking such that we can guess a conserving-rule (done)
 
-
+musings on rules (1 may 23)
+some rules are "necessary", most obviously anything made by chaining - in that we can't necessarily prove anything without using them
+other rules are not, so maybe we just drop them?
  */
 
 fn search_for_translated_cyclers(
@@ -109,7 +111,7 @@ fn run_machine(machine: &SmallBinMachine) {
 
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
-  let num_steps = 200;
+  let num_steps = 100;
   Tape::simulate_from_start(machine, num_steps, true);
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
@@ -137,6 +139,7 @@ fn prove_with_rules(
 ) -> Vec<SmallBinMachine> {
   let mut results = vec![];
   for machine in machines {
+    // println!("working on machine {}", machine.to_compact_format());
     let mut rulebook = Rulebook::chain_rulebook(&machine);
     let (new_state, steps) = simulate_proving_rules(&machine, num_steps, &mut rulebook, false);
     if new_state == INFINITE && verbose {
@@ -188,20 +191,33 @@ fn undecided_size_3() -> Vec<&'static str> {
     "1RB1RH_0RC1LB_1LA0LA",
     "1RB1RH_0LC0RB_1RB1LC",
     "1RB1RH_0LC1RB_1LA1LC",
+    // T bouncer A one way, C the other (??)
     "1RB1RA_0LC1RH_0RA1LC",
     "1RB1RH_0LC0RA_1LA1LB",
     "1RB1RH_0LC0RB_0RA1LB",
+    // TF both ways bouncer
     "1RB1RH_0LC0RA_0RA1LB",
+    // TF / TT bouncer
     "1RB0LC_0LC1RA_1RH1LA",
+    // TF / TT bouncer
     "1RB0LC_1LB1RA_1RH1LA",
+    // F/T right counter
     "1RB1RH_0LB1RC_1LB0RC",
+    // T bouncer, ABC 1 way, and B the other way
     "1RB0RC_1LA1RB_1RH1LB",
+    // TF both ways bouncer
     "1RB0LC_1LA0RA_1LA1RH",
+    // TF both ways bouncer
     "1RB0LB_1LA0RC_1RB1RH",
+    // T bouncer, BC 1 way, and A the other way
     "1RB1LA_1LA1RC_1RH1RB",
+    // T bouncer, ABC 1 way, and A the other way
     "1RB1LA_1LA0LC_1RH1RA",
+    // FF / TF left counter
     "1RB1LC_0LA0RB_1LA1RH",
+    // TF both ways bouncer
     "1RB0LC_0LA0RA_1LA1RH",
+    // T bouncer, ABC 1 way, and A the other way
     "1RB1LA_0LA0LC_1RH1RA",
   ]
 }
@@ -261,44 +277,58 @@ fn scan_from_machine(machine: &SmallBinMachine, num_steps: u32) {
     no_halt_trans_count, remaining_undecided_len,
   );
   let final_undecided = prove_with_rules(undecided_with_halt, 200, false);
-  println!(
-    "final_undecided:\n{}",
-    final_undecided
-      .iter()
-      .map(|m| m.to_compact_format())
-      .join("\n")
-  );
+  // println!(
+  //   "final_undecided:\n{}",
+  //   final_undecided
+  //     .iter()
+  //     .map(|m| m.to_compact_format())
+  //     .join("\n")
+  // );
+  // let previous_set: HashSet<_> = undecided_size_3()
+  //   .into_iter()
+  //   .map(|s| SmallBinMachine::from_compact_format(s))
+  //   .collect();
+  // let final_undecided_new = final_undecided
+  //   .iter()
+  //   .filter(|m| !previous_set.contains(m))
+  //   .collect_vec();
+  // println!(
+  //   "new_undecided:\n{}",
+  //   final_undecided_new
+  //     .iter()
+  //     .map(|m| m.to_compact_format())
+  //     .join("\n")
+  // );
 
-  loop {
-    println!("Enter the index of a machine you would like to run:");
-    let mut input_text = String::new();
-    io::stdin()
-      .read_line(&mut input_text)
-      .expect("failed to read from stdin");
+  // loop {
+  //   println!("Enter the index of a machine you would like to run:");
+  //   let mut input_text = String::new();
+  //   io::stdin()
+  //     .read_line(&mut input_text)
+  //     .expect("failed to read from stdin");
 
-    let trimmed = input_text.trim();
-    let i = match trimmed.parse::<usize>() {
-      Ok(i) => i,
-      Err(..) => {
-        println!("this was not an integer: {}", trimmed);
-        exit(1)
-      }
-    };
-    let machine = &final_undecided[i];
-    println!("selected machine: {}", machine.to_compact_format());
-    run_machine(machine);
-  }
+  //   let trimmed = input_text.trim();
+  //   let i = match trimmed.parse::<usize>() {
+  //     Ok(i) => i,
+  //     Err(..) => {
+  //       println!("this was not an integer: {}", trimmed);
+  //       exit(1)
+  //     }
+  //   };
+  //   let machine = &final_undecided[i];
+  //   println!("selected machine: {}", machine.to_compact_format());
+  //   run_machine(machine);
+  // }
 }
 fn main() {
-  // let first_machine = SmallBinMachine::start_machine(3, Bit(true));
-  // let num_steps = 500;
-  // scan_from_machine(&first_machine, num_steps);
+  //working on machine 1RB0LD_1RC1RH_1LD1RA_0RB0LD
+  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  let num_steps = 500;
+  scan_from_machine(&first_machine, num_steps);
 
   // let machine = get_machine("tailEatingDragonFast");
-  let machine = SmallBinMachine::from_compact_format("1RB1LA_0LA0LC_1RH1RA");
-  let lr_res = lr_simulate(&machine, 50);
-  println!("{:?}", lr_res);
-  run_machine(&machine);
+  // let machine = SmallBinMachine::from_compact_format("1RB0LD_1RC1RH_1LD1RA_0RB0LD");
+  // run_machine(&machine);
 
   // scan_3_dregs();
 }
