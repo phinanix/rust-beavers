@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 #![feature(return_position_impl_trait_in_trait)]
-use std::{collections::HashSet, io, process::exit};
+use std::{collections::HashSet, fs, io, process::exit};
 
 use crate::{
   linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
@@ -71,6 +71,17 @@ some rules are "necessary", most obviously anything made by chaining - in that w
 other rules are not, so maybe we just drop them?
  */
 
+fn dump_machines_to_file(machines: Vec<SmallBinMachine>, filename: &str) -> std::io::Result<()> {
+  let machine_len = machines.len();
+  let big_str = machines
+    .into_iter()
+    .map(|m| m.to_compact_format())
+    .join("\n");
+  fs::write(filename, big_str)?;
+  println!("wrote {} machines to file: {}", machine_len, filename);
+  Ok(())
+}
+
 fn search_for_translated_cyclers(
   first_machine: &SmallBinMachine,
   num_steps: u32,
@@ -111,12 +122,12 @@ fn run_machine(machine: &SmallBinMachine) {
 
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
-  let num_steps = 100;
+  let num_steps = 300;
   Tape::simulate_from_start(machine, num_steps, true);
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
-  println!("using rules");
-  simulate_using_rules::<Bit, u32>(machine, num_steps, &rulebook, true);
+  // println!("using rules");
+  // simulate_using_rules::<Bit, u32>(machine, num_steps, &rulebook, true);
   println!("\n\nproving rules");
   simulate_proving_rules(machine, num_steps, &mut rulebook, true);
 }
@@ -177,7 +188,9 @@ fn prove_with_rules(
     })
     .collect_vec()
 }
+
 fn undecided_size_3() -> Vec<&'static str> {
+  // 39 strings
   vec![
     "1RB1RH_1RC0LC_1LB0RB",
     "1RB1RH_1RC1LB_0LB0RC",
@@ -270,8 +283,13 @@ fn scan_3_size_2() {
   }
 }
 
-fn scan_from_machine(machine: &SmallBinMachine, num_steps: u32) {
-  let lr_results = search_for_translated_cyclers(machine, num_steps);
+fn scan_from_machine(
+  machine: &SmallBinMachine,
+  num_lr_steps: u32,
+  num_rule_steps: u32,
+  mb_undecided_file: Option<&str>,
+) {
+  let lr_results = search_for_translated_cyclers(machine, num_lr_steps);
   let undecided_machines = get_undecided(lr_results);
   let undecided_len = undecided_machines.len();
   let undecided_with_halt = undecided_machines
@@ -288,7 +306,10 @@ fn scan_from_machine(machine: &SmallBinMachine, num_steps: u32) {
     "{} had no halt trans, leaving {} to be decided",
     no_halt_trans_count, remaining_undecided_len,
   );
-  let final_undecided = prove_with_rules(undecided_with_halt, 200, false);
+  let final_undecided = prove_with_rules(undecided_with_halt, num_rule_steps, false);
+  if let Some(filename) = mb_undecided_file {
+    dump_machines_to_file(final_undecided, filename).expect("file should be openable");
+  }
   // println!(
   //   "final_undecided:\n{}",
   //   final_undecided
@@ -333,14 +354,44 @@ fn scan_from_machine(machine: &SmallBinMachine, num_steps: u32) {
   // }
 }
 fn main() {
-  //working on machine 1RB0LD_1RC1RH_1LD1RA_0RB0LD
+  // working on machine 1RB0LD_1RC1RH_1LD1RA_0RB0LD
+
   let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  let num_steps = 500;
-  scan_from_machine(&first_machine, num_steps);
+  let num_lr_steps = 500;
+  let num_rule_steps = 50;
+  scan_from_machine(&first_machine, num_lr_steps, num_rule_steps, None);
 
   // let machine = get_machine("tailEatingDragonFast");
-  // let machine = SmallBinMachine::from_compact_format("1RB0LD_1RC1RH_1LD1RA_0RB0LD");
+  // // let machine = SmallBinMachine::from_compact_format("1RB0LD_1RC1RH_1LD1RA_0RB0LD");
   // run_machine(&machine);
 
   // scan_3_dregs();
 }
+
+/*
+2 may 23 rule step to machine counts
+7820 @ 42-1000
+7819 @ 38-41
+7818 @ 35-37
+7817 @ 34
+7816 @ 31-33
+7814 @ 30
+7810 @ 29
+7807 @ 28
+7798 @ 27
+7789 @ 26
+7772 @ 25
+7725 @ 24
+so the record holding machines take
+42
+38
+35
+34
+2 @ 31
+4 @ 30
+3 @ 29
+9 @ 28
+9 @ 27
+27 @ 26
+47 @ 25
+ */
