@@ -162,9 +162,8 @@ fn prove_with_rules(
     })
     .collect_vec()
 }
-
-fn scan_3_dregs() {
-  let undecided_size_3 = vec![
+fn undecided_size_3() -> Vec<&'static str> {
+  vec![
     "1RB1RH_1RC0LC_1LB0RB",
     "1RB1RH_1RC1LB_0LB0RC",
     "1RB1LA_1RC1RB_1LA1RH",
@@ -204,8 +203,12 @@ fn scan_3_dregs() {
     "1RB1LC_0LA0RB_1LA1RH",
     "1RB0LC_0LA0RA_1LA1RH",
     "1RB1LA_0LA0LC_1RH1RA",
-  ];
-  for m_str in undecided_size_3 {
+  ]
+}
+// running machine: 1RB1LA_0LA0LC_1RH1RA
+
+fn scan_3_dregs() {
+  for m_str in undecided_size_3() {
     let machine = SmallBinMachine::from_compact_format(m_str);
     run_machine(&machine);
   }

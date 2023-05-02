@@ -353,7 +353,7 @@ pub fn match_var_num(
   // 1: what to send the var to.
   if num < n {
     if verbose {
-      println!("num")
+      println!("num too small")
     };
     if a == 0 {
       return Some((Left(n.checked_sub(num).unwrap()), None));
@@ -499,7 +499,20 @@ pub fn match_rule_tape<S: TapeSymbol, C: TapeCount>(
     }
     None => match leftover {
       Left(eat_past_end) => {
-        return Some(ConsumedEnd((rule.get(0).unwrap().0, eat_past_end.into())))
+        assert!(rule.len() <= tape.len(), "{} {}", rule.len(), tape.len());
+        // todo change <= to ==
+        if rule.len() == tape.len() {
+          let ans = ConsumedEnd((rule.get(0).unwrap().0, eat_past_end.into()));
+          if verbose {
+            println!(
+              "didn't match empty and ate past end, so ConsumedEnd: {:?}",
+              ans
+            );
+          }
+          return Some(ans);
+        } else {
+          return None;
+        }
       }
       Right(leftover) => return Some(Leftover(leftover)),
     },
@@ -699,9 +712,14 @@ pub fn apply_rules<S: TapeSymbol, C: TapeCount>(
   let edge = Edge(state, tape.head);
   let rules = rulebook.get_rules(edge);
   for rule in rules {
-    match apply_rule_extra_info(tape, state, rule, verbose) {
+    match apply_rule_extra_info(tape, state, rule, false) {
       None => (),
-      Some(ans) => return Some(ans),
+      Some(ans) => {
+        if verbose {
+          println!("rule:\n{}", rule);
+        }
+        return Some(ans);
+      }
     }
   }
   return None;
@@ -715,7 +733,7 @@ pub fn one_rule_step<S: TapeSymbol, C: TapeCount>(
   step: u32,
   verbose: bool,
 ) -> Either<Var, (State, HashMap<Var, C>, RuleTapeChange)> {
-  let (new_state, hm, rtc) = match apply_rules(exptape, state, rulebook, false) {
+  let (new_state, hm, rtc) = match apply_rules(exptape, state, rulebook, verbose) {
     Some(Left(var)) => return Left(var),
     Some(Right(res)) => {
       if verbose {
@@ -1513,6 +1531,62 @@ fn package_rule<S: TapeSymbol>(
   }
 }
 
+pub fn proving_rules_step<S: TapeSymbol>(
+  machine: &impl Turing<S>,
+  step: u32,
+  mut state: State,
+  exptape: &mut ExpTape<S, u32>,
+  rulebook: &mut Rulebook<S>,
+  signatures: &mut DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>>,
+  tape_diffs: &mut Vec<SmallVec<[TapeDiff; 4]>>,
+  verbose: bool,
+) -> State {
+  if verbose {
+    // println!("starting step {}", step);
+  }
+  let (new_state, hm, rtc) = match one_rule_step(machine, exptape, state, rulebook, step, verbose) {
+    Left(_var) => {
+      if verbose {
+        println!("proved machine runs forever using a rule");
+      }
+      return INFINITE;
+    }
+    Right(ans) => ans,
+  };
+  state = new_state;
+  match rtc_to_tape_diffs(&hm, rtc) {
+    Err(GrewArb) => return INFINITE,
+    Err(ShrunkArb) => unreachable!("never returned"),
+    Ok(tape_diff) => tape_diffs.push(tape_diff),
+  }
+  if verbose {
+    // println!("tape diffs: {:?}", tape_diffs.last())
+  }
+
+  if state == HALT {
+    return HALT;
+  }
+
+  let rules = detect_rules(step, state, &exptape, signatures, &tape_diffs, false);
+  for rule in rules {
+    if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, false) {
+      if pf != DirectSimulation(1) {
+        if verbose {
+          println!("proved rule: \n{}\nvia proof{:?}", final_rule, pf);
+        }
+        if let Some(chained_rule) = chain_rule(&final_rule) {
+          if verbose {
+            println!("chained the proved rule to: {}", chained_rule);
+          }
+          rulebook.add_rule(chained_rule);
+        }
+        rulebook.add_rule(final_rule);
+      }
+    }
+  }
+  state
+}
+
 pub fn simulate_proving_rules<S: TapeSymbol>(
   machine: &impl Turing<S>,
   num_steps: u32,
@@ -1530,49 +1604,18 @@ pub fn simulate_proving_rules<S: TapeSymbol>(
     defaulthashmap!();
   let mut tape_diffs = vec![];
   for step in 1..num_steps + 1 {
-    if verbose {
-      // println!("starting step {}", step);
-    }
-    let (new_state, hm, rtc) =
-      match one_rule_step(machine, &mut exptape, state, rulebook, step, verbose) {
-        Left(_var) => {
-          if verbose {
-            println!("proved machine runs forever using a rule");
-          }
-          return (INFINITE, step);
-        }
-        Right(ans) => ans,
-      };
-    state = new_state;
-    match rtc_to_tape_diffs(&hm, rtc) {
-      Err(GrewArb) => return (INFINITE, step),
-      Err(ShrunkArb) => unreachable!("never returned"),
-      Ok(tape_diff) => tape_diffs.push(tape_diff),
-    }
-    if verbose {
-      // println!("tape diffs: {:?}", tape_diffs.last())
-    }
-
-    if state == HALT {
-      return (HALT, step);
-    }
-
-    let rules = detect_rules(step, state, &exptape, &mut signatures, &tape_diffs, false);
-    for rule in rules {
-      if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, false) {
-        if pf != DirectSimulation(1) {
-          if verbose {
-            println!("proved rule: \n{}\nvia proof{:?}", final_rule, pf);
-          }
-          if let Some(chained_rule) = chain_rule(&final_rule) {
-            if verbose {
-              println!("chained the proved rule to: {}", chained_rule);
-            }
-            rulebook.add_rule(chained_rule);
-          }
-          rulebook.add_rule(final_rule);
-        }
-      }
+    state = proving_rules_step(
+      machine,
+      step,
+      state,
+      &mut exptape,
+      rulebook,
+      &mut signatures,
+      &mut tape_diffs,
+      verbose,
+    );
+    if state == INFINITE || state == HALT {
+      return (state, step);
     }
   }
   return (state, num_steps);
@@ -2290,6 +2333,7 @@ mod test {
     },
     simulate::TapeHalf,
     turing::{get_machine, Bit},
+    undecided_size_3,
   };
 
   use super::*;
@@ -2477,6 +2521,107 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
       rule_str, tape, output_tape
     );
     assert_eq!(tape, output_tape);
+
+    /* regression test for:
+    step: 33 phase: C tape: (T, 1) |>T<| (F, 1) (T, 1) (F, 2) (T, 1)
+    rule:
+    phase: C  (T, 0 + 1*x_0) |>T<| (F, 2)
+    into:
+    phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)
+    rule_applied
+    step: 34 phase: A tape: (T, 2) |>T<| (F, 2) (T, 1) (F, 2) (T, 1)
+    */
+    println!("app5");
+    let rule_str = "phase: C  (T, 0 + 1*x_0) |>T<| (F, 2)
+into:
+phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
+    let rule = parse_exact(parse_rule(rule_str));
+    let tape_str = "(T, 1) |>T<| (F, 1) (T, 1) (F, 2) (T, 1)";
+    let mut tape = parse_exact(parse_tape(tape_str));
+    let tape_copy = tape.clone();
+    println!("applying {} to \n{}", rule, tape);
+    assert_eq!(
+      apply_rule_extra_info(&mut tape, State(3), &rule, true),
+      None,
+      "wrong tape was: {}",
+      tape,
+    );
+    assert_eq!(tape, tape_copy);
+  }
+
+  fn simultaneous_step_prove_step<S: TapeSymbol>(
+    machine: &impl Turing<S>,
+    step: u32,
+    normal_tape: &mut ExpTape<S, u32>,
+    mut normal_state: State,
+    rule_tape: &mut ExpTape<S, u32>,
+    rule_state: State,
+    rulebook: &mut Rulebook<S>,
+    signatures: &mut DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>>,
+    tape_diffs: &mut Vec<SmallVec<[TapeDiff; 4]>>,
+    verbose: bool,
+  ) -> Option<(State, State)> {
+    assert_eq!(normal_state, rule_state);
+    assert_eq!(normal_tape, rule_tape);
+    let new_rule_state = proving_rules_step(
+      machine, step, rule_state, rule_tape, rulebook, signatures, tape_diffs, verbose,
+    );
+    if new_rule_state == INFINITE {
+      return None;
+    }
+
+    let mut num_steps_to_match = 0;
+
+    while (new_rule_state, &mut *rule_tape) != (normal_state, normal_tape) {
+      if num_steps_to_match > 300 || normal_state == HALT {
+        panic!(
+          "machine diverged:\n{} {}\nvs\n{} {}",
+          new_rule_state, rule_tape, normal_state, normal_tape
+        );
+      }
+      normal_state = normal_tape
+        .step(normal_state, machine)
+        .expect_right("machine is defined");
+      num_steps_to_match += 1;
+    }
+    return Some((normal_state, new_rule_state));
+  }
+
+  fn compare_machine_with_proving_rules<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) {
+    let mut normal_tape = ExpTape::new();
+    let mut normal_state = START;
+    let mut rule_tape = ExpTape::new();
+    let mut rule_state = START;
+    let mut rulebook = Rulebook::chain_rulebook(machine);
+    let mut signatures: DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>> =
+      defaulthashmap!();
+    let mut tape_diffs = vec![];
+    for step in 1..num_steps + 1 {
+      (normal_state, rule_state) = match simultaneous_step_prove_step(
+        machine,
+        step,
+        &mut normal_tape,
+        normal_state,
+        &mut rule_tape,
+        rule_state,
+        &mut rulebook,
+        &mut signatures,
+        &mut tape_diffs,
+        true,
+      ) {
+        Some(ans) => ans,
+        None => return,
+      };
+    }
+  }
+
+  #[test]
+  fn prove_rules_is_same_as_not() {
+    for m_str in undecided_size_3() {
+      println!("working on machine: {}", m_str);
+      let machine = SmallBinMachine::from_compact_format(m_str);
+      compare_machine_with_proving_rules(&machine, 100);
+    }
   }
 
   /* make a test that using chain rules is the same as not using them
@@ -2489,7 +2634,7 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
    or something
   */
 
-  fn simultaneous_steps<S: TapeSymbol>(
+  fn simultaneous_step_chain_step<S: TapeSymbol>(
     machine: &impl Turing<S>,
     normal_tape: &mut ExpTape<S, u32>,
     mut normal_state: State,
@@ -2526,11 +2671,9 @@ phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
     let mut normal_state = START;
     let mut rule_tape = ExpTape::new();
     let mut rule_state = START;
-    let chain_rules = detect_chain_rules(machine);
-    let mut rulebook = Rulebook::new(machine.num_states());
-    rulebook.add_rules(chain_rules);
+    let rulebook = Rulebook::chain_rulebook(machine);
     for step in 1..num_steps + 1 {
-      (normal_state, rule_state) = simultaneous_steps(
+      (normal_state, rule_state) = simultaneous_step_chain_step(
         machine,
         &mut normal_tape,
         normal_state,
