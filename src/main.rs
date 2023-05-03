@@ -365,6 +365,115 @@ fn undecided_size_4_random() -> Vec<&'static str> {
   ]
 }
 
+fn undecided_size_4_random_100() -> Vec<&'static str> {
+  /*
+  100 random machines chosen from the same set of 20747 for additional categorization
+    let num_undecided_to_display = 100;
+  let seed = 123456789012345; */
+  vec![
+    "1RB0RC_1LA0LD_0RB1LB_1RH1RA",
+    "1RB0LC_0RC0RA_1LD0RA_0LA1RH",
+    "1RB1LC_1LC1RA_0RD0LC_1RB1RH",
+    "1RB1LA_1LC0RA_1LC1LD_1RA1RH",
+    "1RB1RC_1LA0RA_0RA0LD_1RH1LB",
+    "1RB1RA_1LC0RA_1RH1LD_0RA1LC",
+    "1RB0LB_0RC0RA_0LD1RH_1LA1RD",
+    "1RB1RH_1LC1RD_1LD1LD_1RB0LC",
+    "1RB1LC_1RC1RH_1LA0RD_0LA1LD",
+    "1RB0RB_1LC1RH_0LA1RD_1RA1RC",
+    "1RB0LC_0RC0LD_1LD0RA_0LA1RH",
+    "1RB1RD_0LC1LC_1RD1LB_0RA1RH",
+    "1RB1RH_1RC0RB_0RD0LC_1LC1RD",
+    "1RB1LC_1LC1RB_1RH0LD_0RA1RB",
+    "1RB1RH_1LC0RD_1RC1LB_1RC1RB",
+    "1RB1RH_0LC1RB_0RA1LD_1LB1LC",
+    "1RB1LA_1RC0LD_1LD1RH_1RB1RA",
+    "1RB1RD_0RC0RA_0LD0LA_1LC1RH",
+    "1RB0RB_1LC1RB_0RD0LB_1RH1RA",
+    "1RB1LC_1LA0LD_1LB1LA_1RH1RA",
+    "1RB1RH_0LC0LD_1RB1LC_1RC1RC",
+    "1RB1LB_1LC0RD_1LC1LA_1RH1RA",
+    "1RB1RH_1LC0RD_1LC1RD_0RC0RB",
+    "1RB1RA_1LC1LC_1LD1LB_0RA1RH",
+    "1RB1RH_0LC0RA_1LD1LB_0RB1LA",
+    "1RB1RH_0RC0LB_1RD1LB_1LD1RC",
+    "1RB1RC_0LA1RH_1RD0LD_1LC0RC",
+    "1RB1RH_1RC0LD_1LB0RD_0LA1LB",
+    "1RB0RB_1LA1LC_1RA1LD_1RH1LC",
+    "1RB1LB_1RC0RD_0LA1RB_1RH1LC",
+    "1RB1RA_0LB1LC_0RA1RD_1RH1LB",
+    "1RB1RH_0LC0LD_1LA1LC_1LA1RA",
+    "1RB1LA_1LC0LD_1RH1LD_1RD1RA",
+    "1RB1LD_0LC0RC_0LD0RC_1LA1RH",
+    "1RB1LC_1LA1RH_0RC1LD_1RC0LD",
+    "1RB1RH_1RC1RD_0RD1LC_1LD0LB",
+    "1RB1LC_0LA1RD_1LA1LC_1RH0RB",
+    "1RB1RH_1LC0LD_1RB1LC_1RC1RA",
+    "1RB0RB_1LA1LC_1LA1RD_1RH1RB",
+    "1RB1LB_0LC1RH_1LD0RD_1RC0LC",
+    "1RB1RH_1RC1LD_0LB1RD_0RC0LD",
+    "1RB1LA_1LA0RC_0LD1RC_1RH1LB",
+    "1RB0LD_0LC1RA_1RH1RD_0LD1LA",
+    "1RB1RH_1LC1LC_1RD0LB_0LC0RC",
+    "1RB1RC_0LB1RC_0RD1RH_1LB0RC",
+    "1RB1RH_0RC0LC_0RD1RD_1LB1RD",
+    "1RB0LB_1LA0RC_1RD1LA_1RH0RA",
+    "1RB1LC_0LC1RA_1RH1LD_1RB0LC",
+    "1RB1RC_0LC1RD_1LA1LC_1RH0RB",
+    "1RB1LA_1LA0RC_0LD0LD_1RA1RH",
+    "1RB0LB_1LA0RC_1RD0LC_1RH0RA",
+    "1RB1RH_0RC1LB_1LD0LD_1RB0LB",
+    "1RB0LD_1LC0RA_0RB1LD_1LA1RH",
+    "1RB0LC_0LA0RA_1RD1LA_0RB1RH",
+    "1RB0RB_0RC0LC_1LB0RD_1RC1RH",
+    "1RB1RB_1LC0LD_1RA1LC_1RH0RB",
+    "1RB1RH_1RC0LA_1LD0RB_1LB0LC",
+    "1RB1LD_1LC0RD_1RH1RA_1RA1LA",
+    "1RB1LA_1LC0LC_1RH1RD_1RB0LA",
+    "1RB1RH_1LC0RB_1RD1LA_1LC1LD",
+    "1RB1RD_1RC0LA_0LB1RC_1LB1RH",
+    "1RB1LA_1LC0RD_0RB0LB_1RB1RH",
+    "1RB1RB_0LC1RA_0LD1LC_1LA1RH",
+    "1RB0LC_1LC1RH_0RD0LB_0LB1RC",
+    "1RB1RH_0RC1LD_1LA0LA_0RC1LD",
+    "1RB0LD_0LC0RC_1RB0LD_1LC1RH",
+    "1RB0LD_1RC1LB_1LB0LD_1RH1RB",
+    "1RB1LA_0LC0RD_1LD1LB_1RB1RH",
+    "1RB1LD_1RC1RH_0LA0RC_1LD0LA",
+    "1RB1RH_1LC0LD_1LB1RD_1RB1RC",
+    "1RB1RD_1LC0RC_1RD1LB_1RH1RA",
+    "1RB1RD_0LC0RB_1RB1LD_1LC1RH",
+    "1RB0RC_1LA1RB_1RH1LD_1LA0RA",
+    "1RB1LC_0LA1RC_0RB0LD_0RB1RH",
+    "1RB1RH_0LC1RA_1LC0LD_1LA0RB",
+    "1RB0RC_1LA0RA_1RH1LD_0LB0RA",
+    "1RB0LA_1LC1RB_1RB0RD_1RH1LB",
+    "1RB1RH_1LC0RD_1RB1LB_0LB1RD",
+    "1RB0RB_1LC1RD_1RC0LB_0RA1RH",
+    "1RB1RH_1RC1LB_1LB1RD_0LB1RC",
+    "1RB0RB_0RC1LD_0RD1RH_1LA1RD",
+    "1RB1RH_1LC0LC_0RA1RD_1RB1LD",
+    "1RB1RD_1LC0RA_0LD0LB_1RA1RH",
+    "1RB1LC_1LC0RD_1RA1LA_1RH1RA",
+    "1RB1LB_1RC0LA_1LC0LD_1RH1RA",
+    "1RB1RC_1LC1LD_0RA1RB_1RH0LB",
+    "1RB1RD_1LC1RB_1RH1LA_1LC0LB",
+    "1RB0LD_1LC0RA_1LD0LB_1LA1RH",
+    "1RB1RH_0RC0RB_1LD1LA_0LB0LB",
+    "1RB1LD_1RC1RH_0LA0RC_1LD1LC",
+    "1RB0LB_1LA1RC_1RD1RH_0RA0RC",
+    "1RB1RH_1LC0RC_1RD1LB_1RA1RD",
+    "1RB1RD_1RC1RH_0RD0RD_1LD0LA",
+    "1RB1LB_0LC1RH_1LD1RC_0RC0LD",
+    "1RB1RH_1RC0LA_1LD0RD_0RB1LD",
+    "1RB0LA_0LC0RB_0RA1LD_1LB1RH",
+    "1RB0LC_1LC1RD_0RA0LC_1RA1RH",
+    "1RB1RB_0LC1RA_0RA0RD_1LB1RH",
+    "1RB0LD_1RC1RA_1LD1RH_1RA1LA",
+    "1RB1RD_1LC1RH_0RD0LC_0LB1RC",
+  ]
+}
+
 fn scan_3_dregs() {
   for m_str in undecided_size_3() {
     let machine = SmallBinMachine::from_compact_format(m_str);
@@ -427,7 +536,7 @@ fn scan_from_machine(
   if let Some(filename) = mb_undecided_file {
     dump_machines_to_file(final_undecided.clone(), filename).expect("file should be openable");
   }
-  let num_undecided_to_display = 30;
+  let num_undecided_to_display = 100;
   let seed = 123456789012345;
   let mut rng: ChaCha8Rng = SeedableRng::seed_from_u64(seed);
   let random_undecideds = final_undecided
@@ -485,24 +594,25 @@ fn scan_from_machine(
 fn main() {
   // working on machine 1RB0LD_1RC1RH_1LD1RA_0RB0LD
 
-  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  let num_lr_steps = 1500;
-  let num_rule_steps = 50;
-  scan_from_machine(
-    &first_machine,
-    num_lr_steps,
-    num_rule_steps,
-    // Some("size3_holdouts_2_may.txt"),
-    // Some("size4_holdouts_2_may_no_decrease_rules.txt"),
-    None,
-  );
+  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // let num_lr_steps = 1500;
+  // let num_rule_steps = 50;
+  // scan_from_machine(
+  //   &first_machine,
+  //   num_lr_steps,
+  //   num_rule_steps,
+  //   // Some("size3_holdouts_2_may.txt"),
+  //   // Some("size4_holdouts_2_may_better_rule_guess_20747.txt"),
+  //   None,
+  // );
 
   // let machine = SmallBinMachine::from_compact_format("1RB0LD_1RC1RH_1LD1RA_0RB0LD");
-  let undecided_size_4_random = undecided_size_4_random();
-  for i in 20..30 {
+  // let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
+
+  let undecided_size_4_random = undecided_size_4_random_100();
+  for i in 0..30 {
     let m_str = undecided_size_4_random.get(i).unwrap();
     let machine = SmallBinMachine::from_compact_format(m_str);
-    // let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
     run_machine(&machine);
   }
 
