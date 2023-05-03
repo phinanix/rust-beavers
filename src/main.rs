@@ -261,6 +261,22 @@ fn undecided_size_3() -> Vec<&'static str> {
 }
 // running machine: 1RB1LA_0LA0LC_1RH1RA
 
+/* size 4 overall total
+ 19 readshifts
+   2 lr readshift
+   17 readshift
+ 24 bouncer
+   17 size2
+   2(?) size2 2pass (not confident I caught all these)
+   5 size3
+ 5 counters
+   2 size1
+   3 size2
+ 12 failure to guess
+   7 chain rule
+   5 normal
+
+*/
 fn undecided_size_4_random() -> Vec<&'static str> {
   /*
    30 random machines chosen from the set of 20747 generated on 2 May 23
@@ -298,6 +314,8 @@ fn undecided_size_4_random() -> Vec<&'static str> {
   counts:
   3 readshifts
   4 (?) failure to guess rule
+    2 normal
+    2 chain rule
   1 size2 bouncer
   1 size3 bouncer
   1 size1 counter (that is also a closed state graph but eh)
@@ -323,12 +341,20 @@ fn undecided_size_4_random() -> Vec<&'static str> {
   2 size3 bouncer
   2 readshifts
   1 (?) failure to guess
+    1 chainrule
 
   total:
   12 bouncers of larger size
+    9 size2
+    3 size3
   11 readshifts
+    11 readshifts
   5 failure to guess
+    3 chainrule
+    2 normal
   2 counters
+    1 size1
+    1 size2
    */
 
   vec![
@@ -370,6 +396,92 @@ fn undecided_size_4_random_100() -> Vec<&'static str> {
   100 random machines chosen from the same set of 20747 for additional categorization
     let num_undecided_to_display = 100;
   let seed = 123456789012345; */
+  /*
+    0 - LR readshift
+    1 - TFF / TFF bouncer
+    2 - FF / FT counter
+    3 - readshift
+    4 - TF / TF bouncer
+    5 - failure to guess even though other way is chain rule
+    6 - TF / TF bouncer
+    7 - TT / FT bouncer (2-pass)
+    8 - TT / FT bouncer (2-pass)
+    9 - CD right, ABC left failure to guess
+    counts:
+    2 readshift
+      1 lr readshift
+      1 readshift
+    5 bouncer
+      2 size2
+      2 size2 2pass
+      1 size3
+    1 counter
+      1 size2
+    2 failure to guess
+      1 chain rule
+      1 normal
+
+   10 - TFF / TFF bouncer
+   11 - TF / TF bouncer
+   12 - F / T counter
+   13 - readshift
+   14 - TT / TF bouncer
+   15 - failure to guess even though other way is chain rule
+   16 - readshift
+   17 - has a leftgoing rule and a rightgoing rule, but doesn't prove a "full" rule (oh b/c readshift)
+   18 - readshfit
+   19 - AC left, ABD right, failure to guess
+    counts:
+    4 readshift
+      1 lr readshift
+      3 readshift
+    3 bouncer
+      2 size2
+      1 size3
+    1 counter
+      1 size1
+    2 failure to guess
+      1 chain rule
+      1 normal
+
+   20 - readshift
+   21 - readshift
+   22 - failure to guess even though other way is chain rule
+   23 - failure to guess even though other way is chain rule
+   24 - TF / TF bouncer
+   25 - FF / FT counter
+   26 - TF / TF bouncer
+   27 - TT / TF bouncer
+   28 - ABC right, CD left, failure to guess
+   29 - TT / TF bouncer
+    counts:
+    2 readshift
+      2 readshift
+    4 bouncer
+      4 size2
+    1 counter
+      1 size2
+    3 failure to guess
+      2 chain rule
+      1 normal
+
+    total counts:
+    8 readshift
+      2 lr readshift
+      6 readshift
+    12 bouncer
+      8 size2
+      2 size2 2pass
+      2 size3
+    3 counter
+      1 size1
+      2 size2
+    7 failure to guess
+      4 chain rule
+      3 normal
+   classifying took 18.5m so that's 37s / machine.
+
+  */
   vec![
     "1RB0RC_1LA0LD_0RB1LB_1RH1RA",
     "1RB0LC_0RC0RA_1LD0RA_0LA1RH",
@@ -610,7 +722,7 @@ fn main() {
   // let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
 
   let undecided_size_4_random = undecided_size_4_random_100();
-  for i in 0..30 {
+  for i in 5..=5 {
     let m_str = undecided_size_4_random.get(i).unwrap();
     let machine = SmallBinMachine::from_compact_format(m_str);
     run_machine(&machine);

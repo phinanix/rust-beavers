@@ -659,6 +659,37 @@ impl RuleTapeChange {
   }
 }
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct ReadShift {
+  pub l: i32,
+  pub r: i32,
+  pub s: i32,
+}
+
+impl ReadShift {
+  pub fn combine(
+    ReadShift { l, r, s }: ReadShift,
+    ReadShift { l: l2, r: r2, s: s2 }: ReadShift,
+  ) -> ReadShift {
+    /* from the perspective of the first readshift, the second one is effectively shifted
+    by s */
+    let l2_first_frame = l2 + s;
+    let r2_first_frame = r2 + s;
+    let l_out = l.min(l2_first_frame);
+    let r_out = r.max(r2_first_frame);
+    let s_out = s + s2;
+    ReadShift { l: l_out, r: r_out, s: s_out }
+  }
+  pub fn combine_many(inps: &[ReadShift]) -> ReadShift {
+    // inps must be nonempty
+    let mut out = *inps.get(0).unwrap();
+    for &rs in &inps[1..] {
+      out = Self::combine(out, rs);
+    }
+    out
+  }
+}
+
 pub fn apply_rule_extra_info<S: TapeSymbol, C: TapeCount>(
   tape: &mut ExpTape<S, C>,
   cur_state: State,
@@ -2992,6 +3023,32 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
         Some((Var(0), SymbolVar { n: -2, a: 1, var: Var(0) }))
       ))
     );
+  }
+
+  #[test]
+  fn test_combine_readshift() {
+    let shift_right = ReadShift { l: 0, r: 0, s: 1 };
+    let ans = ReadShift { l: 0, r: 1, s: 2 };
+    assert_eq!(ReadShift::combine(shift_right, shift_right), ans);
+    let shift_left = ReadShift { l: 0, r: 0, s: -1 };
+    let ans = ReadShift { l: 0, r: 1, s: 0 };
+    assert_eq!(ReadShift::combine(shift_right, shift_left), ans);
+    let ans = ReadShift { l: -1, r: 0, s: -2 };
+    assert_eq!(ReadShift::combine(shift_left, shift_left), ans);
+
+    let rule_eat = ReadShift { l: -5, r: 4, s: 1 };
+    let ans = ReadShift { l: -5, r: 4, s: -2 };
+    assert_eq!(
+      ReadShift::combine_many(&vec![rule_eat, shift_left, shift_left, shift_left]),
+      ans
+    );
+
+    let rule_eat_more = ReadShift { l: -2, r: 10, s: -2 };
+    let ans = ReadShift { l: -5, r: 11, s: -1 };
+    assert_eq!(ReadShift::combine(rule_eat, rule_eat_more), ans);
+
+    let ans = ReadShift { l: -7, r: 10, s: -1 };
+    assert_eq!(ReadShift::combine(rule_eat_more, rule_eat), ans);
   }
 
   #[test]
