@@ -11,6 +11,9 @@ use crate::{
 };
 use either::Either::Right;
 use itertools::Itertools;
+use rand::prelude::SliceRandom;
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 use rules::{
   aggregate_and_display_proving_res, detect_chain_rules, simulate_using_rules, Rulebook,
 };
@@ -33,6 +36,7 @@ high level todo:
 - prove rules by induction
 - detect counter rules
 - macro machines, or tape compression
+- detect rules by repeats of transitions/rules used, rather than by tape repeating
 - implicit end of tape -> explicit (?)
 - track step count of rules
 - heuristics based on tape growth
@@ -76,12 +80,16 @@ some rules are "necessary", most obviously anything made by chaining - in that w
 other rules are not, so maybe we just drop them?
  */
 
-fn dump_machines_to_file(machines: Vec<SmallBinMachine>, filename: &str) -> std::io::Result<()> {
-  let machine_len = machines.len();
-  let big_str = machines
+fn machines_to_str(machines: Vec<SmallBinMachine>) -> String {
+  machines
     .into_iter()
     .map(|m| m.to_compact_format())
-    .join("\n");
+    .join("\n")
+}
+
+fn dump_machines_to_file(machines: Vec<SmallBinMachine>, filename: &str) -> std::io::Result<()> {
+  let machine_len = machines.len();
+  let big_str = machines_to_str(machines);
   fs::write(filename, big_str)?;
   println!("wrote {} machines to file: {}", machine_len, filename);
   Ok(())
@@ -127,7 +135,7 @@ fn run_machine(machine: &SmallBinMachine) {
 
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
-  let num_steps = 120;
+  let num_steps = 100;
   Tape::simulate_from_start(machine, num_steps, true);
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
@@ -253,6 +261,110 @@ fn undecided_size_3() -> Vec<&'static str> {
 }
 // running machine: 1RB1LA_0LA0LC_1RH1RA
 
+fn undecided_size_4_random() -> Vec<&'static str> {
+  /*
+   30 random machines chosen from the set of 20747 generated on 2 May 23
+   with
+   let num_undecided_to_display = 30;
+   let seed = 12345678901234;
+  */
+  // wow, of these 5, only 1 seems like it should actually not be provable by my program!
+  /*
+  0 - readshifts
+  1 - readshifts
+  2 - readshifts
+  3 - TT / TF so needs size 2 macro
+  4 - readshifts
+  5 - FF / TF counter
+  6 - readshifts
+  7 - TF / TF
+  8 - TT / TF
+  9 - readshifts
+  counts:
+  6 readshifts
+  3 size2 bouncers
+  1 size2 counter
+
+  10 - TF / TF bouncer
+  11 - BCD one way, BD other way bouncer, we guess one rule but not the other
+  12 - ABC one way, CD other way bouncer, we guess one rule but not the other
+  13 - failure to guess rule (?) (B going R, BBCD going L)
+  14 - readshifts
+  15 - readshifts
+  16 - TFF / FTT bouncer
+  17 - F/T counter (2 states lol)
+  18 - failure to guess rule (?) (D going R, AC going L)
+  19 - readshifts
+  counts:
+  3 readshifts
+  4 (?) failure to guess rule
+  1 size2 bouncer
+  1 size3 bouncer
+  1 size1 counter (that is also a closed state graph but eh)
+
+  total:
+  9 readshifts
+  5 bouncers of larger size
+  4 (?) failure to guess rule
+  2 counters
+
+  20 - readshifts
+  21 - TF / TF bouncer
+  22 - TTF / TTF bouncer
+  23 - failure to guess rule (?) (A going L, ABCD going R)
+  24 - TTF / TTT bouncer
+  25 - TF / TF bouncer
+  26 - TT / TF bouncer
+  27 - TF / TF bouncer
+  28 - TF / TF bouncer
+  29 - readshifts
+  counts:
+  5 size2 bouncer
+  2 size3 bouncer
+  2 readshifts
+  1 (?) failure to guess
+
+  total:
+  12 bouncers of larger size
+  11 readshifts
+  5 failure to guess
+  2 counters
+   */
+
+  vec![
+    "1RB1LB_0LC0LD_1RD1LC_1RH1RA",
+    "1RB1RH_1LC0RB_0RD1RB_0RD1LB",
+    "1RB1RC_1RC1RH_1LD1RC_1LA0LA",
+    "1RB1LD_0RC1RH_1LD0LD_1RA0LA",
+    "1RB0RB_0RC1LB_0LD0LA_1LB1RH",
+    "1RB0RB_1LC1RD_0RA0LC_1RB1RH",
+    "1RB0RC_1LA1RB_1LB1LD_1LA1RH",
+    "1RB1RD_1LC1RH_0RA0LB_0LD1RC",
+    "1RB0LC_1LA1RA_1LA0LD_1RH1RB",
+    "1RB1LD_1LC0RB_0RA1RB_1LC1RH",
+    "1RB0LB_1LC0RA_0LB0LD_1LA1RH",
+    "1RB1LC_1LC1RD_1RH0LD_1RA1RB",
+    "1RB0RB_1LC1RH_0LA1RD_0RB1RC",
+    "1RB1RD_1LC1RB_1RH1LD_1RB0LB",
+    "1RB1RA_1LC1LB_0RD0RB_1RH0RA",
+    "1RB0RB_0LC1LD_1RH1RD_1LA1RD",
+    "1RB1LC_1LA0RD_0LB1RH_1RB0RD",
+    "1RB1RH_0LC0RA_0RD0LC_1LC1RD",
+    "1RB1LC_0LC1LD_1RH1LA_1RB1RD",
+    "1RB1LD_1LC1RB_0RB0RD_1RH1LB",
+    "1RB0RB_1LC0RB_0RD1RA_1RH1LB",
+    "1RB0RC_1LA1RH_1RA0LD_1LC0LD",
+    "1RB1LD_1RC1RH_0LA0RC_0LA1LD",
+    "1RB1LA_1LA0RC_1RD0LD_1RA1RH",
+    "1RB0RD_0RC1RH_0LD1RA_1LD0LA",
+    "1RB0LC_1LA0RD_1LA1RH_1RB0LB",
+    "1RB1RH_0LC1RA_1LB0LD_1LA1LC",
+    "1RB0RC_0LC0RA_1LD1LB_1RB1RH",
+    "1RB1LD_0RC1RH_1RD0RD_0LA1RB",
+    "1RB1RA_0LC0LD_1RB1LC_1RH1RA",
+  ]
+}
+
 fn scan_3_dregs() {
   for m_str in undecided_size_3() {
     let machine = SmallBinMachine::from_compact_format(m_str);
@@ -313,8 +425,20 @@ fn scan_from_machine(
   );
   let final_undecided = prove_with_rules(undecided_with_halt, num_rule_steps, false);
   if let Some(filename) = mb_undecided_file {
-    dump_machines_to_file(final_undecided, filename).expect("file should be openable");
+    dump_machines_to_file(final_undecided.clone(), filename).expect("file should be openable");
   }
+  let num_undecided_to_display = 30;
+  let seed = 123456789012345;
+  let mut rng: ChaCha8Rng = SeedableRng::seed_from_u64(seed);
+  let random_undecideds = final_undecided
+    .choose_multiple(&mut rng, num_undecided_to_display)
+    .cloned()
+    .collect_vec();
+
+  println!(
+    "some undecided machines:\n{}",
+    machines_to_str(random_undecideds)
+  );
   // println!(
   //   "final_undecided:\n{}",
   //   final_undecided
@@ -361,22 +485,26 @@ fn scan_from_machine(
 fn main() {
   // working on machine 1RB0LD_1RC1RH_1LD1RA_0RB0LD
 
-  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  // let num_lr_steps = 1500;
-  // let num_rule_steps = 50;
-  // scan_from_machine(
-  //   &first_machine,
-  //   num_lr_steps,
-  //   num_rule_steps,
-  //   // Some("size3_holdouts_2_may.txt"),
-  //   // Some("size4_holdouts_2_may_no_decrease_rules.txt"),
-  //   None,
-  // );
+  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  let num_lr_steps = 1500;
+  let num_rule_steps = 50;
+  scan_from_machine(
+    &first_machine,
+    num_lr_steps,
+    num_rule_steps,
+    // Some("size3_holdouts_2_may.txt"),
+    // Some("size4_holdouts_2_may_no_decrease_rules.txt"),
+    None,
+  );
 
   // let machine = SmallBinMachine::from_compact_format("1RB0LD_1RC1RH_1LD1RA_0RB0LD");
-  let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
-
-  run_machine(&machine);
+  let undecided_size_4_random = undecided_size_4_random();
+  for i in 20..30 {
+    let m_str = undecided_size_4_random.get(i).unwrap();
+    let machine = SmallBinMachine::from_compact_format(m_str);
+    // let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
+    run_machine(&machine);
+  }
 
   // scan_3_dregs();
 }

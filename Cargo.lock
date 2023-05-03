@@ -299,6 +299,8 @@ dependencies = [
  "itertools",
  "nom",
  "proptest",
+ "rand",
+ "rand_chacha",
  "smallvec",
 ]
 
