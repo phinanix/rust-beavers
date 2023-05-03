@@ -969,11 +969,11 @@ pub fn detect_rules<S: TapeSymbol>(
   step: u32,
   state: State,
   exptape: &ExpTape<S, u32>,
-  signatures: &mut DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>>,
+  signatures: &mut DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>>,
   tape_diffs: &Vec<SmallVec<[TapeDiff; 4]>>,
   verbose: bool,
 ) -> Vec<Rule<S>> {
-  let cur_sig_vec = &mut signatures[exptape.signature()];
+  let cur_sig_vec = &mut signatures[(state, exptape.signature())];
   cur_sig_vec.push((step, state, exptape.clone()));
   if cur_sig_vec.len() > 1 {
     let steps = cur_sig_vec.iter().map(|(s, _, _)| s).collect_vec();
@@ -1464,7 +1464,7 @@ pub fn prove_rule<S: TapeSymbol>(
   verbose: bool,
 ) -> Option<(Rule<S>, RuleProof)> {
   if verbose {
-    println!("working to prove rule:\n{}", &rule);
+    println!("\nworking to prove rule:\n{}", &rule);
   }
 
   let Rule { start, end } = rule;
@@ -1545,7 +1545,7 @@ pub fn prove_rule<S: TapeSymbol>(
     }
   }
   if verbose {
-    println!("proving the rule failed");
+    println!("proving the rule failed\n");
   }
   return None;
 }
@@ -1593,7 +1593,7 @@ pub fn proving_rules_step<S: TapeSymbol>(
   mut state: State,
   exptape: &mut ExpTape<S, u32>,
   rulebook: &mut Rulebook<S>,
-  signatures: &mut DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>>,
+  signatures: &mut DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>>,
   tape_diffs: &mut Vec<SmallVec<[TapeDiff; 4]>>,
   verbose: bool,
 ) -> State {
@@ -1623,18 +1623,25 @@ pub fn proving_rules_step<S: TapeSymbol>(
     return HALT;
   }
 
-  let rules = detect_rules(step, state, &exptape, signatures, &tape_diffs, false);
+  let rules = detect_rules(step, state, &exptape, signatures, &tape_diffs, verbose);
   for rule in rules {
-    if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, false) {
+    if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, verbose) {
       if pf != DirectSimulation(1) {
-        if verbose {
-          println!("proved rule: \n{}\nvia proof{:?}", final_rule, pf);
-        }
         if let Some(chained_rule) = chain_rule(&final_rule) {
           if verbose {
-            println!("chained the proved rule to: {}", chained_rule);
+            println!("proved rule:\n{}\nvia proof{:?}", final_rule, pf);
+          }
+          if verbose {
+            println!("chained the proved rule to:\n{}", chained_rule);
           }
           rulebook.add_rule(chained_rule);
+        } else {
+          if verbose {
+            // println!(
+            //   "proved rule:\n{}\nvia proof{:?}\nbut could not chain",
+            //   final_rule, pf
+            // );
+          }
         }
         // rulebook.add_rule(final_rule);
       }
@@ -1656,7 +1663,7 @@ pub fn simulate_proving_rules<S: TapeSymbol>(
   */
   let mut exptape = ExpTape::new();
   let mut state = START;
-  let mut signatures: DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>> =
+  let mut signatures: DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>> =
     defaulthashmap!();
   let mut tape_diffs = vec![];
   for step in 1..num_steps + 1 {
@@ -1739,7 +1746,7 @@ pub fn chain_var(
         Err(_) => {
           // warning
           println!("tried to chain {} into {} and couldn't #1", start, end);
-          return None;
+          None
         }
         Ok((&var2, &b)) => {
           if var != var2 || a != b {
@@ -1756,7 +1763,8 @@ pub fn chain_var(
             }
             Some((start, end_out, None))
           } else {
-            // return None;
+            // None
+
             if a > 1 {
               println!("chain {} into {}!", start, end);
             }
@@ -2695,7 +2703,7 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
     rule_tape: &mut ExpTape<S, u32>,
     rule_state: State,
     rulebook: &mut Rulebook<S>,
-    signatures: &mut DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>>,
+    signatures: &mut DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>>,
     tape_diffs: &mut Vec<SmallVec<[TapeDiff; 4]>>,
     verbose: bool,
   ) -> Option<(State, State)> {
@@ -2731,7 +2739,7 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
     let mut rule_tape = ExpTape::new();
     let mut rule_state = START;
     let mut rulebook = Rulebook::chain_rulebook(machine);
-    let mut signatures: DefaultHashMap<Signature<S>, Vec<(u32, State, ExpTape<S, u32>)>> =
+    let mut signatures: DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>> =
       defaulthashmap!();
     let mut tape_diffs = vec![];
     for step in 1..num_steps + 1 {

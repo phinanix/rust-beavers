@@ -424,6 +424,20 @@ A (F, ??) (T, x)
 A (T, 3) (F, 1) (T, x-1)
 A (T, 3x) (F, 1) >T<
 which is almost right if you fiddle a little
+
+my rule prover proves:
+
+phase: C  (T, 1 + x) |>F<| (T, x)
+into:
+phase: C  (T, 1) |>F<| (T, 2*x)
+
+phase: A  (T, 1 + x) |>T<| (F, 1) (T, x)
+into:
+phase: A  (T, 1) |>T<| (F, 1) (T, 2*x)
+
+phase: D  (T, 1 + x) (F, 1) |>F<| (T, x)
+into:
+phase: D  (T, 1) (F, 1) |>F<| (T, 2*x)
  */
 const MACHINES: [(&str, &str); 10] = [
   ("bb2", "1RB1LB_1LA1RH"),

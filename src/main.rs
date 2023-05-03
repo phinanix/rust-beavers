@@ -22,8 +22,13 @@ mod rules;
 mod simulate;
 mod turing;
 /*
-high level todo:
+to prove tail eating dragon:
+- only detect rules when start and end state are same (done)
 - detect rules that are more than additive (mx + b?)
+- when detecting rules, use ReadShift or similar to not detect extra garbage (like in TailEatingDragonFast)
+
+
+high level todo:
 - rules which consume part of end are probably broken (should maybe emit ConsumedEnd)
 - prove rules by induction
 - detect counter rules
@@ -122,7 +127,7 @@ fn run_machine(machine: &SmallBinMachine) {
 
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
-  let num_steps = 300;
+  let num_steps = 120;
   Tape::simulate_from_start(machine, num_steps, true);
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
@@ -356,14 +361,22 @@ fn scan_from_machine(
 fn main() {
   // working on machine 1RB0LD_1RC1RH_1LD1RA_0RB0LD
 
-  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  let num_lr_steps = 500;
-  let num_rule_steps = 50;
-  scan_from_machine(&first_machine, num_lr_steps, num_rule_steps, None);
+  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // let num_lr_steps = 1500;
+  // let num_rule_steps = 50;
+  // scan_from_machine(
+  //   &first_machine,
+  //   num_lr_steps,
+  //   num_rule_steps,
+  //   // Some("size3_holdouts_2_may.txt"),
+  //   // Some("size4_holdouts_2_may_no_decrease_rules.txt"),
+  //   None,
+  // );
 
-  // let machine = get_machine("tailEatingDragonFast");
-  // // let machine = SmallBinMachine::from_compact_format("1RB0LD_1RC1RH_1LD1RA_0RB0LD");
-  // run_machine(&machine);
+  // let machine = SmallBinMachine::from_compact_format("1RB0LD_1RC1RH_1LD1RA_0RB0LD");
+  let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
+
+  run_machine(&machine);
 
   // scan_3_dregs();
 }
