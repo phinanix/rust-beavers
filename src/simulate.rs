@@ -14,7 +14,7 @@ use std::{
 };
 
 use crate::{
-  rules::TapeCount,
+  rules::{ConsumeGrow, ReadShift, TapeCount},
   turing::{Bit, Dir, Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, START},
 };
 
@@ -347,7 +347,7 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
     &mut self,
     state: State,
     t: &impl Turing<S>,
-  ) -> Either<Edge<S>, (State, TapeChange)> {
+  ) -> Either<Edge<S>, (State, TapeChange, ReadShift)> {
     // extra info: tape grew, shrank or nothing, on the L/R
     let edge = Edge(state, self.head);
     let Trans { state, symbol, dir } = match t.step(edge) {
@@ -356,11 +356,12 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
     };
     self.head = symbol;
     let tc = self.move_dir(dir);
-    Right((state, tc))
+    let rs = ReadShift::rs_in_dir(dir);
+    Right((state, tc, rs))
   }
 
   pub fn step(&mut self, state: State, t: &impl Turing<S>) -> Either<Edge<S>, State> {
-    self.step_extra_info(state, t).map_right(|(s, _tc)| s)
+    self.step_extra_info(state, t).map_right(|ans| ans.0)
   }
 
   fn simulate(
@@ -501,7 +502,10 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<Small
 mod test {
   use super::*;
   use crate::{
-    rules::parse::{parse_avar_gen, parse_rule, parse_tape},
+    rules::{
+      parse::{parse_avar_gen, parse_rule, parse_tape},
+      RS_LEFT, RS_RIGHT,
+    },
     turing::{get_machine, HALT},
   };
 
@@ -515,45 +519,52 @@ mod test {
     // both:    A   >F<
     let machine = get_machine("binary_counter");
 
+    //1LC
     let mut nothing_tape = parse_tape("(T, 2) |>F<| ").unwrap().1;
     let res = nothing_tape.step_extra_info(State(2), &machine);
-    assert_eq!(res, Right((State(3), None)));
+    assert_eq!(res, Right((State(3), None, RS_LEFT)));
     assert_eq!(nothing_tape, parse_tape("(T, 1) |>T<| (T, 1)").unwrap().1);
 
+    //1LC
     let mut grow_tape = parse_tape(" |>F<| (F, 1)").unwrap().1;
     let res = grow_tape.step_extra_info(State(2), &machine);
-    assert_eq!(res, Right((State(3), Some((Dir::L, Grew)))));
+    assert_eq!(res, Right((State(3), Some((Dir::L, Grew)), RS_LEFT)));
     assert_eq!(grow_tape, parse_tape(" |>F<| (T, 1) (F, 1)").unwrap().1);
 
+    //0LB
     let mut shrink_tape = parse_tape("(T, 1) |>F<| ").unwrap().1;
     let res = shrink_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Right((State(2), Some((Dir::R, Shrunk)))));
+    assert_eq!(res, Right((State(2), Some((Dir::R, Shrunk)), RS_LEFT)));
     assert_eq!(shrink_tape, parse_tape(" |>T<| ").unwrap().1);
 
+    //0LB
     let mut both_tape = parse_tape(" |>F<| ").unwrap().1;
     let res = both_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Right((State(2), None)));
+    assert_eq!(res, Right((State(2), None, RS_LEFT)));
     assert_eq!(both_tape, parse_tape(" |>F<| ").unwrap().1);
 
-    //
+    //1RA
     let mut nothing2_tape = parse_tape("(T, 2) |>F<| (F, 1) (T, 1)").unwrap().1;
     let res = nothing2_tape.step_extra_info(State(3), &machine);
-    assert_eq!(res, Right((State(1), None)));
+    assert_eq!(res, Right((State(1), None, RS_RIGHT)));
     assert_eq!(nothing2_tape, parse_tape("(T, 3) |>F<| (T, 1)").unwrap().1);
 
+    //0RA
     let mut grow2_tape = parse_tape("(T, 1) |>T<| ").unwrap().1;
     let res = grow2_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Right((State(1), Some((Dir::R, Grew)))));
+    assert_eq!(res, Right((State(1), Some((Dir::R, Grew)), RS_RIGHT)));
     assert_eq!(grow2_tape, parse_tape("(T, 1) (F, 1) |>F<| ").unwrap().1);
 
+    //0RA
     let mut shrink2_tape = parse_tape(" |>T<| (T, 1)").unwrap().1;
     let res = shrink2_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Right((State(1), Some((Dir::L, Shrunk)))));
+    assert_eq!(res, Right((State(1), Some((Dir::L, Shrunk)), RS_RIGHT)));
     assert_eq!(shrink2_tape, parse_tape(" |>T<| ").unwrap().1);
 
+    //0RA
     let mut both_tape = parse_tape(" |>T<| ").unwrap().1;
     let res = both_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Right((State(1), None)));
+    assert_eq!(res, Right((State(1), None, RS_RIGHT)));
     assert_eq!(both_tape, parse_tape(" |>F<| ").unwrap().1);
   }
 
