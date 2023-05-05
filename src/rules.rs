@@ -704,6 +704,25 @@ pub const RS_LEFT: ReadShift = ReadShift { l: 0, r: 0, s: -1 };
 pub const RS_RIGHT: ReadShift = ReadShift { l: 0, r: 0, s: 1 };
 
 impl ReadShift {
+  pub fn normalize(ReadShift { l, r, s }: ReadShift) -> Self {
+    // the problem with ReadShift {0, 0, 1} is if you try to cut at the start and end
+    // that doesn't work right
+    // so you normalize it to {0, 1, 1}
+    let new_r = if r - s < 0 {
+      assert_eq!(r - s, -1);
+      r + 1
+    } else {
+      r
+    };
+    let new_l = if l - s > 0 {
+      assert_eq!(l - s, 1);
+      l - 1
+    } else {
+      l
+    };
+    ReadShift { l: new_l, r: new_r, s }
+  }
+
   pub fn combine(
     ReadShift { l, r, s }: ReadShift,
     ReadShift { l: l2, r: r2, s: s2 }: ReadShift,
@@ -961,34 +980,85 @@ fn collate<S: TapeSymbol>(
   }
 }
 
+fn get_n_rle<S: TapeSymbol>(slice: &[(S, u32)], n: u32) -> Vec<(S, u32)> {
+  //gets the last n things from an RLE encoded slice
+  let mut num_take = 0;
+  let mut current_taken = 0;
+  loop {
+    if num_take == slice.len() {
+      break;
+    }
+    let (_s, next_int) = slice[(slice.len() - 1) - num_take];
+    if current_taken + next_int > n {
+      break;
+    } else {
+      num_take += 1;
+      current_taken += next_int;
+    }
+  }
+  let mut out = vec![];
+  if current_taken < n {
+    if num_take == slice.len() {
+      out.push((S::empty(), n - current_taken));
+    } else {
+      let (s, next_int) = slice[(slice.len() - 1) - num_take];
+      assert!(next_int > n - current_taken);
+      out.push((s, n - current_taken));
+    }
+  }
+  for i in 0..num_take {
+    out.push(slice[slice.len() - num_take + i])
+  }
+  assert_eq!(n, out.iter().map(|(_, n)| n).sum());
+  out
+}
+
+fn cut_exptape<S: TapeSymbol>(
+  ExpTape { left, head, right }: &ExpTape<S, u32>,
+  l: i32,
+  r: i32,
+) -> ExpTape<S, u32> {
+  //some awful special casing because of the one step readshfit being
+  // ReadShift {0, 0, 1} which you will notice does not satisfy the invariant
+  // if l == 1 {
+  //   l = 0;
+  // }
+  assert!(l <= 0, "l should be > 0 {}", l);
+  let l_cut = (-1 * l).try_into().unwrap();
+  let new_left = get_n_rle(&left, l_cut);
+
+  // if r == -1 {
+  //   r = 0;
+  // }
+  assert!(r >= 0, "r should be > 0 {}", r);
+  let r_cut = r.try_into().unwrap();
+  let new_right = get_n_rle(right, r_cut);
+
+  ExpTape { left: new_left, head: *head, right: new_right }
+}
+
 fn make_side<S: TapeSymbol>(
-  start: &[(S, u32)],
-  end: &[(S, u32)],
-  final_size: i32,
-  max_size: i32,
+  start: &Vec<(S, u32)>,
+  end: &Vec<(S, u32)>,
 ) -> (Vec<(S, AffineVar)>, Vec<(S, AffineVar)>, bool) {
-  assert_eq!(start.len(), end.len());
-  let start_grow_amount = max_size;
-  let end_grow_amount = max_size - final_size;
-  let mut start_out = if start_grow_amount != 0 {
-    vec![(
-      S::empty(),
-      AffineVar::constant(start_grow_amount.try_into().unwrap()),
-    )]
-  } else {
-    vec![]
-  };
-  let mut end_out = if end_grow_amount != 0 {
-    vec![(
-      S::empty(),
-      AffineVar::constant(end_grow_amount.try_into().unwrap()),
-    )]
-  } else {
-    vec![]
+  let (start_idx, end_idx) = match start.len().cmp(&end.len()) {
+    Less => (0, end.len() - start.len()),
+    Equal => (0, 0),
+    Greater => (start.len() - end.len(), 0),
   };
 
+  let mut start_out = start[0..start_idx]
+    .into_iter()
+    .map(|&(s, n)| (s, n.into()))
+    .collect_vec();
+  let mut end_out = end[0..end_idx]
+    .into_iter()
+    .map(|&(s, n)| (s, n.into()))
+    .collect_vec();
+
   let mut var_used = false;
-  for (&s, &e) in zip(start, end) {
+  // for (&s, &e) in zip_eq(start, end) {
+  for (&s, &e) in zip_eq(&start[start_idx..], &end[end_idx..]) {
     let (s_var, e_var, was_var) = collate(s, e);
     var_used = var_used || was_var;
     start_out.push(s_var);
@@ -1042,6 +1112,8 @@ pub fn accumulate_tape_diffs(tape_diffs: &[SmallVec<[TapeDiff; 4]>]) -> (i32, i3
 pub fn detect_rule<S: TapeSymbol>(
   history: &Vec<(u32, State, ExpTape<S, u32>)>,
   (final_left_size, max_left_size, final_right_size, max_right_size): (i32, i32, i32, i32),
+  rs: ReadShift,
+  verbose: bool,
 ) -> Vec<Rule<S>> {
   /* we're detecting an additive rule, so any numbers that don't change, we guess don't change
   and any numbers that do change, we guess change by that constant each time
@@ -1049,20 +1121,38 @@ pub fn detect_rule<S: TapeSymbol>(
   1) make vectors of the change amount
   2) zip those vectors with the signatures and turn them into configs
   */
+  let ReadShift { l, r, s } = ReadShift::normalize(rs);
+
+  assert!(l <= 0, "{:?}", rs);
+  assert!(r >= 0, "{:?}", rs);
   let second_last = &history[history.len() - 2];
+  let et_in = cut_exptape(&second_last.2, l, r);
+
   let last = &history[history.len() - 1];
-  let (start_left, end_left, var_used_left) = make_side(
-    &second_last.2.left,
-    &last.2.left,
-    final_left_size,
-    max_left_size,
-  );
-  let (start_right, end_right, var_used_right) = make_side(
-    &second_last.2.right,
-    &last.2.right,
-    final_right_size,
-    max_right_size,
-  );
+  if verbose {
+    println!(
+      "detecting rule from step {} to step {}",
+      second_last.0, last.0
+    );
+  }
+  let et_out = cut_exptape(&last.2, l - s, r - s);
+
+  if verbose {
+    println!("detecting rule from\n{}\nto\n{}", &et_in, &et_out);
+  }
+
+  let ExpTape {
+    left: end_left_in,
+    head: end_head,
+    right: end_right_in,
+  } = et_out;
+  let ExpTape {
+    left: start_left_in,
+    head: start_head,
+    right: start_right_in,
+  } = et_in;
+  let (start_left, end_left, var_used_left) = make_side(&start_left_in, &end_left_in);
+  let (start_right, end_right, var_used_right) = make_side(&start_right_in, &end_right_in);
   if !var_used_left && !var_used_right {
     return vec![];
   }
@@ -1070,10 +1160,10 @@ pub fn detect_rule<S: TapeSymbol>(
     start: Config {
       state: second_last.1,
       left: start_left,
-      head: second_last.2.head,
+      head: start_head,
       right: start_right,
     },
-    end: Config::new_from_avars(last.1, end_left, last.2.head, end_right),
+    end: Config::new_from_avars(last.1, end_left, end_head, end_right),
   };
   vec![rule]
 }
@@ -1095,7 +1185,12 @@ pub fn detect_rules<S: TapeSymbol>(
     let last_step = *steps[steps.len() - 1] as usize;
     let tape_diff_range = &tape_diffs[second_last_step..last_step];
     let tape_sizes = accumulate_tape_diffs(tape_diff_range);
-    let rules = detect_rule(cur_sig_vec, tape_sizes);
+    let readshift_range = &readshifts[second_last_step..last_step];
+    let readshift = ReadShift::combine_many(readshift_range);
+    if verbose {
+      println!("detection rs: {:?}", readshift);
+    }
+    let rules = detect_rule(cur_sig_vec, tape_sizes, readshift, verbose);
     if rules.len() > 0 && verbose {
       println!(
         "using steps: {:?} detected rule:\n{}\n",
@@ -1747,6 +1842,9 @@ pub fn proving_rules_step<S: TapeSymbol>(
   }
 
   let readshift = cg_or_rs.either(|rs| rs, |cg| ReadShift::rs_from_cg(cg));
+  if verbose {
+    // println!("rs: {:?}", readshift);
+  }
   readshifts.push(readshift);
 
   if state == HALT {
@@ -2611,7 +2709,7 @@ mod test {
     undecided_size_3,
   };
 
-  use super::*;
+  use super::{parse::parse_tape_side, *};
 
   #[test]
   fn affinevar_sub() {
@@ -3172,6 +3270,17 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
   }
 
   #[test]
+  fn test_normalize_readshift() {
+    let inp = ReadShift { l: 0, r: 0, s: 1 };
+    let outp = ReadShift { l: 0, r: 1, s: 1 };
+    assert_eq!(ReadShift::normalize(inp), outp);
+
+    let inp = ReadShift { l: -1, r: 0, s: -2 };
+    let outp = ReadShift { l: -2, r: 0, s: -2 };
+    assert_eq!(ReadShift::normalize(inp), outp);
+  }
+
+  #[test]
   fn prove_rule_test() {
     let machine = get_machine("sweeper");
 
@@ -3649,5 +3758,22 @@ phase: C  (T, 2) |>T<| (T, 0 + 4*x_1)",
     let ans = chain_rule(&rule).unwrap();
     println!("test 3: by chaining, obtained:\n{}", ans);
     assert_eq!(ans, chained_rule);
+  }
+
+  #[test]
+  fn get_n_rle_test() {
+    let tape_half = parse_exact(parse_tape_side("(T, 3) (F, 5) (T, 1) (F, 6) (T, 2)"));
+
+    let ans1 = parse_exact(parse_tape_side("(F, 6) (T, 2)"));
+    assert_eq!(get_n_rle(&tape_half, 8), ans1);
+
+    let ans1 = parse_exact(parse_tape_side("(F, 5) (T, 2)"));
+    assert_eq!(get_n_rle(&tape_half, 7), ans1);
+
+    let ans1 = parse_exact(parse_tape_side("(F, 1) (T, 1) (F, 6) (T, 2)"));
+    assert_eq!(get_n_rle(&tape_half, 10), ans1);
+
+    let ans1 = parse_exact(parse_tape_side("(F, 3) (T, 3) (F, 5) (T, 1) (F, 6) (T, 2)"));
+    assert_eq!(get_n_rle(&tape_half, 20), ans1);
   }
 }

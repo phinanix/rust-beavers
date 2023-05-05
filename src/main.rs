@@ -32,6 +32,7 @@ to prove tail eating dragon:
 
 
 high level todo:
+- when you guess a rule, assert that it is conserving
 - chain rules which decrease by 2 or more
 - rules which consume part of end are probably broken (should maybe emit ConsumedEnd)
 - prove rules by induction
@@ -708,22 +709,22 @@ fn scan_from_machine(
 fn main() {
   // working on machine 1RB0LD_1RC1RH_1LD1RA_0RB0LD
 
-  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  let num_lr_steps = 1500;
-  let num_rule_steps = 100;
-  scan_from_machine(
-    &first_machine,
-    num_lr_steps,
-    num_rule_steps,
-    // Some("size3_holdouts_2_may.txt"),
-    // Some("size4_holdouts_2_may_better_rule_guess_20747.txt"),
-    None,
-  );
+  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // let num_lr_steps = 1500;
+  // let num_rule_steps = 100;
+  // scan_from_machine(
+  //   &first_machine,
+  //   num_lr_steps,
+  //   num_rule_steps,
+  //   // Some("size3_holdouts_2_may.txt"),
+  //   // Some("size4_holdouts_2_may_better_rule_guess_20747.txt"),
+  //   None,
+  // );
 
   // let machine = SmallBinMachine::from_compact_format("1RB0LD_1RC1RH_1LD1RA_0RB0LD");
   // let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
 
-  // let undecided_size_4_random = undecided_size_4_random_100();
+  let undecided_size_4_random = undecided_size_4_random_100();
   /*
   5  - couldn't chain
   15 - couldn't chain
@@ -736,11 +737,11 @@ fn main() {
   // chainrule fails: 5, 15, 22, 23
   // other fails: 9, 19, 28
   // readshift both ways: 0, 17
-  // for i in [5, 15, 22, 23, 9, 19, 28] {
-  //   let m_str = undecided_size_4_random.get(i).unwrap();
-  //   let machine = SmallBinMachine::from_compact_format(m_str);
-  //   run_machine(&machine);
-  // }
+  for i in [5, 15, 22, 23, 9, 19, 28] {
+    let m_str = undecided_size_4_random.get(i).unwrap();
+    let machine = SmallBinMachine::from_compact_format(m_str);
+    run_machine(&machine);
+  }
 
   // scan_3_dregs();
 }
