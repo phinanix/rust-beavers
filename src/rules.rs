@@ -24,7 +24,11 @@
 */
 
 use crate::{
-  simulate::{ExpTape, Signature, TapeChange, TapeChangeKind, TapeHalf},
+  simulate::{
+    ExpTape, Signature,
+    StepResult::{FellOffTape, Success, UndefinedEdge},
+    TapeChange, TapeChangeKind, TapeHalf,
+  },
   turing::{
     Bit,
     Dir::{self, L, R},
@@ -252,7 +256,10 @@ impl<S> Config<S, AffineVar> {
       .collect()
   }
 
-  fn from_tape_state(state: State, ExpTape { left, head, right }: ExpTape<S, u32>) -> Self {
+  fn from_tape_state(
+    state: State,
+    ExpTape { left, head, right, tape_end_inf: _ }: ExpTape<S, u32>,
+  ) -> Self {
     Self {
       state,
       left: Config::vec_u32_to_avar(left),
@@ -264,7 +271,7 @@ impl<S> Config<S, AffineVar> {
   fn to_tape_state(self) -> (State, ExpTape<S, SymbolVar>) {
     match self {
       Config { state, left, head, right } => {
-        let tape = ExpTape { left, head, right };
+        let tape = ExpTape { left, head, right, tape_end_inf: false };
         (state, tape.map_first(|avar| avar.into()))
       }
     }
@@ -302,7 +309,7 @@ impl<S> Config<S, AVarSum> {
   fn to_tape_state(self) -> Option<(State, ExpTape<S, SymbolVar>)> {
     match self {
       Config { state, left, head, right } => {
-        let tape = ExpTape { left, head, right };
+        let tape = ExpTape { left, head, right, tape_end_inf: false };
         let new_tape: ExpTape<S, SymbolVar> = tape
           .map_first_maybe(|avar| TryInto::<AffineVar>::try_into(avar).ok().map(|x| x.into()))?;
         Some((state, new_tape))
@@ -337,9 +344,22 @@ impl<S: TapeSymbol> Rule<S> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Rulebook<S>(u8, SmallVec<[Vec<Rule<S>>; 14]>);
 
+impl<S: Display + Copy> Display for Rulebook<S> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "rulebook:\n")?;
+    for rules_vec in self.1.iter() {
+      for rule in rules_vec {
+        write!(f, "{}\n", rule)?;
+      }
+    }
+    Ok(())
+  }
+}
+
 impl<S: TapeSymbol> Rulebook<S> {
   pub fn new(num_states: u8) -> Self {
     let mut sv = smallvec![];
+    //todo: multisymbol
     for _ in 0..2 * num_states {
       sv.push(vec![]);
     }
@@ -601,6 +621,7 @@ pub fn append_rule_tape<S: TapeSymbol, C: TapeCount>(
   hm: &HashMap<Var, C>,
   rule: &[(S, AVarSum)],
   tape: &mut Vec<(S, C)>,
+  tape_end_inf: bool,
 ) -> (Option<AVarSum>, C) {
   // the avar is the amount we shrank the tape by, if any
   // the C is the total amount of stuff we pushed onto the tape
@@ -610,7 +631,7 @@ pub fn append_rule_tape<S: TapeSymbol, C: TapeCount>(
     None => return (None, C::zero()),
     Some((s, avar)) => match tape.last_mut() {
       None => {
-        if *s == S::empty() {
+        if *s == S::empty() && tape_end_inf {
           let dropped_off_end = avar.sub_map(hm);
           stuff_pushed = C::add(stuff_pushed, dropped_off_end);
           (&rule[1..], Some(avar.clone()))
@@ -815,11 +836,17 @@ pub fn apply_rule_extra_info<S: TapeSymbol, C: TapeCount>(
       println!("succeeded")
     };
     if let ConsumedEnd((_, avar)) = left_match {
+      if !tape.tape_end_inf {
+        return None;
+      }
       if let None = avar.sub_map_maybe(&hm) {
         return Some(Left(avar.var));
       }
     }
     if let ConsumedEnd((_, avar)) = right_match {
+      if !tape.tape_end_inf {
+        return None;
+      }
       if let None = avar.sub_map_maybe(&hm) {
         return Some(Left(avar.var));
       }
@@ -829,8 +856,10 @@ pub fn apply_rule_extra_info<S: TapeSymbol, C: TapeCount>(
 
     let left_consume = size_consumed(left, &hm);
     let right_consume = size_consumed(right, &hm);
-    let (shrink_left, left_grow) = append_rule_tape(&hm, &end.left, &mut tape.left);
-    let (shrink_right, right_grow) = append_rule_tape(&hm, &end.right, &mut tape.right);
+    let (shrink_left, left_grow) =
+      append_rule_tape(&hm, &end.left, &mut tape.left, tape.tape_end_inf);
+    let (shrink_right, right_grow) =
+      append_rule_tape(&hm, &end.right, &mut tape.right, tape.tape_end_inf);
     tape.head = end.head;
 
     let rule_tape_change = RuleTapeChange {
@@ -879,6 +908,17 @@ pub fn apply_rules<S: TapeSymbol, C: TapeCount>(
   }
   return None;
 }
+pub enum RuleStepResult<C> {
+  VarInfinite(Var),
+  RFellOffTape(Dir),
+  RSuccess(
+    State,
+    HashMap<Var, C>,
+    RuleTapeChange,
+    Either<ReadShift, ConsumeGrow<C>>,
+  ),
+}
+use RuleStepResult::*;
 
 pub fn one_rule_step<S: TapeSymbol, C: TapeCount>(
   machine: &impl Turing<S>,
@@ -887,17 +927,9 @@ pub fn one_rule_step<S: TapeSymbol, C: TapeCount>(
   rulebook: &Rulebook<S>,
   step: u32,
   verbose: bool,
-) -> Either<
-  Var,
-  (
-    State,
-    HashMap<Var, C>,
-    RuleTapeChange,
-    Either<ReadShift, ConsumeGrow<C>>,
-  ),
-> {
+) -> RuleStepResult<C> {
   let (new_state, hm, rtc, rs) = match apply_rules(exptape, state, rulebook, false) {
-    Some(Left(var)) => return Left(var),
+    Some(Left(var)) => return VarInfinite(var),
     Some(Right((state, tc, rtc, cg))) => {
       if verbose {
         println!("rule_applied");
@@ -905,8 +937,9 @@ pub fn one_rule_step<S: TapeSymbol, C: TapeCount>(
       (state, tc, rtc, Right(cg))
     }
     None => match exptape.step_extra_info(state, machine) {
-      Left(_edge) => unreachable!("machine is defined"),
-      Right((state, tc, rs)) => (
+      UndefinedEdge(_edge) => unreachable!("machine is defined"),
+      FellOffTape(dir) => return RFellOffTape(dir),
+      Success(state, tc, rs) => (
         state,
         HashMap::default(),
         RuleTapeChange::from_tapechange(tc),
@@ -917,7 +950,7 @@ pub fn one_rule_step<S: TapeSymbol, C: TapeCount>(
   if verbose {
     println!("step: {} phase: {} tape: {}", step, new_state, exptape);
   }
-  return Right((new_state, hm, rtc, rs));
+  return RSuccess(new_state, hm, rtc, rs);
 }
 
 pub fn simulate_using_rules<S: TapeSymbol, C: TapeCount>(
@@ -926,12 +959,13 @@ pub fn simulate_using_rules<S: TapeSymbol, C: TapeCount>(
   rulebook: &Rulebook<S>,
   verbose: bool,
 ) -> (State, u32, ExpTape<S, C>) {
-  let mut exptape = ExpTape::new();
+  let mut exptape = ExpTape::new(true);
   let mut state = START;
   for step in 1..num_steps + 1 {
     state = match one_rule_step(machine, &mut exptape, state, rulebook, step, verbose) {
-      Left(_var) => return (INFINITE, step, exptape),
-      Right(ans) => ans.0,
+      VarInfinite(_var) => return (INFINITE, step, exptape),
+      RFellOffTape(_) => panic!("fell off tape unexpectedly"),
+      RSuccess(state, _, _, _) => state,
     };
     if state == HALT {
       return (HALT, step, exptape);
@@ -1014,27 +1048,25 @@ fn get_n_rle<S: TapeSymbol>(slice: &[(S, u32)], n: u32) -> Vec<(S, u32)> {
 }
 
 fn cut_exptape<S: TapeSymbol>(
-  ExpTape { left, head, right }: &ExpTape<S, u32>,
+  ExpTape { left, head, right, tape_end_inf }: &ExpTape<S, u32>,
   l: i32,
   r: i32,
 ) -> ExpTape<S, u32> {
-  //some awful special casing because of the one step readshfit being
-  // ReadShift {0, 0, 1} which you will notice does not satisfy the invariant
-  // if l == 1 {
-  //   l = 0;
-  // }
+  assert!(tape_end_inf);
   assert!(l <= 0, "l should be > 0 {}", l);
   let l_cut = (-1 * l).try_into().unwrap();
   let new_left = get_n_rle(&left, l_cut);
 
-  // if r == -1 {
-  //   r = 0;
-  // }
   assert!(r >= 0, "r should be > 0 {}", r);
   let r_cut = r.try_into().unwrap();
   let new_right = get_n_rle(right, r_cut);
 
-  ExpTape { left: new_left, head: *head, right: new_right }
+  ExpTape {
+    left: new_left,
+    head: *head,
+    right: new_right,
+    tape_end_inf: false,
+  }
 }
 
 fn make_side<S: TapeSymbol>(
@@ -1111,7 +1143,6 @@ pub fn accumulate_tape_diffs(tape_diffs: &[SmallVec<[TapeDiff; 4]>]) -> (i32, i3
 
 pub fn detect_rule<S: TapeSymbol>(
   history: &Vec<(u32, State, ExpTape<S, u32>)>,
-  (final_left_size, max_left_size, final_right_size, max_right_size): (i32, i32, i32, i32),
   rs: ReadShift,
   verbose: bool,
 ) -> Vec<Rule<S>> {
@@ -1145,17 +1176,19 @@ pub fn detect_rule<S: TapeSymbol>(
     left: end_left_in,
     head: end_head,
     right: end_right_in,
+    tape_end_inf: _,
   } = et_out;
   let ExpTape {
     left: start_left_in,
     head: start_head,
     right: start_right_in,
+    tape_end_inf: _,
   } = et_in;
   let (start_left, end_left, var_used_left) = make_side(&start_left_in, &end_left_in);
   let (start_right, end_right, var_used_right) = make_side(&start_right_in, &end_right_in);
-  if !var_used_left && !var_used_right {
-    return vec![];
-  }
+  // if !var_used_left && !var_used_right {
+  //   return vec![];
+  // }
   let rule = Rule {
     start: Config {
       state: second_last.1,
@@ -1173,7 +1206,7 @@ pub fn detect_rules<S: TapeSymbol>(
   state: State,
   exptape: &ExpTape<S, u32>,
   signatures: &mut DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>>,
-  tape_diffs: &Vec<SmallVec<[TapeDiff; 4]>>,
+  // tape_diffs: &Vec<SmallVec<[TapeDiff; 4]>>,
   readshifts: &Vec<ReadShift>,
   verbose: bool,
 ) -> Vec<Rule<S>> {
@@ -1183,14 +1216,14 @@ pub fn detect_rules<S: TapeSymbol>(
     let steps = cur_sig_vec.iter().map(|(s, _, _)| s).collect_vec();
     let second_last_step = *steps[steps.len() - 2] as usize;
     let last_step = *steps[steps.len() - 1] as usize;
-    let tape_diff_range = &tape_diffs[second_last_step..last_step];
-    let tape_sizes = accumulate_tape_diffs(tape_diff_range);
+    // let tape_diff_range = &tape_diffs[second_last_step..last_step];
+    // let tape_sizes = accumulate_tape_diffs(tape_diff_range);
     let readshift_range = &readshifts[second_last_step..last_step];
     let readshift = ReadShift::combine_many(readshift_range);
     if verbose {
       println!("detection rs: {:?}", readshift);
     }
-    let rules = detect_rule(cur_sig_vec, tape_sizes, readshift, verbose);
+    let rules = detect_rule(cur_sig_vec, readshift, false);
     if rules.len() > 0 && verbose {
       println!(
         "using steps: {:?} detected rule:\n{}\n",
@@ -1662,7 +1695,7 @@ fn process_tape_side<S: TapeSymbol>(side: &mut Vec<(S, SymbolVar)>) -> AVarSum {
 }
 
 fn process_goal_tape<S: TapeSymbol>(
-  ExpTape { mut left, head, mut right }: ExpTape<S, SymbolVar>,
+  ExpTape { mut left, head, mut right, tape_end_inf }: ExpTape<S, SymbolVar>,
 ) -> (ExpTape<S, SymbolVar>, AVarSum, AVarSum) {
   /* if you're trying to prove a goal tape like
    |>F<| (T, 1 + 1*x_0) (F, 1)
@@ -1672,7 +1705,11 @@ fn process_goal_tape<S: TapeSymbol>(
   */
   let left_sum = process_tape_side(&mut left);
   let right_sum = process_tape_side(&mut right);
-  (ExpTape { left, right, head }, left_sum, right_sum)
+  (
+    ExpTape { left, right, head, tape_end_inf },
+    left_sum,
+    right_sum,
+  )
 }
 
 pub fn prove_rule<S: TapeSymbol>(
@@ -1685,6 +1722,7 @@ pub fn prove_rule<S: TapeSymbol>(
 ) -> Option<(Rule<S>, RuleProof)> {
   if verbose {
     println!("\nworking to prove rule:\n{}", &rule);
+    println!("using rulebook:{}", rulebook);
   }
 
   let Rule { start, end } = rule;
@@ -1698,7 +1736,7 @@ pub fn prove_rule<S: TapeSymbol>(
       return None;
     }
   };
-  let (goal_tape, left_goal_sum, right_goal_sum) = process_goal_tape(goal_tape);
+  // let (goal_tape, left_goal_sum, right_goal_sum) = process_goal_tape(goal_tape);
 
   let mut neg_map: DefaultHashMap<Var, i32> = defaulthashmap! {0};
   let mut left_shrink = AVarSum::new();
@@ -1706,11 +1744,17 @@ pub fn prove_rule<S: TapeSymbol>(
 
   for step in 1..prover_steps + 1 {
     let (new_state, hm, tc, rs) =
-      one_rule_step(machine, &mut proving_tape, state, rulebook, step, verbose).right()?;
+      match one_rule_step(machine, &mut proving_tape, state, rulebook, step, verbose) {
+        RSuccess(new_state, hm, tc, rs) => (new_state, hm, tc, rs),
+        VarInfinite(_) => return None,
+        RFellOffTape(_) => return None,
+      };
     // if we ever try to grow the tape more than we have already shrunk it, then we
     // immediately fail
     let ls_res = left_shrink.modify_tapechange(tc.left);
     let rs_res = right_shrink.modify_tapechange(tc.right);
+    assert_eq!(left_shrink, AVarSum::new());
+    assert_eq!(right_shrink, AVarSum::new());
     if ls_res.is_none() || rs_res.is_none() {
       if verbose {
         println!("proving the rule failed because we hit the end of the tape")
@@ -1750,10 +1794,9 @@ pub fn prove_rule<S: TapeSymbol>(
     }
 
     // check if we succeeded
-    if state == goal_state
-      && proving_tape == goal_tape
-      && left_shrink == left_goal_sum
-      && right_shrink == right_goal_sum
+    if state == goal_state && proving_tape == goal_tape
+    // && left_shrink == left_goal_sum
+    // && right_shrink == right_goal_sum
     {
       if verbose {
         println!("proving the rule suceeded");
@@ -1823,13 +1866,14 @@ pub fn proving_rules_step<S: TapeSymbol>(
   }
   let (new_state, hm, rtc, cg_or_rs) =
     match one_rule_step(machine, exptape, state, rulebook, step, verbose) {
-      Left(_var) => {
+      VarInfinite(_var) => {
         if verbose {
           println!("proved machine runs forever using a rule");
         }
         return INFINITE;
       }
-      Right(ans) => ans,
+      RSuccess(new_state, hm, rtc, cg_or_rs) => (new_state, hm, rtc, cg_or_rs),
+      RFellOffTape(_) => panic!("unexpectedly fell off tape"),
     };
   state = new_state;
   match rtc_to_tape_diffs(&hm, rtc) {
@@ -1851,17 +1895,9 @@ pub fn proving_rules_step<S: TapeSymbol>(
     return HALT;
   }
 
-  let rules = detect_rules(
-    step,
-    state,
-    &exptape,
-    signatures,
-    &tape_diffs,
-    &readshifts,
-    false,
-  );
+  let rules = detect_rules(step, state, &exptape, signatures, &readshifts, false);
   for rule in rules {
-    if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, false) {
+    if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, verbose) {
       if pf != DirectSimulation(1) {
         if let Some(chained_rule) = chain_rule(&final_rule) {
           if verbose {
@@ -1897,7 +1933,7 @@ pub fn simulate_proving_rules<S: TapeSymbol>(
   store the signatures of everything seen so far
   if you see the same signature more than once, there is a possible rule
   */
-  let mut exptape = ExpTape::new();
+  let mut exptape = ExpTape::new(true);
   let mut state = START;
   let mut signatures: DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>> =
     defaulthashmap!();
@@ -2483,7 +2519,7 @@ pub mod parse {
     )
       .parse(input)?;
     right.reverse();
-    Ok((input, ExpTape { left, head, right }))
+    Ok((input, ExpTape { left, head, right, tape_end_inf: true }))
   }
 
   pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
@@ -2954,17 +2990,18 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
         );
       }
       normal_state = normal_tape
-        .step(normal_state, machine)
-        .expect_right("machine is defined");
+        .step_extra_info(normal_state, machine)
+        .expect_success()
+        .0;
       num_steps_to_match += 1;
     }
     return Some((normal_state, new_rule_state));
   }
 
   fn compare_machine_with_proving_rules<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) {
-    let mut normal_tape = ExpTape::new();
+    let mut normal_tape = ExpTape::new(true);
     let mut normal_state = START;
-    let mut rule_tape = ExpTape::new();
+    let mut rule_tape = ExpTape::new(true);
     let mut rule_state = START;
     let mut rulebook = Rulebook::chain_rulebook(machine);
     let mut signatures: DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>> =
@@ -3022,9 +3059,13 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
   ) -> (State, State) {
     assert_eq!(normal_state, rule_state);
     assert_eq!(normal_tape, rule_tape);
-    let new_rule_state = one_rule_step(machine, rule_tape, rule_state, rulebook, step, verbose)
-      .expect_right("ran forever?")
-      .0;
+    let rule_result = one_rule_step(machine, rule_tape, rule_state, rulebook, step, verbose);
+    let new_rule_state = match rule_result {
+      RSuccess(state, _, _, _) => state,
+      VarInfinite(_) => panic!("ran forever?"),
+      RFellOffTape(_) => panic!("fell off tape unexpectedly"),
+    };
+
     let mut num_steps_to_match = 0;
 
     while (new_rule_state, &mut *rule_tape) != (normal_state, normal_tape) {
@@ -3035,17 +3076,18 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
         );
       }
       normal_state = normal_tape
-        .step(normal_state, machine)
-        .expect_right("machine is defined");
+        .step_extra_info(normal_state, machine)
+        .expect_success()
+        .0;
       num_steps_to_match += 1;
     }
     return (normal_state, new_rule_state);
   }
 
   fn compare_machine_with_chain<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) {
-    let mut normal_tape = ExpTape::new();
+    let mut normal_tape = ExpTape::new(true);
     let mut normal_state = START;
-    let mut rule_tape = ExpTape::new();
+    let mut rule_tape = ExpTape::new(true);
     let mut rule_state = START;
     let rulebook = Rulebook::chain_rulebook(machine);
     for step in 1..num_steps + 1 {

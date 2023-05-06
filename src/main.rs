@@ -138,7 +138,7 @@ fn run_machine(machine: &SmallBinMachine) {
 
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
-  let num_steps = 150;
+  let num_steps = 40;
   Tape::simulate_from_start(machine, num_steps, true);
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
@@ -737,7 +737,8 @@ fn main() {
   // chainrule fails: 5, 15, 22, 23
   // other fails: 9, 19, 28
   // readshift both ways: 0, 17
-  for i in [5, 15, 22, 23, 9, 19, 28] {
+  for i in [5, 15, 22] {
+    //, 23, 9, 19, 28] {
     let m_str = undecided_size_4_random.get(i).unwrap();
     let machine = SmallBinMachine::from_compact_format(m_str);
     run_machine(&machine);
