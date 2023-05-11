@@ -159,6 +159,7 @@ pub trait Turing<S> {
     self.all_states().len() as u8
   }
   fn step(&self, edge: Edge<S>) -> Option<Trans<S>>;
+  fn to_compact_format(&self) -> String;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -181,6 +182,10 @@ impl Turing<Bit> for SmallBinMachine {
 
   fn step(&self, edge: Edge<Bit>) -> Option<Trans<Bit>> {
     *self.table.get(self.edge_index(edge)).unwrap()
+  }
+
+  fn to_compact_format(&self) -> String {
+    self.to_compact_format()
   }
 }
 

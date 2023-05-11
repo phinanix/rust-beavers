@@ -284,14 +284,14 @@ pub type TapeChange = Option<(Dir, TapeChangeKind)>;
 pub enum StepResult<S> {
   UndefinedEdge(Edge<S>),
   FellOffTape(Dir),
-  Success(State, TapeChange, ReadShift),
+  Success(State, ReadShift),
 }
 use StepResult::*;
 
 impl<S> StepResult<S> {
-  pub fn expect_success(self) -> (State, TapeChange, ReadShift) {
+  pub fn expect_success(self) -> (State, ReadShift) {
     match self {
-      Success(state, tc, rs) => (state, tc, rs),
+      Success(state, rs) => (state, rs),
       _ => panic!("success was expected"),
     }
   }
@@ -382,12 +382,12 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
       None => return UndefinedEdge(edge),
     };
     self.head = symbol;
-    let tc = match self.move_dir(dir) {
-      Some(tc) => tc,
+    match self.move_dir(dir) {
+      Some(_tc) => (),
       None => return FellOffTape(dir),
     };
     let rs = ReadShift::rs_in_dir(dir);
-    Success(state, tc, rs)
+    Success(state, rs)
   }
 
   fn simulate(
@@ -403,8 +403,8 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
     for step in 1..num_steps + 1 {
       state = match self.step_extra_info(state, machine) {
         UndefinedEdge(edge) => return (Left(edge), step),
-        Success(HALT, _, _) => return (Right(HALT), step),
-        Success(state, _, _) => state,
+        Success(HALT, _) => return (Right(HALT), step),
+        Success(state, _) => state,
         FellOffTape(_) => panic!("unexpectedly fell off tape!"),
       };
       println!("step: {} phase: {} tape: {}", step, state, self);
@@ -440,6 +440,15 @@ impl<S: TapeSymbol> ExpTape<S, u32> {
       head: *head,
       right: Self::splat(right),
     }
+  }
+
+  pub fn numbers_too_large(&self) -> bool {
+    let Self { left, head: _, right, tape_end_inf: _ } = self;
+    let too_large = 10_000_000;
+    left
+      .iter()
+      .chain(right.iter())
+      .any(|&(_s, n)| n > too_large)
   }
 }
 
@@ -556,49 +565,49 @@ mod test {
     //1LC
     let mut nothing_tape = parse_tape("(T, 2) |>F<| ").unwrap().1;
     let res = nothing_tape.step_extra_info(State(2), &machine);
-    assert_eq!(res, Success(State(3), None, RS_LEFT));
+    assert_eq!(res, Success(State(3), RS_LEFT));
     assert_eq!(nothing_tape, parse_tape("(T, 1) |>T<| (T, 1)").unwrap().1);
 
     //1LC
     let mut grow_tape = parse_tape(" |>F<| (F, 1)").unwrap().1;
     let res = grow_tape.step_extra_info(State(2), &machine);
-    assert_eq!(res, Success(State(3), Some((Dir::L, Grew)), RS_LEFT));
+    assert_eq!(res, Success(State(3), RS_LEFT));
     assert_eq!(grow_tape, parse_tape(" |>F<| (T, 1) (F, 1)").unwrap().1);
 
     //0LB
     let mut shrink_tape = parse_tape("(T, 1) |>F<| ").unwrap().1;
     let res = shrink_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Success(State(2), Some((Dir::R, Shrunk)), RS_LEFT));
+    assert_eq!(res, Success(State(2), RS_LEFT));
     assert_eq!(shrink_tape, parse_tape(" |>T<| ").unwrap().1);
 
     //0LB
     let mut both_tape = parse_tape(" |>F<| ").unwrap().1;
     let res = both_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Success(State(2), None, RS_LEFT));
+    assert_eq!(res, Success(State(2), RS_LEFT));
     assert_eq!(both_tape, parse_tape(" |>F<| ").unwrap().1);
 
     //1RA
     let mut nothing2_tape = parse_tape("(T, 2) |>F<| (F, 1) (T, 1)").unwrap().1;
     let res = nothing2_tape.step_extra_info(State(3), &machine);
-    assert_eq!(res, Success(State(1), None, RS_RIGHT));
+    assert_eq!(res, Success(State(1), RS_RIGHT));
     assert_eq!(nothing2_tape, parse_tape("(T, 3) |>F<| (T, 1)").unwrap().1);
 
     //0RA
     let mut grow2_tape = parse_tape("(T, 1) |>T<| ").unwrap().1;
     let res = grow2_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Success(State(1), Some((Dir::R, Grew)), RS_RIGHT));
+    assert_eq!(res, Success(State(1), RS_RIGHT));
     assert_eq!(grow2_tape, parse_tape("(T, 1) (F, 1) |>F<| ").unwrap().1);
 
     //0RA
     let mut shrink2_tape = parse_tape(" |>T<| (T, 1)").unwrap().1;
     let res = shrink2_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Success(State(1), Some((Dir::L, Shrunk)), RS_RIGHT));
+    assert_eq!(res, Success(State(1), RS_RIGHT));
     assert_eq!(shrink2_tape, parse_tape(" |>T<| ").unwrap().1);
 
     //0RA
     let mut both_tape = parse_tape(" |>T<| ").unwrap().1;
     let res = both_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Success(State(1), None, RS_RIGHT));
+    assert_eq!(res, Success(State(1), RS_RIGHT));
     assert_eq!(both_tape, parse_tape(" |>F<| ").unwrap().1);
   }
 

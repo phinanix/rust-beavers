@@ -90,6 +90,13 @@ fn machines_to_str(machines: Vec<SmallBinMachine>) -> String {
     .join("\n")
 }
 
+fn strs_to_machine(m_strs: Vec<&str>) -> Vec<SmallBinMachine> {
+  m_strs
+    .into_iter()
+    .map(|m_str| SmallBinMachine::from_compact_format(m_str))
+    .collect_vec()
+}
+
 fn dump_machines_to_file(machines: Vec<SmallBinMachine>, filename: &str) -> std::io::Result<()> {
   let machine_len = machines.len();
   let big_str = machines_to_str(machines);
@@ -138,7 +145,7 @@ fn run_machine(machine: &SmallBinMachine) {
 
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
-  let num_steps = 40;
+  let num_steps = 100;
   Tape::simulate_from_start(machine, num_steps, true);
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
@@ -203,6 +210,55 @@ fn prove_with_rules(
       }
     })
     .collect_vec()
+}
+
+fn get_which_proven(machines: &Vec<SmallBinMachine>, num_steps: u32, verbose: bool) -> Vec<usize> {
+  let mut out = vec![];
+  for (i, machine) in machines.iter().enumerate() {
+    // println!("working on machine {}", machine.to_compact_format());
+    let mut rulebook = Rulebook::chain_rulebook(machine);
+    let (new_state, _steps) = simulate_proving_rules(machine, num_steps, &mut rulebook, verbose);
+    if new_state == INFINITE {
+      out.push(i);
+    }
+  }
+  out
+}
+
+fn list_which_proven(machines: &Vec<SmallBinMachine>, num_steps: u32, verbose: bool) {
+  let which_proven = get_which_proven(machines, num_steps, verbose);
+  println!("num: {} proven: {:?}", which_proven.len(), &which_proven);
+  let proven_set: HashSet<_> = which_proven.into_iter().collect();
+  for (i, machine) in machines.iter().enumerate() {
+    println!(
+      "{} {} m: {} ",
+      i,
+      proven_set.contains(&i),
+      machine.to_compact_format()
+    );
+  }
+}
+
+fn decrease_rules_make_worse() -> Vec<&'static str> {
+  //16 machines that _stop_ being proven when you enable rules that decrease a var by >1
+  vec![
+    "1RB1LA_1RC1LB_1RD0RB_0LA1RH",
+    "1RB0RC_1RC1RH_0LD1LD_1RA1LD",
+    "1RB0LC_1RC1RH_0LD1RD_1RA1LD",
+    "1RB0LB_1RC1RD_0LD1RH_1RA1LD",
+    "1RB1LD_1RC1LB_0LB1RA_1RH1RC",
+    "1RB1LD_1RC1LB_0LB1RA_1RH0RB",
+    "1RB1RA_1LC1RH_0RA1RD_1LB1LD",
+    "1RB1RH_1LC1LB_1RD1RC_0LB0RC",
+    "1RB1RH_1LC1LB_1LD1RC_0RC1RB",
+    "1RB1RH_1LC1LB_1LD1RC_0RC1LB",
+    "1RB1RA_1LC1LB_1LD1RB_0RA1RH",
+    "1RB1RH_0RC1RD_1LB1RC_1LC1LD",
+    "1RB1RH_0RC1LD_1LB1RC_1LC1LD",
+    "1RB0RD_0LC1RH_1RD1LC_1RA1LD",
+    "1RB1LA_0LC0RA_1RD1LC_1RH1RA",
+    "1RB0RD_0LC1RH_1LD1LC_1RA1LD",
+  ]
 }
 
 fn undecided_size_3() -> Vec<&'static str> {
@@ -707,8 +763,6 @@ fn scan_from_machine(
   // }
 }
 fn main() {
-  // working on machine 1RB0LD_1RC1RH_1LD1RA_0RB0LD
-
   // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
   // let num_lr_steps = 1500;
   // let num_rule_steps = 100;
@@ -717,14 +771,22 @@ fn main() {
   //   num_lr_steps,
   //   num_rule_steps,
   //   // Some("size3_holdouts_2_may.txt"),
-  //   // Some("size4_holdouts_2_may_better_rule_guess_20747.txt"),
+  //   // Some("size4_holdouts_10_may_yes_d_larger_1.txt"),
   //   None,
   // );
 
   // let machine = SmallBinMachine::from_compact_format("1RB0LD_1RC1RH_1LD1RA_0RB0LD");
   // let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
 
-  let undecided_size_4_random = undecided_size_4_random_100();
+  let undecided_size_4_random = strs_to_machine(undecided_size_4_random());
+  let undecided_size_4_random_100 = strs_to_machine(undecided_size_4_random_100());
+  let decrease_rules_make_worse = decrease_rules_make_worse();
+  // // 11/30 proven: 0, 1, 2, 4, 6, 9, 14, 15, 19, 20, 29
+  // list_which_proven(&undecided_size_4_random, 100, false);
+  // // give ups: 18
+  // // 7/30 proven: 0, 3, 13, 16, 17, 20, 21,
+  // list_which_proven(&undecided_size_4_random_100, 100, false);
+
   /*
   5  - couldn't chain
   15 - couldn't chain
@@ -737,12 +799,25 @@ fn main() {
   // chainrule fails: 5, 15, 22, 23
   // other fails: 9, 19, 28
   // readshift both ways: 0, 17
-  for i in [5, 15, 22] {
-    //, 23, 9, 19, 28] {
-    let m_str = undecided_size_4_random.get(i).unwrap();
-    let machine = SmallBinMachine::from_compact_format(m_str);
-    run_machine(&machine);
-  }
+  // for i in [5, 15, 22] {
+  //   //, 23, 9, 19, 28] {
+
+  let m_str = decrease_rules_make_worse.get(0).unwrap();
+  let machine = SmallBinMachine::from_compact_format(m_str);
+  let machine2 = undecided_size_4_random_100.get(18).unwrap();
+  dbg!(machine2.to_compact_format());
+  run_machine(&machine);
+  // }
+
+  /*
+  machines to investigate:
+  - the 16 that fail to be proven with >1 decrease
+  - what exactly is failing in "failure to guess" eg random_100 at 5,9,15,19,22,23,28
+     or random at 11,12,13,18,23
+   */
+  // let m_str = "1RB1LA_1RC1RB_1RD1RH_0LD0LA";
+  // let machine = SmallBinMachine::from_compact_format(m_str);
+  // run_machine(&machine);
 
   // scan_3_dregs();
 }
