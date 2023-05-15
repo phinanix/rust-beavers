@@ -241,6 +241,45 @@ fn list_which_proven(machines: &Vec<SmallBinMachine>, num_steps: u32, verbose: b
 
 fn decrease_rules_make_worse() -> Vec<&'static str> {
   //16 machines that _stop_ being proven when you enable rules that decrease a var by >1
+  /*
+  machine 0:
+  straightforward bouncer that goes right with BBC and left with B, but has a
+  nontrivial turnaround at the right side
+  we prove the left rule as a chain rule
+  then prove the right rule on step 13
+  but then on step 25 we make the following bad guess:
+    phase: C  (F, 1) (T, 1 + 1*x_0) |>T<| (F, 3 + 1*x_0)
+    into:
+    phase: C  (T, 4 + 1*x_0) |>T<| (F, 1 + 1*x_0)
+  which is true, but chaining it forces x_0 to be even which is not a necessary restriction
+  and for some reason we never guess the smarter version
+  conclusion: better guessing would probably help
+
+  machine 11 (chosen randomly):
+  bouncer goes right with C left with D, both proven as chain rules
+  same deal, we make and prove the bad rule on step 19:
+    phase: C  (F, 3 + 1*x_0) |>T<| (T, 1 + 1*x_0) (F, 1)
+    into:
+    phase: C  (F, 1 + 1*x_0) |>T<| (T, 4 + 1*x_0)
+  v similar to above, the bad guess is due to:
+    detecting rule from
+    (F, 3) |>T<| (T, 3) (F, 1)
+    to
+    (F, 1) |>T<| (T, 6)
+  which like, better rule guessing would fix, as would readshifts-when-proving
+  but why does this machine work without decrease of more than 1 chaining?
+  well we still make all the dumb guesses, but now we can't chain them, so we keep simulating
+  until we get to step 25:
+    detecting rule from
+    (F, 2) |>F<| (T, 5) (F, 1)
+    to
+    |>F<| (T, 8)
+    using steps: [16, 25] detected rule:
+    phase: D  (F, 2) |>F<| (T, 0 + 1*x_0) (F, 1)
+    into:
+    phase: D   |>F<| (T, 3 + 1*x_0)
+  which is a non-dumb rule guess that is provable and chainable and then we prove the machine
+     */
   vec![
     "1RB1LA_1RC1LB_1RD0RB_0LA1RH",
     "1RB0RC_1RC1RH_0LD1LD_1RA1LD",
@@ -778,8 +817,8 @@ fn main() {
   // let machine = SmallBinMachine::from_compact_format("1RB0LD_1RC1RH_1LD1RA_0RB0LD");
   // let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
 
-  let undecided_size_4_random = strs_to_machine(undecided_size_4_random());
-  let undecided_size_4_random_100 = strs_to_machine(undecided_size_4_random_100());
+  // let undecided_size_4_random = strs_to_machine(undecided_size_4_random());
+  // let undecided_size_4_random_100 = strs_to_machine(undecided_size_4_random_100());
   let decrease_rules_make_worse = decrease_rules_make_worse();
   // // 11/30 proven: 0, 1, 2, 4, 6, 9, 14, 15, 19, 20, 29
   // list_which_proven(&undecided_size_4_random, 100, false);
@@ -802,10 +841,10 @@ fn main() {
   // for i in [5, 15, 22] {
   //   //, 23, 9, 19, 28] {
 
-  let m_str = decrease_rules_make_worse.get(0).unwrap();
+  let m_str = decrease_rules_make_worse.get(11).unwrap();
   let machine = SmallBinMachine::from_compact_format(m_str);
-  let machine2 = undecided_size_4_random_100.get(18).unwrap();
-  dbg!(machine2.to_compact_format());
+  // let machine2 = undecided_size_4_random_100.get(18).unwrap();
+  dbg!(machine.to_compact_format());
   run_machine(&machine);
   // }
 
