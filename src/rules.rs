@@ -36,7 +36,6 @@ use crate::{
   },
 };
 use defaultmap::{defaulthashmap, DefaultHashMap};
-// use divrem::DivCeil;
 use either::Either::{self, Left, Right};
 use itertools::{chain, zip_eq, Itertools};
 use proptest::{prelude::*, sample::select};
@@ -394,50 +393,13 @@ pub trait Count: Copy + Eq + Hash + Debug + Display + From<u32> {
   fn mul_const(self, n: u32) -> Self;
 }
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum TapeEndMatch<C> {
-  CountLeft(C),
-  VarLeft {
-    leftover: AffineVar,
-    lower_bound: Option<(Var, C)>,
-  },
-}
-use TapeEndMatch::*;
-
-impl<C: TapeCount> TapeEndMatch<C> {
-  fn zero_ish(&self) -> bool {
-    match self {
-      &CountLeft(c) => c == C::zero(),
-      &VarLeft { leftover, lower_bound: _ } => leftover == AffineVar::zero(),
-    }
-  }
-}
-
 pub trait TapeCount: Count {
-  /*
-  for when you are matching in the middle of the tape and avar has to exactly match
-  count
-  returns Some if successful and may return an equation sending a Var to a count
-  */
-  fn match_exact(avar: AffineVar, count: Self, verbose: bool) -> Option<Option<(Var, Self)>>;
-  /*
-  for when you are matching at the end of the tape and avar does not have to exactly
-  match count
-  returns Some if successful
-  returns either
-    - some of the Count left on the tape,
-    - or some var leftover
-    - or a lower bound on some var
-  may return an equation sending a Var to a count
-   */
-  fn match_end(
+  fn match_var(
     avar: AffineVar,
     count: Self,
-    hm: &HashMap<Var, Self>,
     verbose: bool,
-  ) -> Option<TapeEndMatch<Self>>;
+  ) -> Option<(Either<u32, Self>, Option<(Var, Self)>)>;
   fn sub_one(self) -> Self;
-  fn geq(lhs: Self, other: Self) -> bool;
 }
 
 // illegal, very sad
@@ -447,7 +409,7 @@ pub trait TapeCount: Count {
 //   }
 // }
 
-pub fn match_avar_num(
+pub fn match_var_num(
   AffineVar { n, a, var }: AffineVar,
   mut num: u32,
   verbose: bool,
@@ -490,102 +452,30 @@ impl Count for u32 {
 }
 
 impl TapeCount for u32 {
-  fn match_exact(
-    AffineVar { n, a, var }: AffineVar,
-    num: u32,
+  fn match_var(
+    avar: AffineVar,
+    count: Self,
     verbose: bool,
-  ) -> Option<Option<(Var, u32)>> {
-    let leftover_num = match n.cmp(&num) {
-      Greater => {
-        if verbose {
-          println!("num too small")
-        };
-        return None;
-      }
-      Equal => {
-        if a == 0 {
-          return Some(None);
-        } else {
-          return None;
-        }
-      }
-      Less => num.checked_sub(n).unwrap(),
-    };
-    if a == 0 {
-      return None;
-    }
-    if leftover_num % a != 0 {
-      return None;
-    }
-    //we have established: a is positive, num evenly divides among a
-    let var_assign = leftover_num / a;
-    return Some(Some((var, var_assign)));
-  }
-
-  fn match_end(
-    AffineVar { mut n, mut a, var }: AffineVar,
-    num: u32,
-    hm: &HashMap<Var, u32>,
-    _verbose: bool,
-  ) -> Option<TapeEndMatch<u32>> {
-    if let Some(ans) = hm.get(&var) {
-      n += a * ans;
-      a = 0;
-    }
-
-    if n >= num {
-      Some(VarLeft {
-        leftover: AffineVar { n: n.checked_sub(num).unwrap(), a, var },
-        lower_bound: None,
-      })
-    } else {
-      let num_leftover = num.checked_sub(n).unwrap();
-      if a == 0 {
-        Some(CountLeft(num_leftover.into()))
-      } else {
-        let leftover = if a > num_leftover {
-          let vars_left = a.checked_sub(num_leftover).unwrap();
-          AffineVar { n: 0, a: vars_left, var }
-        } else {
-          AffineVar::constant(0)
-        };
-        // a * lb > leftover
-        let lower_bound = if num_leftover > a {
-          Some((var, num_leftover.div_ceil(a)))
-        } else {
-          None
-        };
-        Some(VarLeft { leftover, lower_bound })
-      }
-    }
+  ) -> Option<(Either<u32, Self>, Option<(Var, Self)>)> {
+    match_var_num(avar, count, verbose)
   }
 
   fn sub_one(self) -> Self {
     self - 1
   }
-  fn geq(lhs: Self, other: Self) -> bool {
-    lhs >= other
-  }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RuleTapeMatch<S, C> {
-  // we want to eat the end with a certain symbol and AVar
-  // ConsumedEnd(S, AffineVar),
-  ConsumedEnd {
-    symbol: S,
-    leftover: AffineVar,
-    lower_bound: Option<(Var, C)>,
-  },
-  // how much of the last elt is leftover
+  ConsumedEnd((S, AffineVar)),
   Leftover(C),
 }
 use RuleTapeMatch::*;
 
 impl<S: TapeSymbol, C> RuleTapeMatch<S, C> {
   fn empty_ify(opt_rtm: Option<RuleTapeMatch<S, C>>) -> Option<RuleTapeMatch<S, C>> {
-    if let Some(ConsumedEnd { symbol, leftover: _, lower_bound: _ }) = opt_rtm {
-      if symbol != S::empty() {
+    if let Some(ConsumedEnd((s, _avar))) = opt_rtm {
+      if s != S::empty() {
         return None;
       }
     }
@@ -599,9 +489,11 @@ pub fn match_rule_tape<S: TapeSymbol, C: TapeCount>(
   tape: &[(S, C)],
   verbose: bool,
 ) -> Option<RuleTapeMatch<S, C>> {
-  // if rule applies, returns RTM
+  // if rule applies, returns
+  // 0: how much of the last elt is leftover
+  // 1: how many elements
   // else returns none
-
+  let mut leftover = Right(C::zero());
   if rule.len() > tape.len() + 1 {
     if verbose {
       println!("rule too long")
@@ -609,7 +501,6 @@ pub fn match_rule_tape<S: TapeSymbol, C: TapeCount>(
     return None;
   };
 
-  //todo remove last_elt_empty_tape via refactoring
   let mut last_elt_empty_tape = false;
   let mut tape_change_val_sym = None;
   if rule.len() == tape.len() + 1 {
@@ -626,105 +517,72 @@ pub fn match_rule_tape<S: TapeSymbol, C: TapeCount>(
     tape_change_val_sym = Some(last_rule_pair);
   }
   let rule_slice_start = if last_elt_empty_tape { 1 } else { 0 };
-  let mut pairs_iter = zip(rule[rule_slice_start..].iter().rev(), tape.iter().rev());
-  // todo!("tape is wrong length");
-  // let mut tape_iter = tape.iter();
-  match pairs_iter.rev().next() {
-    Some(((last_rule_symbol, last_avar), (last_tape_symbol, last_num))) => {
-      for (&(rule_symbol, avar), &(tape_symbol, num)) in pairs_iter {
-        if verbose {
-          println!(
-            "matching {}, {} to {}, {}",
-            rule_symbol, avar, tape_symbol, num
-          )
-        };
-        if rule_symbol != tape_symbol {
-          if verbose {
-            println!("symbols didn't match")
-          };
-          return None;
-        }
-
-        let mb_new_var = C::match_exact(avar, num, verbose)?;
-
-        if let Some((var, var_num)) = mb_new_var {
-          match hm.get(&var) {
-            None => {
-              hm.insert(var, var_num);
-            }
-            Some(&old_var_num) => {
-              if var_num != old_var_num {
-                if verbose {
-                  println!("var {} sent to both: {} {}", var, old_var_num, var_num)
-                };
-                return None;
-              }
-            }
-          }
-        }
-      }
+  for (&(rule_symbol, avar), &(tape_symbol, num)) in
+    zip(rule[rule_slice_start..].iter().rev(), tape.iter().rev())
+  {
+    if leftover != Right(C::zero()) {
       if verbose {
-        println!(
-          "last: matching {}, {} to {}, {}",
-          last_rule_symbol, last_avar, last_tape_symbol, last_num
-        )
+        println!("some bits leftover {}", leftover)
       };
-      if last_rule_symbol != last_tape_symbol {
-        if verbose {
-          println!("symbols didn't match")
-        };
-        return None;
-      }
-      match tape_change_val_sym {
-        None => match C::match_end(*last_avar, *last_num, &hm, verbose)? {
-          CountLeft(leftover) => return Some(Leftover(leftover)),
-          VarLeft { leftover, lower_bound } => {
-            assert!(rule.len() <= tape.len(), "{} {}", rule.len(), tape.len());
-            // todo!();
-            if rule.len() == tape.len() {
-              let ans = ConsumedEnd {
-                symbol: rule.get(0).unwrap().0,
-                leftover,
-                lower_bound,
-              };
-              if verbose {
-                println!(
-                  "didn't match empty and ate past end, so ConsumedEnd: {:?}",
-                  ans
-                );
-              }
-              return Some(ans);
-            } else {
-              return None;
-            }
+      return None;
+    }
+    if verbose {
+      println!(
+        "matching {}, {} to {}, {}",
+        rule_symbol, avar, tape_symbol, num
+      )
+    };
+    if rule_symbol != tape_symbol {
+      if verbose {
+        println!("symbols didn't match")
+      };
+      return None;
+    }
+    let (new_leftover, mb_new_var) = C::match_var(avar, num, verbose)?;
+
+    leftover = new_leftover;
+    if let Some((var, var_num)) = mb_new_var {
+      match hm.get(&var) {
+        None => {
+          hm.insert(var, var_num);
+        }
+        Some(&old_var_num) => {
+          if var_num != old_var_num {
+            if verbose {
+              println!("var {} sent to both: {} {}", var, old_var_num, var_num)
+            };
+            return None;
           }
-        },
-        Some(&(symbol, avar)) => {
-          let mb_new_var = C::match_exact(*last_avar, *last_num, verbose)?;
-          if let Some((var, var_num)) = mb_new_var {
-            match hm.get(&var) {
-              None => {
-                hm.insert(var, var_num);
-              }
-              Some(&old_var_num) => {
-                if var_num != old_var_num {
-                  if verbose {
-                    println!("var {} sent to both: {} {}", var, old_var_num, var_num)
-                  };
-                  return None;
-                }
-              }
-            }
-          }
-          return Some(ConsumedEnd { symbol, leftover: avar, lower_bound: None });
         }
       }
     }
-    None => match tape_change_val_sym {
-      Some(&(symbol, avar)) => {
-        return Some(ConsumedEnd { symbol, leftover: avar, lower_bound: None });
+  }
+  match tape_change_val_sym {
+    Some(tape_change_val_sym) => {
+      if leftover != Right(C::zero()) {
+        return None;
+      } else {
+        return Some(ConsumedEnd(*tape_change_val_sym));
       }
-      None => return Some(Leftover(C::zero())),
+    }
+    None => match leftover {
+      Left(eat_past_end) => {
+        assert!(rule.len() <= tape.len(), "{} {}", rule.len(), tape.len());
+        // todo change <= to ==
+        if rule.len() == tape.len() {
+          let ans = ConsumedEnd((rule.get(0).unwrap().0, eat_past_end.into()));
+          if verbose {
+            println!(
+              "didn't match empty and ate past end, so ConsumedEnd: {:?}",
+              ans
+            );
+          }
+          return Some(ans);
+        } else {
+          return None;
+        }
+      }
+      Right(leftover) => return Some(Leftover(leftover)),
     },
   }
 }
@@ -739,7 +597,7 @@ pub fn consume_tape_from_rulematch<S: TapeSymbol, C: TapeCount>(
   rule_len: usize,
 ) {
   match tape_match {
-    ConsumedEnd { symbol: _, leftover: _, lower_bound: _ } => remove(tape, rule_len - 1),
+    ConsumedEnd(_avar) => remove(tape, rule_len - 1),
     Leftover(leftover) if leftover == Count::zero() => remove(tape, rule_len),
     Leftover(leftover) => {
       remove(tape, rule_len - 1);
@@ -977,20 +835,15 @@ pub fn apply_rule_extra_info<S: TapeSymbol, C: TapeCount>(
     if verbose {
       println!("succeeded")
     };
-    if let ConsumedEnd { symbol: _, leftover: avar, lower_bound } = left_match {
+    if let ConsumedEnd((_, avar)) = left_match {
       if !tape.tape_end_inf {
         return None;
       }
-      match avar.sub_map_maybe(&hm) {
-        None => return Some(Left(avar.var)),
-        Some(x) => {
-          if !C::geq(x, lower_bound) {
-            return None;
-          }
-        }
+      if let None = avar.sub_map_maybe(&hm) {
+        return Some(Left(avar.var));
       }
     }
-    if let ConsumedEnd { symbol: _, leftover: avar, lower_bound: _ } = right_match {
+    if let ConsumedEnd((_, avar)) = right_match {
       if !tape.tape_end_inf {
         return None;
       }
@@ -1589,71 +1442,17 @@ impl Count for SymbolVar {
 }
 
 impl TapeCount for SymbolVar {
+  fn match_var(
+    avar: AffineVar,
+    count: Self,
+    _verbose: bool,
+  ) -> Option<(Either<u32, Self>, Option<(Var, Self)>)> {
+    match_avar_svar(avar, count)
+  }
+
   fn sub_one(self) -> Self {
     let Self { n, a, var } = self;
     Self { n: n - 1, a, var }
-  }
-
-  fn match_exact(
-    AffineVar { n, a, var }: AffineVar,
-    mut svar: SymbolVar,
-    _verbose: bool,
-  ) -> Option<Option<(Var, SymbolVar)>> {
-    svar.n -= i32::try_from(n).unwrap();
-    if svar.n < 0 && svar.a == 0 {
-      return None;
-    }
-
-    if a == 0 {
-      if svar == SymbolVar::constant(0) {
-        return Some(None);
-      } else {
-        return None;
-      }
-    }
-    let a_i32 = i32::try_from(a).unwrap();
-    if svar.n % a_i32 != 0 || svar.a % a != 0 {
-      return None;
-    }
-    Some(Some((
-      var,
-      SymbolVar { n: svar.n / a_i32, a: svar.a / a, var: svar.var },
-    )))
-  }
-
-  fn match_end(
-    AffineVar { n, a, var }: AffineVar,
-    mut svar: SymbolVar,
-    verbose: bool,
-  ) -> Option<TapeEndMatch<SymbolVar>> {
-    let mut leftover = AffineVar::constant(0);
-
-    svar.n -= i32::try_from(n).unwrap();
-    if a == 0 {
-      return Some(CountLeft(svar));
-    }
-
-    let integer_leftover: u32 = if svar.n < 0 {
-      todo!("handle svar.n < 0");
-      svar.n.abs().try_into().unwrap()
-    } else {
-      0
-    };
-    let positive_svar_integer: u32 = svar.n.try_into().unwrap();
-    let var_lb = svar.a.div_ceil(a);
-    let int_lb = positive_svar_integer.div_ceil(n);
-
-    Some(VarLeft {
-      leftover: AffineVar::constant(0),
-      lower_bound: Some((
-        var,
-        SymbolVar {
-          n: int_lb.try_into().unwrap(),
-          a: var_lb,
-          var: svar.var,
-        },
-      )),
-    })
   }
 }
 
@@ -1699,6 +1498,7 @@ pub fn match_avar_svar(
   if svar.n < 0 && svar.a == 0 {
     return Some((Left(svar.n.abs().try_into().unwrap()), None));
   }
+
   if a == 0 {
     return Some((Right(svar), None));
   }
@@ -2362,8 +2162,7 @@ pub fn chain_side<S: TapeSymbol>(
   //two usize are where to iterate from in start and end resp.
   let (ans, start_slice, end_slice): ((StartEnd, S, AffineVar), usize, usize) = match rtm {
     // in this case, we add (s, avar)*n to the start
-    ConsumedEnd { symbol: s, leftover: avar, lower_bound: _ } => {
-      todo!();
+    ConsumedEnd((s, avar)) => {
       let ans = (Start, s, avar.times_var(chaining_var)?);
       let start_slice = if end.len() + 1 == start.len() {
         1
@@ -2565,7 +2364,7 @@ pub fn rule_runs_forever_if_consumes_all<S: TapeSymbol>(
       // in this case, we are trying to consume more symbols
       // the first check is that they are actually past the end of the tape
       // which is only allowed if they are empty
-      ConsumedEnd { symbol: s, leftover: _, lower_bound: _ } => {
+      ConsumedEnd((s, _)) => {
         if end.len() > start.len() || s != S::empty() {
           return None;
         }
@@ -3083,22 +2882,21 @@ mod test {
   #[test]
   fn test_match_var_num() {
     let (_leftover, var) = parse_avar(&"3 + 2*x_0").unwrap();
-    assert_eq!(match_avar_num(var, 3, false), None);
+    assert_eq!(match_var_num(var, 3, false), None);
     assert_eq!(
-      match_avar_num(var, 5, false),
+      match_var_num(var, 5, false),
       Some((Right(0), Some((Var(0), 1))))
     );
     assert_eq!(
-      match_avar_num(var, 6, false),
+      match_var_num(var, 6, false),
       Some((Right(1), Some((Var(0), 1))))
     );
     let (_leftover, var) = parse_avar_gen::<nom::error::Error<&str>>(&"3 + 0*x_0").unwrap();
-    assert_eq!(match_avar_num(var, 2, false), Some((Left(1), None)));
-    assert_eq!(match_avar_num(var, 3, false), Some((Right(0), None)));
-    assert_eq!(match_avar_num(var, 5, false), Some((Right(2), None)));
-
+    assert_eq!(match_var_num(var, 2, false), Some((Left(1), None)));
+    assert_eq!(match_var_num(var, 3, false), Some((Right(0), None)));
+    assert_eq!(match_var_num(var, 5, false), Some((Right(2), None)));
     let two_x_p3 = parse_exact(parse_avar("3 + 2*x_0"));
-    assert_eq!(match_avar_num(two_x_p3, 3, false), None);
+    assert_eq!(match_var_num(two_x_p3, 3, false), None);
   }
 
   fn parse_exact<X>(res: IResult<&str, X>) -> X {
@@ -3144,30 +2942,7 @@ mod test {
     let mb_rtm = match_rule_tape(&mut hm, &start, &end, true);
     assert_eq!(
       mb_rtm,
-      Some(ConsumedEnd {
-        symbol: Bit(true),
-        leftover: AffineVar::constant(1),
-        lower_bound: None
-      })
-    );
-
-    println!("starting match 3");
-    let start = parse_half_tape("(T, 3 + 1*x_0)");
-    assert_eq!(start.len(), 1, "{:?}", start);
-    let end: Vec<(Bit, SymbolVar)> = parse_half_tape("(T, 3)")
-      .into_iter()
-      .map(|(b, avar)| (b, avar.into()))
-      .collect_vec();
-    assert_eq!(end.len(), 1);
-    let mut hm = HashMap::new();
-    let mb_rtm = match_rule_tape(&mut hm, &start, &end, true);
-    assert_eq!(
-      mb_rtm,
-      Some(ConsumedEnd {
-        symbol: Bit(true),
-        leftover: parse_exact(parse_avar("0 + 1*x_0")),
-        lower_bound: None
-      })
+      Some(ConsumedEnd((Bit(true), AffineVar::constant(1))))
     );
 
     let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| 
@@ -3586,10 +3361,6 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
     // 2x+3 match 3
     let ans = match_avar_svar(two_x_p3, SymbolVar { n: 3, a: 0, var: Var(0) });
     assert_eq!(ans, None);
-    //   Some((
-
-    //   ))
-    // )
   }
 
   #[test]
