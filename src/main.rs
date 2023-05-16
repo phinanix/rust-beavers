@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 #![feature(return_position_impl_trait_in_trait)]
+#![feature(int_roundings)]
 use std::{collections::HashSet, fs, io, process::exit};
 
 use crate::{
@@ -841,11 +842,11 @@ fn main() {
   // for i in [5, 15, 22] {
   //   //, 23, 9, 19, 28] {
 
-  let m_str = decrease_rules_make_worse.get(11).unwrap();
-  let machine = SmallBinMachine::from_compact_format(m_str);
+  // let m_str = decrease_rules_make_worse.get(11).unwrap();
+  // let machine = SmallBinMachine::from_compact_format(m_str);
   // let machine2 = undecided_size_4_random_100.get(18).unwrap();
-  dbg!(machine.to_compact_format());
-  run_machine(&machine);
+  // dbg!(machine.to_compact_format());
+  // run_machine(&machine);
   // }
 
   /*
@@ -854,9 +855,9 @@ fn main() {
   - what exactly is failing in "failure to guess" eg random_100 at 5,9,15,19,22,23,28
      or random at 11,12,13,18,23
    */
-  // let m_str = "1RB1LA_1RC1RB_1RD1RH_0LD0LA";
-  // let machine = SmallBinMachine::from_compact_format(m_str);
-  // run_machine(&machine);
+  let m_str = "1RB1LA_1RC1RB_1RD1RH_0LD0LA";
+  let machine = SmallBinMachine::from_compact_format(m_str);
+  run_machine(&machine);
 
   // scan_3_dregs();
 }
