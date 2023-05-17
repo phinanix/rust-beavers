@@ -45,6 +45,7 @@ use std::{
   collections::{HashMap, HashSet},
   iter::zip,
   ops::Add,
+  vec,
 };
 use std::{collections::hash_map::Iter, hash::Hash};
 use std::{
@@ -1733,6 +1734,126 @@ pub fn aggregate_and_display_proving_res(results: &Vec<(SmallBinMachine, State, 
   );
 }
 
+pub fn chain_var_2(
+  internal_hm: &mut HashMap<Var, AffineVar>,
+  external_hm: &mut HashMap<Var, AffineVar>,
+  start: AffineVar,
+  end: &AVarSum,
+  chaining_var: Var,
+) -> Option<(AffineVar, AVarSum)> {
+  /*
+  internal hm is like, when you chain (F, x) to (F, x+1), you have set x = x+1
+  so you couldn't somewhere else set x = x+2
+  external hm is like, when you chain (F, x) to (F, 3), you have set x = 3
+  so not only can x not be anything except 3 anywhere else, you sub 3 for x everywhere else
+   */
+  match start {
+    AffineVar { n, a: 0, var: _var } => {
+      if end.var_map.is_empty() {
+        if n == end.n {
+          Some((start, end.clone()))
+        } else {
+          None
+        }
+      } else {
+        match end.var_map.iter().exactly_one() {
+          Ok((&end_var, &end_a)) => {
+            let int_match = n.checked_sub(end.n)?;
+            if int_match % end_a == 0 {
+              external_hm.insert(end_var, (int_match / end_a).into());
+              Some((start, AVarSum::constant(n))) // these are equal
+            } else {
+              None
+            }
+          }
+          Err(_) => {
+            println!("tried to chain {} into {} and couldn't #1", start, end);
+            return None;
+          }
+        }
+      }
+    }
+    AffineVar { n, a, var } => {
+      if end.var_map.is_empty() {
+        let int_match = end.n.checked_sub(n)?;
+        if int_match % a == 0 {
+          external_hm.insert(var, (int_match / a).into());
+          Some((AffineVar::constant(end.n), end.clone())) // these are equal
+        } else {
+          None
+        }
+      } else {
+        match end.var_map.iter().exactly_one() {
+          Ok((&end_var, &end_a)) => {
+            if var != end_var || a != end_a {
+              println!("tried to chain {} into {} and couldn't #2", start, end);
+              return None;
+            }
+            //
+            if n <= end.n {
+              // we're matching ax + n to ax + m so we send x to x + (m - n) / a
+              let diff = end.n - n;
+              if diff % a != 0 {
+                return None;
+              }
+              internal_hm.insert(var, AffineVar { n: diff / a, a: 1, var });
+              // (ax + n, ax + m) -> (ax + n, ax + n + k*(m - n))
+              let mut end_out: AVarSum = start.into();
+              if diff > 0 {
+                end_out.add_avar(AffineVar { n: 0, a: diff, var: chaining_var });
+              }
+              Some((start, end_out))
+            } else {
+              // None
+              if a > 1 {
+                println!("chain {} into {}!", start, end);
+              }
+              let decrease_amt = n - end.n;
+              if a % decrease_amt == 0 {
+                todo!();
+                /* (ax + n, ax + m), d = n - m, a = dr
+                   (drx + n, drx + m) chains to
+                   (drx + n, n) & k = rx
+                */
+                let rem = a / decrease_amt;
+                let end_out = AVarSum::constant(n);
+                // add k = rx to map
+                if new_hm.contains_key(&chaining_var) {
+                  println!("tried to chain {} into {} and couldn't #3", start, end);
+                  return None;
+                }
+                new_hm.insert(chaining_var, AffineVar { n: 0, a: rem, var: start.var });
+                Some((start, end_out))
+              } else if a == 1 {
+                todo!();
+                // return None;
+                //(x + d + c, x + c) -> (x + d + c, d + c) + x = dk
+                let end_out = AVarSum::constant(n);
+                // add x = dk to map
+                if new_hm.contains_key(&var) {
+                  dbg!(hm, new_hm);
+                  println!("tried to chain {} into {} and couldn't #4", start, end);
+                  return None;
+                }
+                new_hm.insert(var, AffineVar { n: 0, a: decrease_amt, var: chaining_var });
+                Some((start, end_out))
+              } else {
+                println!("tried to chain {} into {} and couldn't #5", start, end);
+                None
+              }
+            }
+            //
+          }
+          Err(_) => {
+            println!("tried to chain {} into {} and couldn't #3", start, end);
+            None
+          }
+        }
+      }
+    }
+  }
+}
+
 pub fn chain_var(
   hm: &HashMap<Var, SymbolVar>,
   new_hm: &mut HashMap<Var, AffineVar>,
@@ -1902,9 +2023,67 @@ pub fn append_exptape<S: Eq, C: AddAssign>(tape: &mut Vec<(S, C)>, item: (S, C))
   }
 }
 
+pub fn chain_side2<S: TapeSymbol>(
+  start: &[(S, AffineVar)],
+  end: &[(S, AVarSum)],
+  chaining_var: Var,
+  sv_hm: &mut HashMap<Var, SymbolVar>,
+  new_hm: &mut HashMap<Var, AffineVar>,
+) -> Option<(Vec<(S, AffineVar)>, Vec<(S, AVarSum)>)> {
+  if start.len().abs_diff(end.len()) > 1 {
+    return None;
+  }
+  let s_len: i32 = start.len().try_into().unwrap();
+  let e_len: i32 = end.len().try_into().unwrap();
+
+  let (mut start_out, mut end_out, start_slice, end_slice) = match s_len - e_len {
+    1 => {
+      let (start_s, start_avar) = start[0];
+      (
+        vec![(start_s, start_avar.times_var(chaining_var)?)],
+        vec![],
+        1,
+        0,
+      )
+    }
+    0 => (vec![], vec![], 0, 0),
+    -1 => {
+      let (end_s, end_avarsum) = &end[0];
+      (
+        vec![],
+        vec![(end_s, end_avarsum.times_var(chaining_var)?)],
+        0,
+        1,
+      )
+    }
+    _ => unreachable!("checked abs diff above"),
+  };
+  for (i, (&(s_sym, s_var), (e_sym, e_var))) in
+    zip_eq(start[start_slice..].iter(), end[end_slice..].iter()).enumerate()
+  {
+    if s_sym != *e_sym {
+      return None;
+    }
+    let (s_var_out, e_var_out) = if i == 0 && start_slice == 0 && end_slice == 0 {
+      todo!()
+    } else {
+      chain_var(&sv_hm, new_hm, s_var, e_var, chaining_var)?
+    };
+  }
+
+  #[derive(Debug, Clone, Copy)]
+  enum StartEnd {
+    Start,
+    End,
+  }
+  use StartEnd::*;
+
+  todo!()
+}
+
 pub fn chain_side<S: TapeSymbol>(
-  start: &Vec<(S, AffineVar)>,
-  end: &Vec<(S, AVarSum)>,
+  start: &[(S, AffineVar)],
+  end: &[(S, AVarSum)],
   chaining_var: Var,
   sv_hm: &mut HashMap<Var, SymbolVar>,
   new_hm: &mut HashMap<Var, AffineVar>,
