@@ -1318,13 +1318,12 @@ pub fn match_avar_svar(
   let a_i32 = i32::try_from(a).unwrap();
   let integer_in_x = svar.n.div_euclid(a_i32);
   svar.n = svar.n.rem_euclid(a_i32);
-  Some((
-    Right(svar),
-    Some((
-      avar,
-      SymbolVar { n: integer_in_x, a: coeff_a_in_x, var: svar.var },
-    )),
-  ))
+  let svar_rhs = SymbolVar { n: integer_in_x, a: coeff_a_in_x, var: svar.var };
+  if svar_rhs == SymbolVar::zero() {
+    None
+  } else {
+    Some((Right(svar), Some((avar, svar_rhs))))
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
