@@ -395,7 +395,7 @@ pub trait Count: Copy + Eq + Hash + Debug + Display + From<u32> {
 }
 
 pub trait TapeCount: Count {
-  fn match_var(
+  fn match_avar(
     avar: AffineVar,
     count: Self,
     verbose: bool,
@@ -410,7 +410,7 @@ pub trait TapeCount: Count {
 //   }
 // }
 
-pub fn match_var_num(
+pub fn match_avar_num(
   AffineVar { n, a, var }: AffineVar,
   mut num: u32,
   verbose: bool,
@@ -453,12 +453,12 @@ impl Count for u32 {
 }
 
 impl TapeCount for u32 {
-  fn match_var(
+  fn match_avar(
     avar: AffineVar,
     count: Self,
     verbose: bool,
   ) -> Option<(Either<u32, Self>, Option<(Var, Self)>)> {
-    match_var_num(avar, count, verbose)
+    match_avar_num(avar, count, verbose)
   }
 
   fn sub_one(self) -> Self {
@@ -539,7 +539,7 @@ pub fn match_rule_tape<S: TapeSymbol, C: TapeCount>(
       };
       return None;
     }
-    let (new_leftover, mb_new_var) = C::match_var(avar, num, verbose)?;
+    let (new_leftover, mb_new_var) = C::match_avar(avar, num, verbose)?;
 
     leftover = new_leftover;
     if let Some((var, var_num)) = mb_new_var {
@@ -1250,7 +1250,7 @@ impl Count for SymbolVar {
 }
 
 impl TapeCount for SymbolVar {
-  fn match_var(
+  fn match_avar(
     avar: AffineVar,
     count: Self,
     _verbose: bool,
@@ -1266,7 +1266,7 @@ impl TapeCount for SymbolVar {
 
 impl From<AffineVar> for SymbolVar {
   fn from(AffineVar { n, a, var }: AffineVar) -> Self {
-    SymbolVar { n: n as i32, a, var }
+    SymbolVar { n: i32::try_from(n).unwrap(), a, var }
   }
 }
 
@@ -1439,11 +1439,11 @@ impl AVarSum {
     Some(())
   }
 
-  fn times_var(&self, var: Var) -> Option<AffineVar> {
+  fn times_var(&self, var: Var) -> Option<AVarSum> {
     if self.var_map.len() > 0 {
       return None;
     }
-    return Some(AffineVar { n: 0, a: self.n, var });
+    return Some(AffineVar { n: 0, a: self.n, var }.into());
   }
 }
 
@@ -1733,10 +1733,66 @@ pub fn aggregate_and_display_proving_res(results: &Vec<(SmallBinMachine, State, 
     halt_count, inf_count, inconclusive_count
   );
 }
+/* the rules:
+a thing can be internal or external
+external takes precedence
+if a thing happens multiple times, then it must agree
+the only thing that can disagree is it can be first internal and then external as long as they
+are equal (though this should never happen with current code I think?)
+internal -> changing
+external -> static
+ */
+#[derive(Debug)]
+pub struct VarChainMap {
+  pub changing_hm: HashMap<Var, SymbolVar>,
+  pub static_hm: HashMap<Var, AffineVar>,
+}
 
-pub fn chain_var_2(
-  internal_hm: &mut HashMap<Var, AffineVar>,
-  external_hm: &mut HashMap<Var, AffineVar>,
+impl VarChainMap {
+  pub fn new() -> VarChainMap {
+    VarChainMap {
+      changing_hm: HashMap::new(),
+      static_hm: HashMap::new(),
+    }
+  }
+
+  pub fn add_changing(&mut self, var: Var, svar: SymbolVar) -> Option<()> {
+    dbg!(var, svar, &self);
+    if let Some(&prev_svar) = self.changing_hm.get(&var) {
+      if prev_svar != svar {
+        return None;
+      }
+    } else {
+      self.changing_hm.insert(var, svar);
+    };
+    // if let Some(&avar) = self.static_hm.get(&var) {
+    //   if avar != svar.into() {
+    //     return None;
+    //   }
+    // };
+    Some(())
+  }
+
+  pub fn add_static(&mut self, var: Var, avar: AffineVar) -> Option<()> {
+    dbg!(var, avar, &self);
+    if let Some(&prev_avar) = self.static_hm.get(&var) {
+      if prev_avar != avar {
+        return None;
+      }
+    } else {
+      self.static_hm.insert(var, avar);
+    };
+    // if let Some(&prev_svar) = self.changing_hm.get(&var) {
+    //   if prev_svar != avar.into() {
+    //     return None;
+    //   }
+    // };
+    Some(())
+  }
+}
+
+pub fn chain_var(
+  var_chain_map: &mut VarChainMap,
   start: AffineVar,
   end: &AVarSum,
   chaining_var: Var,
@@ -1746,6 +1802,7 @@ pub fn chain_var_2(
   so you couldn't somewhere else set x = x+2
   external hm is like, when you chain (F, x) to (F, 3), you have set x = 3
   so not only can x not be anything except 3 anywhere else, you sub 3 for x everywhere else
+  internal / external => changing / static
    */
   match start {
     AffineVar { n, a: 0, var: _var } => {
@@ -1760,7 +1817,7 @@ pub fn chain_var_2(
           Ok((&end_var, &end_a)) => {
             let int_match = n.checked_sub(end.n)?;
             if int_match % end_a == 0 {
-              external_hm.insert(end_var, (int_match / end_a).into());
+              var_chain_map.add_static(end_var, (int_match / end_a).into())?;
               Some((start, AVarSum::constant(n))) // these are equal
             } else {
               None
@@ -1777,7 +1834,7 @@ pub fn chain_var_2(
       if end.var_map.is_empty() {
         let int_match = end.n.checked_sub(n)?;
         if int_match % a == 0 {
-          external_hm.insert(var, (int_match / a).into());
+          var_chain_map.add_static(var, (int_match / a).into())?;
           Some((AffineVar::constant(end.n), end.clone())) // these are equal
         } else {
           None
@@ -1789,14 +1846,16 @@ pub fn chain_var_2(
               println!("tried to chain {} into {} and couldn't #2", start, end);
               return None;
             }
-            //
+            // when we match ax + n to ay + m we learn the internal fact
+            // x -> y + (m-n)/a
+            let diff: i32 = i32::try_from(end.n).unwrap() - i32::try_from(n).unwrap();
+            let a_i32 = i32::try_from(a).unwrap();
+            if diff % a_i32 != 0 {
+              return None;
+            }
+            var_chain_map.add_changing(var, SymbolVar { n: (diff / a_i32), a: 1, var })?;
             if n <= end.n {
-              // we're matching ax + n to ax + m so we send x to x + (m - n) / a
               let diff = end.n - n;
-              if diff % a != 0 {
-                return None;
-              }
-              internal_hm.insert(var, AffineVar { n: diff / a, a: 1, var });
               // (ax + n, ax + m) -> (ax + n, ax + n + k*(m - n))
               let mut end_out: AVarSum = start.into();
               if diff > 0 {
@@ -1810,7 +1869,6 @@ pub fn chain_var_2(
               }
               let decrease_amt = n - end.n;
               if a % decrease_amt == 0 {
-                todo!();
                 /* (ax + n, ax + m), d = n - m, a = dr
                    (drx + n, drx + m) chains to
                    (drx + n, n) & k = rx
@@ -1818,31 +1876,22 @@ pub fn chain_var_2(
                 let rem = a / decrease_amt;
                 let end_out = AVarSum::constant(n);
                 // add k = rx to map
-                if new_hm.contains_key(&chaining_var) {
-                  println!("tried to chain {} into {} and couldn't #3", start, end);
-                  return None;
-                }
-                new_hm.insert(chaining_var, AffineVar { n: 0, a: rem, var: start.var });
+                var_chain_map
+                  .add_static(chaining_var, AffineVar { n: 0, a: rem, var: start.var })?;
                 Some((start, end_out))
               } else if a == 1 {
-                todo!();
                 // return None;
                 //(x + d + c, x + c) -> (x + d + c, d + c) + x = dk
                 let end_out = AVarSum::constant(n);
                 // add x = dk to map
-                if new_hm.contains_key(&var) {
-                  dbg!(hm, new_hm);
-                  println!("tried to chain {} into {} and couldn't #4", start, end);
-                  return None;
-                }
-                new_hm.insert(var, AffineVar { n: 0, a: decrease_amt, var: chaining_var });
+                var_chain_map
+                  .add_static(var, AffineVar { n: 0, a: decrease_amt, var: chaining_var })?;
                 Some((start, end_out))
               } else {
                 println!("tried to chain {} into {} and couldn't #5", start, end);
                 None
               }
             }
-            //
           }
           Err(_) => {
             println!("tried to chain {} into {} and couldn't #3", start, end);
@@ -1854,108 +1903,218 @@ pub fn chain_var_2(
   }
 }
 
-pub fn chain_var(
-  hm: &HashMap<Var, SymbolVar>,
-  new_hm: &mut HashMap<Var, AffineVar>,
+pub fn chain_var_end(
+  var_chain_map: &mut VarChainMap,
   start: AffineVar,
   end: &AVarSum,
   chaining_var: Var,
 ) -> Option<(AffineVar, AVarSum)> {
   /*
-  (3, 3) => (3, 3)
-  (3, x) => (3, 3)
-  (x, x+2) => (x, x+2y)
-  // todo:
-  // decreases are trickier
-  (x+1, x) => (x, 0) + x = y
-  (x+3, x) => [(3x, 0), (3x+1, 1), (3x+2, 2)]
-  maybe you write the above as x -> x mod 3 or something?
+  (x, 3) -> lower bound x to 3 (or x -> y+3) then (3+y, 3) -> (3+yk, 3)
+  (x, y) -> lower bound x to y and y to x ??
 
-  // also, note that (x, 0) is going as far as possible, which is usually what you want, but not
-  always, in particular, if you are proving a rule
-
-  returns: (start, end)
-  new_hm is the map which we might modify to contain x or k or whatnot
    */
   match start {
     AffineVar { n, a: 0, var: _var } => {
       if end.var_map.is_empty() {
-        let ans = n.min(end.n);
-        Some((AffineVar::constant(ans), AVarSum::constant(ans)))
+        match n.cmp(&end.n) {
+          Equal => Some((start, end.clone())),
+          Less => {
+            //(3, 4) -> (3, 3+k)
+            let diff = end.n.checked_sub(n).unwrap();
+            let end_out = AffineVar { n, a: diff, var: chaining_var };
+            Some((start, end_out.into()))
+          }
+          Greater => {
+            // (5, 3) -> (3 + 2k, 3)
+            let diff = n.checked_sub(end.n).unwrap();
+            let start_out = AffineVar { n: end.n, a: diff, var: chaining_var };
+            Some((start_out, end.clone()))
+          }
+        }
       } else {
-        assert_eq!(SymbolVar::from(start), end.sub_map(hm));
-        Some((start, start.into()))
+        match end.var_map.iter().exactly_one() {
+          Ok((&_end_var, &_end_a)) => {
+            println!("tried to endchain {} into {} and couldn't #1", start, end);
+            None
+          }
+          Err(_) => {
+            println!("tried to endchain {} into {} and couldn't #2", start, end);
+            None
+          }
+        }
       }
     }
     AffineVar { n, a, var } => {
       if end.var_map.is_empty() {
-        let sub_start = start.sub_map(hm);
-        assert_eq!(&AVarSum::from(AffineVar::from(sub_start)), end);
-        return Some((sub_start.into(), AVarSum::from(AffineVar::from(sub_start))));
-      }
-      match end.var_map.iter().exactly_one() {
-        Err(_) => {
-          // warning
-          println!("tried to chain {} into {} and couldn't #1", start, end);
-          None
-        }
-        Ok((&var2, &b)) => {
-          if var != var2 || a != b {
-            println!("tried to chain {} into {} and couldn't #2", start, end);
-            return None;
-          }
-
-          if n <= end.n {
-            // (ax + n, ax + m) -> (ax + n, ax + n + k*(m - n))
-            let mut end_out: AVarSum = start.into();
-            let coeff_chain_var = end.n - n;
-            if coeff_chain_var > 0 {
-              end_out.add_avar(AffineVar { n: 0, a: coeff_chain_var, var: chaining_var });
+        println!("tried to endchain {} into {} and couldn't #3", start, end);
+        None
+      } else {
+        match end.var_map.iter().exactly_one() {
+          Ok((&end_var, &end_a)) => {
+            if var != end_var || a != end_a {
+              println!("tried to endchain {} into {} and couldn't #4", start, end);
+              return None;
             }
-            Some((start, end_out))
-          } else {
-            // None
-
-            if a > 1 {
-              println!("chain {} into {}!", start, end);
+            // when we match ax + n to ay + m we learn the internal fact
+            // x -> y + (m-n)/a
+            let diff: i32 = i32::try_from(end.n).unwrap() - i32::try_from(n).unwrap();
+            let a_i32 = i32::try_from(a).unwrap();
+            if diff % a_i32 != 0 {
+              return None;
             }
-            let decrease_amt = n - end.n;
-            if a % decrease_amt == 0 {
-              /* (ax + n, ax + m), d = n - m, a = dr
-                 (drx + n, drx + m) chains to
-                 (drx + n, n) & k = rx
-              */
-              let rem = a / decrease_amt;
-              let end_out = AVarSum::constant(n);
-              // add k = rx to map
-              if new_hm.contains_key(&chaining_var) {
-                println!("tried to chain {} into {} and couldn't #3", start, end);
-                return None;
+            var_chain_map.add_changing(var, SymbolVar { n: (diff / a_i32), a: 1, var })?;
+            if n <= end.n {
+              let diff = end.n - n;
+              // (ax + n, ax + m) -> (ax + n, ax + n + k*(m - n))
+              let mut end_out: AVarSum = start.into();
+              if diff > 0 {
+                end_out.add_avar(AffineVar { n: 0, a: diff, var: chaining_var });
               }
-              new_hm.insert(chaining_var, AffineVar { n: 0, a: rem, var: start.var });
-              Some((start, end_out))
-            } else if a == 1 {
-              // return None;
-              //(x + d + c, x + c) -> (x + d + c, d + c) + x = dk
-              let end_out = AVarSum::constant(n);
-              // add x = dk to map
-              if new_hm.contains_key(&var) {
-                dbg!(hm, new_hm);
-                println!("tried to chain {} into {} and couldn't #4", start, end);
-                return None;
-              }
-              new_hm.insert(var, AffineVar { n: 0, a: decrease_amt, var: chaining_var });
               Some((start, end_out))
             } else {
-              println!("tried to chain {} into {} and couldn't #5", start, end);
-              None
+              // None
+              if a > 1 {
+                println!("chain {} into {}!", start, end);
+              }
+              let decrease_amt = n - end.n;
+              if a % decrease_amt == 0 {
+                /* (ax + n, ax + m), d = n - m, a = dr
+                   (drx + n, drx + m) chains to
+                   (drx + n, n) & k = rx
+                */
+                let rem = a / decrease_amt;
+                let end_out = AVarSum::constant(n);
+                // add k = rx to map
+                var_chain_map
+                  .add_static(chaining_var, AffineVar { n: 0, a: rem, var: start.var })?;
+                Some((start, end_out))
+              } else if a == 1 {
+                // return None;
+                //(x + d + c, x + c) -> (x + d + c, d + c) + x = dk
+                let end_out = AVarSum::constant(n);
+                // add x = dk to map
+                var_chain_map
+                  .add_static(var, AffineVar { n: 0, a: decrease_amt, var: chaining_var });
+                Some((start, end_out))
+              } else {
+                println!("tried to endchain {} into {} and couldn't #5", start, end);
+                None
+              }
             }
+          }
+          Err(_) => {
+            println!("tried to endchain {} into {} and couldn't #6", start, end);
+            None
           }
         }
       }
     }
   }
 }
+
+// pub fn chain_var(
+//   hm: &HashMap<Var, SymbolVar>,
+//   new_hm: &mut HashMap<Var, AffineVar>,
+//   start: AffineVar,
+//   end: &AVarSum,
+//   chaining_var: Var,
+// ) -> Option<(AffineVar, AVarSum)> {
+//   /*
+//   (3, 3) => (3, 3)
+//   (3, x) => (3, 3)
+//   (x, x+2) => (x, x+2y)
+//   // todo:
+//   // decreases are trickier
+//   (x+1, x) => (x, 0) + x = y
+//   (x+3, x) => [(3x, 0), (3x+1, 1), (3x+2, 2)]
+//   maybe you write the above as x -> x mod 3 or something?
+
+//   // also, note that (x, 0) is going as far as possible, which is usually what you want, but not
+//   always, in particular, if you are proving a rule
+
+//   returns: (start, end)
+//   new_hm is the map which we might modify to contain x or k or whatnot
+//    */
+//   match start {
+//     AffineVar { n, a: 0, var: _var } => {
+//       if end.var_map.is_empty() {
+//         let ans = n.min(end.n);
+//         Some((AffineVar::constant(ans), AVarSum::constant(ans)))
+//       } else {
+//         assert_eq!(SymbolVar::from(start), end.sub_map(hm));
+//         Some((start, start.into()))
+//       }
+//     }
+//     AffineVar { n, a, var } => {
+//       if end.var_map.is_empty() {
+//         let sub_start = start.sub_map(hm);
+//         assert_eq!(&AVarSum::from(AffineVar::from(sub_start)), end);
+//         return Some((sub_start.into(), AVarSum::from(AffineVar::from(sub_start))));
+//       }
+//       match end.var_map.iter().exactly_one() {
+//         Err(_) => {
+//           // warning
+//           println!("tried to chain {} into {} and couldn't #1", start, end);
+//           None
+//         }
+//         Ok((&var2, &b)) => {
+//           if var != var2 || a != b {
+//             println!("tried to chain {} into {} and couldn't #2", start, end);
+//             return None;
+//           }
+
+//           if n <= end.n {
+//             // (ax + n, ax + m) -> (ax + n, ax + n + k*(m - n))
+//             let mut end_out: AVarSum = start.into();
+//             let coeff_chain_var = end.n - n;
+//             if coeff_chain_var > 0 {
+//               end_out.add_avar(AffineVar { n: 0, a: coeff_chain_var, var: chaining_var });
+//             }
+//             Some((start, end_out))
+//           } else {
+//             // None
+
+//             if a > 1 {
+//               println!("chain {} into {}!", start, end);
+//             }
+//             let decrease_amt = n - end.n;
+//             if a % decrease_amt == 0 {
+//               /* (ax + n, ax + m), d = n - m, a = dr
+//                  (drx + n, drx + m) chains to
+//                  (drx + n, n) & k = rx
+//               */
+//               let rem = a / decrease_amt;
+//               let end_out = AVarSum::constant(n);
+//               // add k = rx to map
+//               if new_hm.contains_key(&chaining_var) {
+//                 println!("tried to chain {} into {} and couldn't #3", start, end);
+//                 return None;
+//               }
+//               new_hm.insert(chaining_var, AffineVar { n: 0, a: rem, var: start.var });
+//               Some((start, end_out))
+//             } else if a == 1 {
+//               // return None;
+//               //(x + d + c, x + c) -> (x + d + c, d + c) + x = dk
+//               let end_out = AVarSum::constant(n);
+//               // add x = dk to map
+//               if new_hm.contains_key(&var) {
+//                 dbg!(hm, new_hm);
+//                 println!("tried to chain {} into {} and couldn't #4", start, end);
+//                 return None;
+//               }
+//               new_hm.insert(var, AffineVar { n: 0, a: decrease_amt, var: chaining_var });
+//               Some((start, end_out))
+//             } else {
+//               println!("tried to chain {} into {} and couldn't #5", start, end);
+//               None
+//             }
+//           }
+//         }
+//       }
+//     }
+//   }
+// }
 
 trait GetVars {
   fn get_vars(&self) -> impl Iterator<Item = Var> + '_;
@@ -2023,12 +2182,11 @@ pub fn append_exptape<S: Eq, C: AddAssign>(tape: &mut Vec<(S, C)>, item: (S, C))
   }
 }
 
-pub fn chain_side2<S: TapeSymbol>(
+pub fn chain_side<S: TapeSymbol>(
   start: &[(S, AffineVar)],
   end: &[(S, AVarSum)],
   chaining_var: Var,
-  sv_hm: &mut HashMap<Var, SymbolVar>,
-  new_hm: &mut HashMap<Var, AffineVar>,
+  var_chain_map: &mut VarChainMap,
 ) -> Option<(Vec<(S, AffineVar)>, Vec<(S, AVarSum)>)> {
   if start.len().abs_diff(end.len()) > 1 {
     return None;
@@ -2051,7 +2209,7 @@ pub fn chain_side2<S: TapeSymbol>(
       let (end_s, end_avarsum) = &end[0];
       (
         vec![],
-        vec![(end_s, end_avarsum.times_var(chaining_var)?)],
+        vec![(*end_s, end_avarsum.times_var(chaining_var)?)],
         0,
         1,
       )
@@ -2065,116 +2223,12 @@ pub fn chain_side2<S: TapeSymbol>(
       return None;
     }
     let (s_var_out, e_var_out) = if i == 0 && start_slice == 0 && end_slice == 0 {
-      todo!()
+      chain_var_end(var_chain_map, s_var, e_var, chaining_var)?
     } else {
-      chain_var(&sv_hm, new_hm, s_var, e_var, chaining_var)?
+      chain_var(var_chain_map, s_var, e_var, chaining_var)?
     };
-  }
-
-  #[derive(Debug, Clone, Copy)]
-  enum StartEnd {
-    Start,
-    End,
-  }
-  use StartEnd::*;
-
-  todo!()
-}
-
-pub fn chain_side<S: TapeSymbol>(
-  start: &[(S, AffineVar)],
-  end: &[(S, AVarSum)],
-  chaining_var: Var,
-  sv_hm: &mut HashMap<Var, SymbolVar>,
-  new_hm: &mut HashMap<Var, AffineVar>,
-) -> Option<(Vec<(S, AffineVar)>, Vec<(S, AVarSum)>)> {
-  if start.len().abs_diff(end.len()) > 1 {
-    return None;
-  }
-  #[derive(Debug, Clone, Copy)]
-  enum StartEnd {
-    Start,
-    End,
-  }
-  use StartEnd::*;
-
-  let end_sv = end
-    .iter()
-    .map(|(s, avar)| {
-      SymbolVar::try_from(avar.clone())
-        .ok()
-        .map(|svar| (*s, svar))
-    })
-    .collect::<Option<Vec<(S, SymbolVar)>>>()?;
-
-  let rtm = match_rule_tape(sv_hm, start, &end_sv, false)?;
-
-  //two usize are where to iterate from in start and end resp.
-  let (ans, start_slice, end_slice): ((StartEnd, S, AffineVar), usize, usize) = match rtm {
-    // in this case, we add (s, avar)*n to the start
-    ConsumedEnd((s, avar)) => {
-      let ans = (Start, s, avar.times_var(chaining_var)?);
-      let start_slice = if end.len() + 1 == start.len() {
-        1
-      } else if end.len() == start.len() {
-        0
-      } else {
-        assert_eq!(end.len(), start.len() + 1);
-        return None;
-      };
-      (ans, start_slice, 0)
-    }
-    // in this case, we add (?, svar)*n to the end, but also have to fuck around to
-    // make sure about the end of the tape
-    /* three cases:
-    if tape is shorter than rule, we have to be in the above
-    if tape is equal to rule, we can have zero leftover, or positive leftover and multiply it
-    if tape is longer than rule, we can only have zero leftover, or we fail
-    */
-    Leftover(svar) => {
-      if end.len() == start.len() + 1 {
-        if svar == SymbolVar::constant(0) {
-          let (end_s, end_v) = end.get(0).unwrap();
-          ((End, *end_s, end_v.times_var(chaining_var)?), 0, 1)
-        } else {
-          return None;
-        }
-      } else {
-        assert_eq!(end.len(), start.len());
-        //todo: this svar can be negative
-        if svar == SymbolVar::constant(0) {
-          ((End, S::empty(), AffineVar::constant(0)), 0, 0)
-        } else {
-          (
-            (
-              End,
-              end.get(0).unwrap().0,
-              AffineVar::from(svar).times_var(chaining_var)?,
-            ),
-            0,
-            0,
-          )
-        }
-      }
-    }
-  };
-  let (mut start_out, mut end_out) = match ans {
-    (_, _s, AffineVar { n: 0, a: 0, var: _var }) => (vec![], vec![]),
-    (Start, s, v) => (vec![(s, v)], vec![]),
-    (End, s, v) => (vec![], vec![(s, v.into())]),
-  };
-
-  for (i, (&(s_sym, s_var), (e_sym, e_var))) in
-    zip_eq(start[start_slice..].iter(), end[end_slice..].iter()).enumerate()
-  {
-    let (s_var_out, e_var_out) = chain_var(&sv_hm, new_hm, s_var, e_var, chaining_var)?;
-    if i == 0 {
-      append_exptape(&mut start_out, (s_sym, s_var_out));
-      append_exptape(&mut end_out, (*e_sym, e_var_out));
-    } else {
-      start_out.push((s_sym, s_var_out));
-      end_out.push((*e_sym, e_var_out));
-    }
+    start_out.push((s_sym, s_var_out));
+    end_out.push((*e_sym, e_var_out));
   }
   Some((start_out, end_out))
 }
@@ -2206,32 +2260,29 @@ pub fn chain_rule<S: TapeSymbol>(
     return None;
   }
   let chaining_var: Var = get_newest_var(&rule);
-  let mut sv_hm = HashMap::new();
-  let mut new_hm = HashMap::new();
+  // let mut changing_hm = HashMap::new();
+  // let mut static_hm = HashMap::new();
+  let mut var_chain_map = VarChainMap::new();
   let (mut left_start_out, mut left_end_out) =
-    chain_side(left_start, left_end, chaining_var, &mut sv_hm, &mut new_hm)?;
-  let (mut right_start_out, mut right_end_out) = chain_side(
-    right_start,
-    right_end,
-    chaining_var,
-    &mut sv_hm,
-    &mut new_hm,
-  )?;
+    chain_side(left_start, left_end, chaining_var, &mut var_chain_map)?;
+  let (mut right_start_out, mut right_end_out) =
+    chain_side(right_start, right_end, chaining_var, &mut var_chain_map)?;
+  let static_hm = var_chain_map.static_hm;
   left_start_out = left_start_out
     .into_iter()
-    .map(|(s, avar)| (s, avar.sub_equations(&new_hm)))
+    .map(|(s, avar)| (s, avar.sub_equations(&static_hm)))
     .collect();
   right_start_out = right_start_out
     .into_iter()
-    .map(|(s, avar)| (s, avar.sub_equations(&new_hm)))
+    .map(|(s, avar)| (s, avar.sub_equations(&static_hm)))
     .collect();
   left_end_out = left_end_out
     .into_iter()
-    .map(|(s, avarsum)| (s, avarsum.sub_equations(&new_hm)))
+    .map(|(s, avarsum)| (s, avarsum.sub_equations(&static_hm)))
     .collect();
   right_end_out = right_end_out
     .into_iter()
-    .map(|(s, avarsum)| (s, avarsum.sub_equations(&new_hm)))
+    .map(|(s, avarsum)| (s, avarsum.sub_equations(&static_hm)))
     .collect();
   let ans = Some(Rule {
     start: Config {
@@ -2247,7 +2298,7 @@ pub fn chain_rule<S: TapeSymbol>(
       right: right_end_out,
     },
   });
-  if new_hm.len() > 1 {
+  if static_hm.len() > 1 {
     println!(
       "exciting! chained\n{}\ninto\n{}\n",
       rule,
@@ -2830,21 +2881,21 @@ mod test {
   #[test]
   fn test_match_var_num() {
     let (_leftover, var) = parse_avar(&"3 + 2*x_0").unwrap();
-    assert_eq!(match_var_num(var, 3, false), None);
+    assert_eq!(match_avar_num(var, 3, false), None);
     assert_eq!(
-      match_var_num(var, 5, false),
+      match_avar_num(var, 5, false),
       Some((Right(0), Some((Var(0), 1))))
     );
     assert_eq!(
-      match_var_num(var, 6, false),
+      match_avar_num(var, 6, false),
       Some((Right(1), Some((Var(0), 1))))
     );
     let (_leftover, var) = parse_avar_gen::<nom::error::Error<&str>>(&"3 + 0*x_0").unwrap();
-    assert_eq!(match_var_num(var, 2, false), Some((Left(1), None)));
-    assert_eq!(match_var_num(var, 3, false), Some((Right(0), None)));
-    assert_eq!(match_var_num(var, 5, false), Some((Right(2), None)));
+    assert_eq!(match_avar_num(var, 2, false), Some((Left(1), None)));
+    assert_eq!(match_avar_num(var, 3, false), Some((Right(0), None)));
+    assert_eq!(match_avar_num(var, 5, false), Some((Right(2), None)));
     let two_x_p3 = parse_exact(parse_avar("3 + 2*x_0"));
-    assert_eq!(match_var_num(two_x_p3, 3, false), None);
+    assert_eq!(match_avar_num(two_x_p3, 3, false), None);
   }
 
   fn parse_exact<X>(res: IResult<&str, X>) -> X {
@@ -3394,53 +3445,85 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     assert_eq!(obs, ans);
   }
 
+  fn chain_var_driver(
+    start: AffineVar,
+    end: &AVarSum,
+    start_out: AffineVar,
+    end_out: AVarSum,
+    chaining_var: Var,
+    eqs: Vec<(Var, Option<AffineVar>)>,
+  ) {
+    let mut var_chain_map = VarChainMap::new();
+    assert_eq!(
+      chain_var(&mut var_chain_map, start, end, chaining_var),
+      Some((start_out, end_out))
+    );
+    assert_eq!(
+      var_chain_map.static_hm.len(),
+      eqs.len(),
+      "{} {} {:?}",
+      start,
+      end,
+      var_chain_map
+    );
+    for (var, ans) in eqs {
+      let map_res: Option<AffineVar> = var_chain_map.static_hm.get(&var).copied();
+      assert_eq!(map_res, ans);
+    }
+  }
+
   #[test]
   fn chain_var_test() {
-    let mut new_hm = HashMap::new();
-
-    let mut hm = HashMap::new();
     let chaining_var = Var(0);
     //(3, 3) -> (3, 3)
     let av3 = AffineVar::constant(3);
     let avs3 = AVarSum::constant(3);
-    assert_eq!(
-      chain_var(&hm, &mut new_hm, av3, &avs3, chaining_var),
-      Some((av3, avs3.clone()))
-    );
+    chain_var_driver(av3, &avs3, av3, avs3.clone(), chaining_var, vec![]);
+
     //(3, x) -> (3, 3)
     let x = Var(1);
     let av_x = AffineVar { n: 0, a: 1, var: x };
     let avs_x = av_x.into();
-    hm.insert(x, 3.into());
-    assert_eq!(
-      chain_var(&hm, &mut new_hm, av3, &avs_x, chaining_var),
-      Some((av3, avs3.clone()))
-    );
+    chain_var_driver(av3, &avs_x, av3, avs3.clone(), chaining_var, vec![]);
+
     //(x, 3) -> (3, 3)
-    assert_eq!(
-      chain_var(&hm, &mut new_hm, av_x, &AVarSum::constant(3), chaining_var),
-      Some((av3, avs3.clone()))
+    chain_var_driver(
+      av_x,
+      &AVarSum::constant(3),
+      av3,
+      avs3.clone(),
+      chaining_var,
+      vec![],
     );
+
     //(x, x+1) -> (x, x+k)
     let mut avs_x_plus_one = avs_x.clone();
     avs_x_plus_one.n = 1;
     let mut avs_x_plus_cv = avs_x.clone();
     avs_x_plus_cv.add_avar(AffineVar { n: 0, a: 1, var: chaining_var });
-    assert_eq!(
-      chain_var(&hm, &mut new_hm, av_x, &avs_x_plus_one, chaining_var),
-      Some((av_x, avs_x_plus_cv))
+    chain_var_driver(
+      av_x,
+      &avs_x_plus_one,
+      av_x,
+      avs_x_plus_cv,
+      chaining_var,
+      vec![],
     );
+
     //(2x + 5, 2x+8) -> (2x + 5, 2x+5+3k)
     let av_2x_plus_5 = AffineVar { n: 5, a: 2, var: x };
     let mut avs_2x_plus_8: AVarSum = av_2x_plus_5.into();
     avs_2x_plus_8.add_avar(AffineVar::constant(3));
     let mut avs_2x_plus_5_plus_3k: AVarSum = av_2x_plus_5.into();
     avs_2x_plus_5_plus_3k.add_avar(AffineVar { n: 0, a: 3, var: chaining_var });
-    assert_eq!(
-      chain_var(&hm, &mut new_hm, av_2x_plus_5, &avs_2x_plus_8, chaining_var),
-      Some((av_2x_plus_5, avs_2x_plus_5_plus_3k))
+    chain_var_driver(
+      av_2x_plus_5,
+      &avs_2x_plus_8,
+      av_2x_plus_5,
+      avs_2x_plus_5_plus_3k,
+      chaining_var,
+      vec![],
     );
-    assert!(new_hm.is_empty(), "new_hm was not empty: {:?}", new_hm);
 
     /*
     decreasing vars
@@ -3491,59 +3574,75 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     (2x + 1, x) -> cannot chain
      */
 
-    let mut new_hm = HashMap::new();
     // (x+1, x) chains to (x+1, 1) and k = x
     let av_x_plus_one = AffineVar { n: 1, a: 1, var: x };
-    assert_eq!(
-      chain_var(&hm, &mut new_hm, av_x_plus_one, &avs_x, chaining_var),
-      Some((av_x_plus_one, 1.into()))
+    chain_var_driver(
+      av_x_plus_one,
+      &avs_x,
+      av_x_plus_one,
+      1.into(),
+      chaining_var,
+      vec![(chaining_var, Some(av_x))],
     );
-    assert_eq!(new_hm.get(&chaining_var), Some(&av_x));
 
     // (3x+3, 3x+2) chains to (3x+3, 3) and k = 3x
-    let mut new_hm = HashMap::new();
     let start = parse_exact(parse_avar("3 + 3*x_0"));
     let end_in = parse_exact(parse_avar_sum("2 + 3*x_0"));
     let end_out = parse_exact(parse_avar_sum("3"));
     let k_ans = parse_exact(parse_avar("0 + 3*x_0"));
-    assert_eq!(
-      chain_var(&hm, &mut new_hm, start, &end_in, chaining_var),
-      Some((start, end_out))
+    chain_var_driver(
+      start,
+      &end_in,
+      start,
+      end_out,
+      chaining_var,
+      vec![(chaining_var, Some(k_ans))],
     );
-    assert_eq!(new_hm.get(&chaining_var), Some(&k_ans));
+    // assert_eq!(
+    //   chain_var_2(&hm, &mut new_hm, start, &end_in, chaining_var),
+    //   Some((start, end_out))
+    // );
+    // assert_eq!(new_hm.get(&chaining_var), Some(&k_ans));
 
     // (4x+2, 4x) chains to (4x+2, 2) and k = 2x
-    let mut new_hm = HashMap::new();
     let start = parse_exact(parse_avar("2 + 4*x_0"));
     let end_in = parse_exact(parse_avar_sum("0 + 4*x_0"));
     let end_out = parse_exact(parse_avar_sum("2"));
     let k_ans = parse_exact(parse_avar("0 + 2*x_0"));
-    assert_eq!(
-      chain_var(&hm, &mut new_hm, start, &end_in, chaining_var),
-      Some((start, end_out))
+    chain_var_driver(
+      start,
+      &end_in,
+      start,
+      end_out,
+      chaining_var,
+      vec![(chaining_var, Some(k_ans))],
     );
-    assert_eq!(new_hm.get(&chaining_var), Some(&k_ans));
-
     // (2x, 2x) chains to (2x, 2x)
-    let mut new_hm = HashMap::new();
     let start = parse_exact(parse_avar("0 + 2*x_0"));
     let end_in = parse_exact(parse_avar_sum("0 + 2*x_0"));
     let end_out = parse_exact(parse_avar_sum("0 + 2*x_0"));
-    assert_eq!(
-      chain_var(&hm, &mut new_hm, start, &end_in, chaining_var),
-      Some((start, end_out))
+    chain_var_driver(
+      start,
+      &end_in,
+      start,
+      end_out,
+      chaining_var,
+      vec![(chaining_var, Some(k_ans))],
     );
-    assert_eq!(new_hm.get(&chaining_var), None);
 
     // (2x, x) chains to None
-    let mut new_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_exact(parse_avar("0 + 2*x_0"));
     let end_in = parse_exact(parse_avar_sum("0 + 1*x_0"));
     assert_eq!(
-      chain_var(&hm, &mut new_hm, start, &end_in, chaining_var),
+      chain_var(&mut var_chain_map, start, &end_in, chaining_var),
       None
     );
-    assert!(new_hm.is_empty(), "new_hm was not empty: {:?}", new_hm);
+    assert!(
+      var_chain_map.changing_hm.is_empty() && var_chain_map.static_hm.is_empty(),
+      "VCM was not empty: {:?}",
+      var_chain_map
+    );
     /*
     if d == nc for some n, then maybe x = nk?
     (cx + nc, cx) -> (cx + nc, nc) + x = nk
@@ -3558,95 +3657,100 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     let chaining_var = Var(1);
 
     // (x+2, x) -> (x+2, 2) x = 2k (ie end is (2k+2, 2))
-    let mut new_hm = HashMap::new();
     let start = parse_exact(parse_avar("2 + 1*x_0"));
     let end_in = parse_exact(parse_avar_sum("0 + 1*x_0"));
     let end_out = parse_exact(parse_avar_sum("2"));
     let x_ans = parse_exact(parse_avar("0 + 2*x_1"));
-    assert_eq!(
-      chain_var(&hm, &mut new_hm, start, &end_in, chaining_var),
-      Some((start, end_out))
+    chain_var_driver(
+      start,
+      &end_in,
+      start,
+      end_out,
+      chaining_var,
+      vec![(Var(0), Some(x_ans))],
     );
-    assert_eq!(new_hm.get(&Var(0)), Some(&x_ans));
 
     // (x+4, x+1) -> (3k+4, 4) x = 3k
-    let mut new_hm = HashMap::new();
     let start = parse_exact(parse_avar("4 + 1*x_0"));
     let end_in = parse_exact(parse_avar_sum("1 + 1*x_0"));
     let end_out = parse_exact(parse_avar_sum("4"));
     let x_ans = parse_exact(parse_avar("0 + 3*x_1"));
-    assert_eq!(
-      chain_var(&hm, &mut new_hm, start, &end_in, chaining_var),
-      Some((start, end_out))
+    chain_var_driver(
+      start,
+      &end_in,
+      start,
+      end_out,
+      chaining_var,
+      vec![(Var(0), Some(x_ans))],
     );
-    assert_eq!(new_hm.get(&Var(0)), Some(&x_ans));
 
     // (x+9, x+2) -> (7k+9, 9) x = 7k
-    let mut new_hm = HashMap::new();
     let start = parse_exact(parse_avar("9 + 1*x_0"));
     let end_in = parse_exact(parse_avar_sum("2 + 1*x_0"));
     let end_out = parse_exact(parse_avar_sum("9"));
     let x_ans = parse_exact(parse_avar("0 + 7*x_1"));
-    assert_eq!(
-      chain_var(&hm, &mut new_hm, start, &end_in, chaining_var),
-      Some((start, end_out))
+    chain_var_driver(
+      start,
+      &end_in,
+      start,
+      end_out,
+      chaining_var,
+      vec![(Var(0), Some(x_ans))],
     );
-    assert_eq!(new_hm.get(&Var(0)), Some(&x_ans));
   }
 
   #[test]
   fn chain_side_test() {
-    let mut sv_hm = HashMap::new();
-    let mut new_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     // ([], []) -> same
     let start = vec![];
     let end = vec![];
     assert_eq!(
-      chain_side::<Bit>(&start, &end, Var(0), &mut sv_hm, &mut new_hm),
+      chain_side::<Bit>(&start, &end, Var(0), &mut var_chain_map),
       Some((start, end))
     );
 
     // ([(F, 1)], []) -> ([(F, x)], [])
-    let mut sv_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_half_tape("(F, 1)");
     assert_eq!(start.len(), 1);
     let start_out = parse_half_tape("(F, 0 + 1*x_0)");
     assert_eq!(start_out.len(), 1);
     let end = vec![];
     assert_eq!(
-      chain_side(&start, &end, Var(0), &mut sv_hm, &mut new_hm),
+      chain_side(&start, &end, Var(0), &mut var_chain_map),
       Some((start_out, end))
     );
 
     // ([], [(T, 1)]) -> ([], [(T, x)])
-    let mut sv_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = vec![];
     let end = av_to_avs(parse_half_tape("(T, 1)"));
     let end_out = av_to_avs(parse_half_tape("(T, 0 + 1*x_0)"));
     assert_eq!(
-      chain_side(&start, &end, Var(0), &mut sv_hm, &mut new_hm),
+      chain_side(&start, &end, Var(0), &mut var_chain_map),
       Some((start, end_out))
     );
 
     // ([(T, 3), (F, x+1), (T, 2)], '') -> ('', '')
-    let mut sv_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_half_tape("(T, 3) (F, 1 + 1*x_0) (T, 2)");
     assert_eq!(start.len(), 3);
     let end = av_to_avs(start.clone());
     assert_eq!(
-      chain_side(&start, &end, Var(0), &mut sv_hm, &mut new_hm),
+      chain_side(&start, &end, Var(0), &mut var_chain_map),
       Some((start, end))
     );
 
     // ([(T, 3), (F, x+1), (T, 1)], [(T, 3), (F, x+2), (T, 3)])
     // ([(T, 3), (F, x+1), (T, 1)], [(T, 3), (F, 1+x+k), (T, 1+2k)])
-    let mut sv_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_half_tape("(T, 3) (F, 1 + 1*x_0) (T, 1)");
     assert_eq!(start.len(), 3);
     let end = av_to_avs(parse_half_tape("(T, 3) (F, 2 + 1*x_0) (T, 3)"));
     assert_eq!(end.len(), 3);
     let end_out = parse_end_half_tape("(T, 3) (F, 1 + 1*x_0 + 1*x_1) (T, 1 + 2*x_1)");
-    let (start_ans, end_ans) = chain_side(&start, &end, Var(1), &mut sv_hm, &mut new_hm).unwrap();
+    let (start_ans, end_ans) = chain_side(&start, &end, Var(1), &mut var_chain_map).unwrap();
     println!(
       "1 got ans\n{}\ninto\n{}",
       TapeHalf(Dir::R, &start_ans),
@@ -3656,14 +3760,14 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
 
     // ([(T, 3), (F, x+1), (T, 2)], [(T, 3), (F, x+2), (T, 1)])
     // ([(T, 3), (F, x+1), (T, 1+k)], [(T, 3), (F, 1+x+k), (T, 1)])
-    let mut sv_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_half_tape("(T, 3) (F, 1 + 1*x_0) (T, 2)");
     assert_eq!(start.len(), 3);
     let end = parse_end_half_tape("(T, 3) (F, 2 + 1*x_0) (T, 1)");
     assert_eq!(end.len(), 3);
     let start_out = parse_half_tape("(T, 3) (F, 1 + 1*x_0) (T, 1 + 1*x_1)");
     let end_out = parse_end_half_tape("(T, 3) (F, 1 + 1*x_0 + 1*x_1) (T, 1)");
-    let (start_ans, end_ans) = chain_side(&start, &end, Var(1), &mut sv_hm, &mut new_hm).unwrap();
+    let (start_ans, end_ans) = chain_side(&start, &end, Var(1), &mut var_chain_map).unwrap();
     println!(
       "2 got ans\n{}\ninto\n{}",
       TapeHalf(Dir::R, &start_ans),
@@ -3673,13 +3777,13 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
 
     // ([(F, 1), (T, 4)], [(F, 1), (T, 4), (F, 1)])
     // ([(F, 1), (T, 4)], [(F, 1), (T, 4), (F, x)])
-    let mut sv_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_half_tape("(F, 1) (T, 4)");
     assert_eq!(start.len(), 2);
     let end = parse_end_half_tape("(F, 1) (T, 4) (F, 1)");
     assert_eq!(end.len(), 3);
     let end_out = parse_end_half_tape("(F, 1) (T, 4) (F, 0 + 1*x_0)");
-    let (start_ans, end_ans) = chain_side(&start, &end, Var(0), &mut sv_hm, &mut new_hm).unwrap();
+    let (start_ans, end_ans) = chain_side(&start, &end, Var(0), &mut var_chain_map).unwrap();
     println!(
       "3 got ans\n{}\ninto\n{}",
       TapeHalf(Dir::R, &start_ans),
@@ -3688,60 +3792,44 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     assert_eq!((start_ans, end_ans), (start, end_out));
 
     // ([(F, 1), (T, 3)], [(F, 1), (T, 4), (F, 1)]) -> None
-    let mut sv_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_half_tape("(F, 1) (T, 3)");
     assert_eq!(start.len(), 2, "{:?}", start);
     let end = av_to_avs(parse_half_tape("(F, 1) (T, 4) (F, 1)"));
     assert_eq!(end.len(), 3);
-    assert_eq!(
-      chain_side(&start, &end, Var(0), &mut sv_hm, &mut new_hm),
-      None
-    );
+    assert_eq!(chain_side(&start, &end, Var(0), &mut var_chain_map), None);
 
     // ([(F, 1), (T, 4)], [(F, 1), (T, 3), (F, 1)]) -> None
-    let mut sv_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_half_tape("(F, 1) (T, 4)");
     assert_eq!(start.len(), 2, "{:?}", start);
     let end = av_to_avs(parse_half_tape("(F, 1) (T, 3) (F, 1)"));
     assert_eq!(end.len(), 3);
-    assert_eq!(
-      chain_side(&start, &end, Var(0), &mut sv_hm, &mut new_hm),
-      None
-    );
+    assert_eq!(chain_side(&start, &end, Var(0), &mut var_chain_map), None);
 
     // ([(T, 2), (F, 4)] [(T, 2), (F, 3), (T, 1)]) -> None
-    let mut sv_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_half_tape("(T, 2) (F, 4)");
     assert_eq!(start.len(), 2, "{:?}", start);
     let end = av_to_avs(parse_half_tape("(T, 2) (F, 3) (T, 1)"));
     assert_eq!(end.len(), 3);
-    assert_eq!(
-      chain_side(&start, &end, Var(0), &mut sv_hm, &mut new_hm),
-      None
-    );
+    assert_eq!(chain_side(&start, &end, Var(0), &mut var_chain_map), None);
 
     // ([(T, 2), (F, 3), (T, 1)] [(T, 2), (F, 4)]) -> None
-    let mut sv_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_half_tape("(T, 2) (F, 3) (T, 1)");
     let end = av_to_avs(parse_half_tape("(T, 2) (F, 4)"));
-    assert_eq!(
-      chain_side(&start, &end, Var(0), &mut sv_hm, &mut new_hm),
-      None
-    );
-
-    assert!(new_hm.is_empty(), "new_hm was not empty: {:?}", new_hm);
+    assert_eq!(chain_side(&start, &end, Var(0), &mut var_chain_map), None);
 
     let chain_var = Var(1);
     // (F, 1) (T, 4) (F, x+1) -> (F, 1) (T, 4) (F, x)
     // (F, 1) (T, 4) (F, x+1) -> (F, 1) (T, 4) (F, 1)
     // k = x
-    let mut sv_hm = HashMap::new();
-    let mut new_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_half_tape("(F, 1) (T, 4) (F, 1 + 1*x_0)");
     let end = parse_end_half_tape("(F, 1) (T, 4) (F, 0 + 1*x_0)");
     let end_out = parse_end_half_tape("(F, 1) (T, 4) (F, 1)");
-    let (start_ans, end_ans) =
-      chain_side(&start, &end, chain_var, &mut sv_hm, &mut new_hm).unwrap();
+    let (start_ans, end_ans) = chain_side(&start, &end, chain_var, &mut var_chain_map).unwrap();
     println!(
       "4 got ans\n{}\ninto\n{}",
       TapeHalf(Dir::R, &start_ans),
@@ -3750,18 +3838,16 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     assert_eq!((start_ans, end_ans), (start, end_out));
 
     let chain_var_rhs = AffineVar { n: 0, a: 1, var: Var(0) };
-    assert_eq!(new_hm.get(&Var(1)), Some(&chain_var_rhs));
+    assert_eq!(var_chain_map.static_hm.get(&Var(1)), Some(&chain_var_rhs));
 
     // (F, 1) (T, 4) (F, x+2) -> (F, 1) (T, 4) (F, x)
     // (F, 1) (T, 4) (F, x+2) -> (F, 1) (T, 4) (F, 2)
     // x = 2k
-    let mut sv_hm = HashMap::new();
-    let mut new_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_half_tape("(F, 1) (T, 4) (F, 2 + 1*x_0)");
     let end = parse_end_half_tape("(F, 1) (T, 4) (F, 0 + 1*x_0)");
     let end_out = parse_end_half_tape("(F, 1) (T, 4) (F, 2)");
-    let (start_ans, end_ans) =
-      chain_side(&start, &end, chain_var, &mut sv_hm, &mut new_hm).unwrap();
+    let (start_ans, end_ans) = chain_side(&start, &end, chain_var, &mut var_chain_map).unwrap();
     println!(
       "5 got ans\n{}\ninto\n{}",
       TapeHalf(Dir::R, &start_ans),
@@ -3770,18 +3856,17 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     assert_eq!((start_ans, end_ans), (start, end_out));
 
     let x_0_rhs = AffineVar { n: 0, a: 2, var: chain_var };
-    assert_eq!(new_hm.get(&Var(0)), Some(&x_0_rhs));
+    assert_eq!(var_chain_map.static_hm.get(&Var(0)), Some(&x_0_rhs));
 
     // (T, 4) (F, x+4) (T, 3) -> (T, 4) (F, x+1) (T, 3)
-    // (T, 4) (F, x+3) (T, 3) -> (T, 4) (F, 4) (T, 3)
+    // becomes
+    // (T, 4) (F, x+4) (T, 3) -> (T, 4) (F, 4) (T, 3)
     // x = 3k
-    let mut sv_hm = HashMap::new();
-    let mut new_hm = HashMap::new();
+    let mut var_chain_map = VarChainMap::new();
     let start = parse_half_tape("(T, 4) (F, 4 + 1*x_0) (T, 3)");
     let end = parse_end_half_tape("(T, 4) (F, 1 + 1*x_0) (T, 3)");
     let end_out = parse_end_half_tape("(T, 4) (F, 4) (T, 3)");
-    let (start_ans, end_ans) =
-      chain_side(&start, &end, chain_var, &mut sv_hm, &mut new_hm).unwrap();
+    let (start_ans, end_ans) = chain_side(&start, &end, chain_var, &mut var_chain_map).unwrap();
     println!(
       "6 got ans\n{}\ninto\n{}",
       TapeHalf(Dir::R, &start_ans),
@@ -3790,7 +3875,7 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     assert_eq!((start_ans, end_ans), (start, end_out));
 
     let x_0_rhs = AffineVar { n: 0, a: 3, var: chain_var };
-    assert_eq!(new_hm.get(&Var(0)), Some(&x_0_rhs));
+    assert_eq!(var_chain_map.static_hm.get(&Var(0)), Some(&x_0_rhs));
   }
 
   #[test]
