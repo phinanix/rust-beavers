@@ -3456,7 +3456,8 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     let mut var_chain_map = VarChainMap::new();
     assert_eq!(
       chain_var(&mut var_chain_map, start, end, chaining_var),
-      Some((start_out, end_out))
+      Some((start_out, end_out)),
+      "left is actual chain result, right is the prescribed answer"
     );
     assert_eq!(
       var_chain_map.static_hm.len(),
@@ -3472,6 +3473,20 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     }
   }
 
+  fn chain_var_is_none_driver(start: AffineVar, end: &AVarSum, chaining_var: Var) {
+    let mut var_chain_map = VarChainMap::new();
+    assert_eq!(
+      chain_var(&mut var_chain_map, start, end, chaining_var),
+      None,
+      "left is actual chain result, right is always None"
+    );
+    assert!(
+      var_chain_map.changing_hm.is_empty() && var_chain_map.static_hm.is_empty(),
+      "VCM was not empty: {:?}",
+      var_chain_map
+    );
+  }
+
   #[test]
   fn chain_var_test() {
     let chaining_var = Var(0);
@@ -3484,7 +3499,14 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     let x = Var(1);
     let av_x = AffineVar { n: 0, a: 1, var: x };
     let avs_x = av_x.into();
-    chain_var_driver(av3, &avs_x, av3, avs3.clone(), chaining_var, vec![]);
+    chain_var_driver(
+      av3,
+      &avs_x,
+      av3,
+      avs3.clone(),
+      chaining_var,
+      vec![(x, Some(3.into()))],
+    );
 
     //(x, 3) -> (3, 3)
     chain_var_driver(
@@ -3493,7 +3515,7 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
       av3,
       avs3.clone(),
       chaining_var,
-      vec![],
+      vec![(x, Some(3.into()))],
     );
 
     //(x, x+1) -> (x, x+k)
@@ -3510,17 +3532,22 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
       vec![],
     );
 
-    //(2x + 5, 2x+8) -> (2x + 5, 2x+5+3k)
+    //(2x + 5, 2x+8) -> None!! Because LHS is always odd and RHS is always even
     let av_2x_plus_5 = AffineVar { n: 5, a: 2, var: x };
     let mut avs_2x_plus_8: AVarSum = av_2x_plus_5.into();
     avs_2x_plus_8.add_avar(AffineVar::constant(3));
-    let mut avs_2x_plus_5_plus_3k: AVarSum = av_2x_plus_5.into();
-    avs_2x_plus_5_plus_3k.add_avar(AffineVar { n: 0, a: 3, var: chaining_var });
+    chain_var_is_none_driver(av_2x_plus_5, &avs_2x_plus_8, chaining_var);
+
+    // (2x + 5, 2x + 7) -> (2x + 5, 2x + 5 + 2k)
+    let mut avs_2x_plus_7: AVarSum = av_2x_plus_5.into();
+    avs_2x_plus_7.add_avar(AffineVar::constant(2));
+    let mut avs_2x_plus_5_plus_2k: AVarSum = av_2x_plus_5.into();
+    avs_2x_plus_5_plus_2k.add_avar(AffineVar { n: 0, a: 2, var: chaining_var });
     chain_var_driver(
       av_2x_plus_5,
-      &avs_2x_plus_8,
+      &avs_2x_plus_7,
       av_2x_plus_5,
-      avs_2x_plus_5_plus_3k,
+      avs_2x_plus_5_plus_2k,
       chaining_var,
       vec![],
     );
@@ -3531,33 +3558,13 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
     (2x + 1, 2x) -> cannot chain
     (2x + 2, 2x) -> (2x + 2, 2) + x = k
     if decrease amt is d and coeff of x is c
+    we have to set x = prev_x + d / c
+    so d mod c == 0 <-> d = nc
+
     if d == c then easy: (cx + c, cx) -> (cx + c, c) + x = k
-    if nd == c for some n, then we set k = nx and get
-    (ndx + d, ndx) -> (ndx + d, d) + k = nx
     if d == nc for some n, then maybe x = nk?
     (cx + nc, cx) -> (cx + nc, nc) + x = nk
     which means actually (nck + nc, nc)
-
-    lastly, suppose nd == mc (yikes!)
-    (cx + d, cx)
-    try setting x = dy?
-    (cdy + d, cdy)
-    chains to
-    (cdy + d, d) + k = cy
-
-    general alg:
-    (cx + d, cx)
-    let c' = lcm(c, d) = nc = md
-    sub x -> ny
-    (cny + d, cny) == (mdy + d, mdy)
-    chains to
-    (mdy + d, d) + k = my
-
-    applying general alg to (3x+1, 3x)
-    c' = 3 w/ n=1 m=3
-    chains to
-    (3x + 1, 1) & k = 3x
-    which seems, fine
 
     applying general alg to (x+3, x)
     c' = 3 w/ n=3 m=1
@@ -3585,64 +3592,26 @@ phase: A   |>F<| (T, 2 + 1*x_0) (F, 1)",
       vec![(chaining_var, Some(av_x))],
     );
 
-    // (3x+3, 3x+2) chains to (3x+3, 3) and k = 3x
+    // (3x+3, 3x+2) chains to None
     let start = parse_exact(parse_avar("3 + 3*x_0"));
     let end_in = parse_exact(parse_avar_sum("2 + 3*x_0"));
-    let end_out = parse_exact(parse_avar_sum("3"));
-    let k_ans = parse_exact(parse_avar("0 + 3*x_0"));
-    chain_var_driver(
-      start,
-      &end_in,
-      start,
-      end_out,
-      chaining_var,
-      vec![(chaining_var, Some(k_ans))],
-    );
-    // assert_eq!(
-    //   chain_var_2(&hm, &mut new_hm, start, &end_in, chaining_var),
-    //   Some((start, end_out))
-    // );
-    // assert_eq!(new_hm.get(&chaining_var), Some(&k_ans));
+    chain_var_is_none_driver(start, &end_in, chaining_var);
 
-    // (4x+2, 4x) chains to (4x+2, 2) and k = 2x
+    // (4x+2, 4x) chains to None
     let start = parse_exact(parse_avar("2 + 4*x_0"));
     let end_in = parse_exact(parse_avar_sum("0 + 4*x_0"));
-    let end_out = parse_exact(parse_avar_sum("2"));
-    let k_ans = parse_exact(parse_avar("0 + 2*x_0"));
-    chain_var_driver(
-      start,
-      &end_in,
-      start,
-      end_out,
-      chaining_var,
-      vec![(chaining_var, Some(k_ans))],
-    );
+    chain_var_is_none_driver(start, &end_in, chaining_var);
+
     // (2x, 2x) chains to (2x, 2x)
     let start = parse_exact(parse_avar("0 + 2*x_0"));
     let end_in = parse_exact(parse_avar_sum("0 + 2*x_0"));
     let end_out = parse_exact(parse_avar_sum("0 + 2*x_0"));
-    chain_var_driver(
-      start,
-      &end_in,
-      start,
-      end_out,
-      chaining_var,
-      vec![(chaining_var, Some(k_ans))],
-    );
+    chain_var_driver(start, &end_in, start, end_out, chaining_var, vec![]);
 
     // (2x, x) chains to None
-    let mut var_chain_map = VarChainMap::new();
     let start = parse_exact(parse_avar("0 + 2*x_0"));
     let end_in = parse_exact(parse_avar_sum("0 + 1*x_0"));
-    assert_eq!(
-      chain_var(&mut var_chain_map, start, &end_in, chaining_var),
-      None
-    );
-    assert!(
-      var_chain_map.changing_hm.is_empty() && var_chain_map.static_hm.is_empty(),
-      "VCM was not empty: {:?}",
-      var_chain_map
-    );
+    chain_var_is_none_driver(start, &end_in, chaining_var);
     /*
     if d == nc for some n, then maybe x = nk?
     (cx + nc, cx) -> (cx + nc, nc) + x = nk
