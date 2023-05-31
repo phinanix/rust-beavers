@@ -797,13 +797,12 @@ pub fn apply_rule_extra_info<S: TapeSymbol, C: TapeCount>(
         return Some(Left(avar.var));
       }
     }
+    let old_tape = tape.clone();
     consume_tape_from_rulematch(&mut tape.left, left_match, left.len());
     consume_tape_from_rulematch(&mut tape.right, right_match, right.len());
 
-    if applies_forever && tape.left.is_empty() && tape.right.is_empty() {
-      // println!("proved a machine runs forever using applies forever!");
-      // return Some(Left(get_newest_var(&rule)));
-    }
+    let rule_forever =
+      applies_forever && tape.left.is_empty() && tape.right.is_empty() && tape.tape_end_inf;
 
     let left_consume = size_consumed(left, &hm);
     let right_consume = size_consumed(right, &hm);
@@ -812,6 +811,16 @@ pub fn apply_rule_extra_info<S: TapeSymbol, C: TapeCount>(
     tape.head = end.head;
 
     let cg = ConsumeGrow { left_consume, right_consume, left_grow, right_grow };
+    if rule_forever {
+      println!(
+        "proved a machine runs forever using applies forever!\nprev_tape: {}\nrule:\n{}\nnew_tape:\n{}",
+        old_tape,
+        rule,
+        tape
+      );
+      assert!(false);
+      return Some(Left(get_newest_var(&rule)));
+    }
     return Some(Right((end.state, hm, cg)));
   } else {
     return None;

@@ -186,7 +186,7 @@ fn prove_with_rules(
 ) -> Vec<SmallBinMachine> {
   let mut results = vec![];
   for machine in machines {
-    // println!("working on machine {}", machine.to_compact_format());
+    println!("working on machine {}", machine.to_compact_format());
     let mut rulebook = Rulebook::chain_rulebook(&machine);
     let (new_state, steps) = simulate_proving_rules(&machine, num_steps, &mut rulebook, false);
     if new_state == INFINITE && verbose {
@@ -815,7 +815,8 @@ fn main() {
     None,
   );
 
-  // let machine = SmallBinMachine::from_compact_format("1RB0LD_1RC1RH_1LD1RA_0RB0LD");
+  // investigating runs_forever behavior
+  // let machine = SmallBinMachine::from_compact_format("1RB1LC_0LA1RH_1RD0LC_1RC1RA");
   // let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
 
   // let undecided_size_4_random = strs_to_machine(undecided_size_4_random());
@@ -845,8 +846,10 @@ fn main() {
   // let m_str = decrease_rules_make_worse.get(11).unwrap();
   // let machine = SmallBinMachine::from_compact_format(m_str);
   // let machine = undecided_size_4_random_100.get(18).unwrap();
+
   // dbg!(machine.to_compact_format());
   // run_machine(&machine);
+
   // }
 
   /*
