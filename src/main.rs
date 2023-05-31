@@ -803,24 +803,24 @@ fn scan_from_machine(
   // }
 }
 fn main() {
-  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  // let num_lr_steps = 1500;
-  // let num_rule_steps = 100;
-  // scan_from_machine(
-  //   &first_machine,
-  //   num_lr_steps,
-  //   num_rule_steps,
-  //   // Some("size3_holdouts_2_may.txt"),
-  //   // Some("size4_holdouts_10_may_yes_d_larger_1.txt"),
-  //   None,
-  // );
+  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  let num_lr_steps = 1500;
+  let num_rule_steps = 100;
+  scan_from_machine(
+    &first_machine,
+    num_lr_steps,
+    num_rule_steps,
+    // Some("size3_holdouts_2_may.txt"),
+    // Some("size4_holdouts_10_may_yes_d_larger_1.txt"),
+    None,
+  );
 
   // let machine = SmallBinMachine::from_compact_format("1RB0LD_1RC1RH_1LD1RA_0RB0LD");
   // let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
 
   // let undecided_size_4_random = strs_to_machine(undecided_size_4_random());
   // let undecided_size_4_random_100 = strs_to_machine(undecided_size_4_random_100());
-  let decrease_rules_make_worse = decrease_rules_make_worse();
+  // let decrease_rules_make_worse = decrease_rules_make_worse();
   // // 11/30 proven: 0, 1, 2, 4, 6, 9, 14, 15, 19, 20, 29
   // list_which_proven(&undecided_size_4_random, 100, false);
   // // give ups: 18
@@ -842,11 +842,11 @@ fn main() {
   // for i in [5, 15, 22] {
   //   //, 23, 9, 19, 28] {
 
-  let m_str = decrease_rules_make_worse.get(11).unwrap();
-  let machine = SmallBinMachine::from_compact_format(m_str);
-  // let machine2 = undecided_size_4_random_100.get(18).unwrap();
-  dbg!(machine.to_compact_format());
-  run_machine(&machine);
+  // let m_str = decrease_rules_make_worse.get(11).unwrap();
+  // let machine = SmallBinMachine::from_compact_format(m_str);
+  // let machine = undecided_size_4_random_100.get(18).unwrap();
+  // dbg!(machine.to_compact_format());
+  // run_machine(&machine);
   // }
 
   /*

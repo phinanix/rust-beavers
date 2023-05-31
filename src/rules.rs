@@ -342,14 +342,15 @@ impl<S: TapeSymbol> Rule<S> {
   }
 }
 
+//each rule has a bool, which is whether this rule applies forever if it consumes all
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Rulebook<S>(u8, SmallVec<[Vec<Rule<S>>; 14]>);
+pub struct Rulebook<S>(u8, SmallVec<[Vec<(Rule<S>, bool)>; 14]>);
 
 impl<S: Display + Copy> Display for Rulebook<S> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "rulebook:\n")?;
     for rules_vec in self.1.iter() {
-      for rule in rules_vec {
+      for (rule, _) in rules_vec {
         write!(f, "{}\n", rule)?;
       }
     }
@@ -368,7 +369,8 @@ impl<S: TapeSymbol> Rulebook<S> {
   }
 
   pub fn add_rule(&mut self, rule: Rule<S>) {
-    self.1[rule.start_edge_index()].push(rule);
+    let consumes_all = rule_runs_forever_if_consumes_all(&rule);
+    self.1[rule.start_edge_index()].push((rule, consumes_all));
   }
 
   pub fn add_rules(&mut self, rules: Vec<Rule<S>>) {
@@ -376,7 +378,7 @@ impl<S: TapeSymbol> Rulebook<S> {
       self.add_rule(rule);
     }
   }
-  pub fn get_rules(&self, edge: Edge<S>) -> &Vec<Rule<S>> {
+  pub fn get_rules(&self, edge: Edge<S>) -> &Vec<(Rule<S>, bool)> {
     &self.1[edge.edge_index()]
   }
 
@@ -743,7 +745,8 @@ pub struct ConsumeGrow<C> {
 pub fn apply_rule_extra_info<S: TapeSymbol, C: TapeCount>(
   tape: &mut ExpTape<S, C>,
   cur_state: State,
-  Rule { start: Config { state, left, head, right }, end }: &Rule<S>,
+  rule @ Rule { start: Config { state, left, head, right }, end }: &Rule<S>,
+  applies_forever: bool,
   verbose: bool,
 ) -> Option<Either<Var, (State, HashMap<Var, C>, ConsumeGrow<C>)>> {
   /*
@@ -797,6 +800,11 @@ pub fn apply_rule_extra_info<S: TapeSymbol, C: TapeCount>(
     consume_tape_from_rulematch(&mut tape.left, left_match, left.len());
     consume_tape_from_rulematch(&mut tape.right, right_match, right.len());
 
+    if applies_forever && tape.left.is_empty() && tape.right.is_empty() {
+      // println!("proved a machine runs forever using applies forever!");
+      // return Some(Left(get_newest_var(&rule)));
+    }
+
     let left_consume = size_consumed(left, &hm);
     let right_consume = size_consumed(right, &hm);
     let left_grow = append_rule_tape(&hm, &end.left, &mut tape.left, tape.tape_end_inf);
@@ -814,9 +822,10 @@ pub fn apply_rule<S: TapeSymbol, C: TapeCount>(
   tape: &mut ExpTape<S, C>,
   cur_state: State,
   rule: &Rule<S>,
+  applies_forever: bool,
   verbose: bool,
 ) -> Option<Either<Var, State>> {
-  match apply_rule_extra_info(tape, cur_state, rule, verbose) {
+  match apply_rule_extra_info(tape, cur_state, rule, applies_forever, verbose) {
     None => None,
     Some(Left(v)) => Some(Left(v)),
     Some(Right(ans)) => Some(Right(ans.0)),
@@ -831,8 +840,8 @@ pub fn apply_rules<S: TapeSymbol, C: TapeCount>(
 ) -> Option<Either<Var, (State, HashMap<Var, C>, ConsumeGrow<C>)>> {
   let edge = Edge(state, tape.head);
   let rules = rulebook.get_rules(edge);
-  for rule in rules {
-    match apply_rule_extra_info(tape, state, rule, false) {
+  for (rule, applies_forever) in rules {
+    match apply_rule_extra_info(tape, state, rule, *applies_forever, false) {
       None => (),
       Some(ans) => {
         if verbose {
@@ -1759,7 +1768,6 @@ impl VarChainMap {
   }
 
   pub fn add_changing(&mut self, var: Var, svar: SymbolVar) -> Option<()> {
-    dbg!(var, svar, &self);
     if let Some(&prev_svar) = self.changing_hm.get(&var) {
       if prev_svar != svar {
         return None;
@@ -1776,7 +1784,6 @@ impl VarChainMap {
   }
 
   pub fn add_static(&mut self, var: Var, avar: AffineVar) -> Option<()> {
-    dbg!(var, avar, &self);
     assert_ne!(avar, 0.into());
     if let Some(&prev_avar) = self.static_hm.get(&var) {
       if prev_avar != avar {
@@ -2311,7 +2318,7 @@ fn set_var_to_repeat(
             }
           }
           Err(_) => {
-            println!("tried to repeat {} into {} and couldn't #4", start, end);
+            // println!("tried to repeat {} into {} and couldn't #4", start, end);
             None
           }
         }
@@ -2371,7 +2378,7 @@ pub fn set_end_var_to_repeat(
         match end.var_map.iter().exactly_one() {
           Ok((&end_var, &b)) => {
             if var != end_var {
-              println!("tried to repeat {} into {} and couldn't #2", start, end);
+              println!("tried to endrepeat {} into {} and couldn't #2", start, end);
               return None;
             }
             // when we match ax + n to by + m we learn the internal fact
@@ -2407,13 +2414,13 @@ pub fn set_end_var_to_repeat(
                 var_chain_map
                   .add_static(var, AffineVar { n: 0, a: decrease_amt, var: chaining_var })
               } else {
-                println!("tried to repeat {} into {} and couldn't #3", start, end);
+                println!("tried to endrepeat {} into {} and couldn't #3", start, end);
                 None
               }
             }
           }
           Err(_) => {
-            println!("tried to repeat {} into {} and couldn't #4", start, end);
+            // println!("tried to endrepeat {} into {} and couldn't #4", start, end);
             None
           }
         }
@@ -2498,10 +2505,8 @@ pub fn rule_runs_forever_if_consumes_all<S: TapeSymbol>(
   let mut var_chain_map = VarChainMap::new();
 
   let left_repeatable = side_is_repeatable(left_start, left_end, chaining_var, &mut var_chain_map);
-  dbg!("left success");
   let right_repeatable =
     side_is_repeatable(right_start, right_end, chaining_var, &mut var_chain_map);
-  dbg!(left_repeatable, right_repeatable);
   return left_repeatable.is_some() && right_repeatable.is_some();
 }
 
@@ -3062,91 +3067,92 @@ mod test {
       mb_rtm,
       Some(ConsumedEnd((Bit(true), AffineVar::constant(1))))
     );
+    todo!();
 
-    let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| 
-into:
-phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
-    let (_leftover, rule) = parse_rule(rule_str).unwrap();
-    let tape_str = "(T, 1) |>T<| (T, 7)";
-    let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
-    let tape_copy = tape.clone();
-    println!("app1");
-    assert_eq!(
-      apply_rule_extra_info(&mut tape, State(3), &rule, true),
-      None
-    );
-    assert_eq!(tape, tape_copy);
-    //now we apply the rule to a tape that works
-    let tape_str = "(T, 2) |>T<| (T, 7)";
-    let output_str = "(T, 1) |>F<| (F, 1) (T, 8)";
-    let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
-    let (_leftover, output_tape) = parse_tape(output_str).unwrap();
-    println!("app2");
-    assert_eq!(
-      apply_rule(&mut tape, State(3), &rule, true),
-      Some(Right(State(1)))
-    );
-    println!(
-      "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
-      rule_str, tape, output_tape
-    );
-    assert_eq!(tape, output_tape);
-    //and a different tape
-    let tape_str = "(T, 2) (F, 2) (T, 4) |>T<| (T, 7)";
-    let output_str = "(T, 2) (F, 1) (T, 1) |>F<| (F, 3) (T, 8)";
-    let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
-    let (_leftover, output_tape) = parse_tape(output_str).unwrap();
-    println!("app3");
-    assert_eq!(
-      apply_rule(&mut tape, State(3), &rule, true),
-      Some(Right(State(1)))
-    );
-    println!(
-      "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
-      rule_str, tape, output_tape
-    );
-    assert_eq!(tape, output_tape);
-    //and another
-    let tape_str = "(T, 2) (F, 1) (T, 4) |>T<| (T, 7)";
-    let output_str = "(T, 3) |>F<| (F, 3) (T, 8)";
-    let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
-    let (_leftover, output_tape) = parse_tape(output_str).unwrap();
-    println!("app4");
-    assert_eq!(
-      apply_rule(&mut tape, State(3), &rule, true),
-      Some(Right(State(1)))
-    );
-    println!(
-      "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
-      rule_str, tape, output_tape
-    );
-    assert_eq!(tape, output_tape);
+    //     let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<|
+    // into:
+    // phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
+    //     let (_leftover, rule) = parse_rule(rule_str).unwrap();
+    //     let tape_str = "(T, 1) |>T<| (T, 7)";
+    //     let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
+    //     let tape_copy = tape.clone();
+    //     println!("app1");
+    //     assert_eq!(
+    //       apply_rule_extra_info(&mut tape, State(3), &rule, true),
+    //       None
+    //     );
+    //     assert_eq!(tape, tape_copy);
+    //     //now we apply the rule to a tape that works
+    //     let tape_str = "(T, 2) |>T<| (T, 7)";
+    //     let output_str = "(T, 1) |>F<| (F, 1) (T, 8)";
+    //     let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
+    //     let (_leftover, output_tape) = parse_tape(output_str).unwrap();
+    //     println!("app2");
+    //     assert_eq!(
+    //       apply_rule(&mut tape, State(3), &rule, true),
+    //       Some(Right(State(1)))
+    //     );
+    //     println!(
+    //       "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
+    //       rule_str, tape, output_tape
+    //     );
+    //     assert_eq!(tape, output_tape);
+    //     //and a different tape
+    //     let tape_str = "(T, 2) (F, 2) (T, 4) |>T<| (T, 7)";
+    //     let output_str = "(T, 2) (F, 1) (T, 1) |>F<| (F, 3) (T, 8)";
+    //     let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
+    //     let (_leftover, output_tape) = parse_tape(output_str).unwrap();
+    //     println!("app3");
+    //     assert_eq!(
+    //       apply_rule(&mut tape, State(3), &rule, true),
+    //       Some(Right(State(1)))
+    //     );
+    //     println!(
+    //       "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
+    //       rule_str, tape, output_tape
+    //     );
+    //     assert_eq!(tape, output_tape);
+    //     //and another
+    //     let tape_str = "(T, 2) (F, 1) (T, 4) |>T<| (T, 7)";
+    //     let output_str = "(T, 3) |>F<| (F, 3) (T, 8)";
+    //     let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
+    //     let (_leftover, output_tape) = parse_tape(output_str).unwrap();
+    //     println!("app4");
+    //     assert_eq!(
+    //       apply_rule(&mut tape, State(3), &rule, true),
+    //       Some(Right(State(1)))
+    //     );
+    //     println!(
+    //       "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
+    //       rule_str, tape, output_tape
+    //     );
+    //     assert_eq!(tape, output_tape);
 
-    /* regression test for:
-    step: 33 phase: C tape: (T, 1) |>T<| (F, 1) (T, 1) (F, 2) (T, 1)
-    rule:
-    phase: C  (T, 0 + 1*x_0) |>T<| (F, 2)
-    into:
-    phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)
-    rule_applied
-    step: 34 phase: A tape: (T, 2) |>T<| (F, 2) (T, 1) (F, 2) (T, 1)
-    */
-    println!("app5");
-    let rule_str = "phase: C  (T, 0 + 1*x_0) |>T<| (F, 2)
-into:
-phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
-    let rule = parse_exact(parse_rule(rule_str));
-    let tape_str = "(T, 1) |>T<| (F, 1) (T, 1) (F, 2) (T, 1)";
-    let mut tape = parse_exact(parse_tape(tape_str));
-    let tape_copy = tape.clone();
-    println!("applying {} to \n{}", rule, tape);
-    assert_eq!(
-      apply_rule_extra_info(&mut tape, State(3), &rule, true),
-      None,
-      "wrong tape was: {}",
-      tape,
-    );
-    assert_eq!(tape, tape_copy);
+    //     /* regression test for:
+    //     step: 33 phase: C tape: (T, 1) |>T<| (F, 1) (T, 1) (F, 2) (T, 1)
+    //     rule:
+    //     phase: C  (T, 0 + 1*x_0) |>T<| (F, 2)
+    //     into:
+    //     phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)
+    //     rule_applied
+    //     step: 34 phase: A tape: (T, 2) |>T<| (F, 2) (T, 1) (F, 2) (T, 1)
+    //     */
+    //     println!("app5");
+    //     let rule_str = "phase: C  (T, 0 + 1*x_0) |>T<| (F, 2)
+    // into:
+    // phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
+    //     let rule = parse_exact(parse_rule(rule_str));
+    //     let tape_str = "(T, 1) |>T<| (F, 1) (T, 1) (F, 2) (T, 1)";
+    //     let mut tape = parse_exact(parse_tape(tape_str));
+    //     let tape_copy = tape.clone();
+    //     println!("applying {} to \n{}", rule, tape);
+    //     assert_eq!(
+    //       apply_rule_extra_info(&mut tape, State(3), &rule, true),
+    //       None,
+    //       "wrong tape was: {}",
+    //       tape,
+    //     );
+    //     assert_eq!(tape, tape_copy);
   }
 
   fn simultaneous_step_prove_step<S: TapeSymbol>(
