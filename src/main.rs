@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 #![feature(return_position_impl_trait_in_trait)]
+#![feature(int_roundings)]
 use std::{collections::HashSet, fs, io, process::exit};
 
 use crate::{

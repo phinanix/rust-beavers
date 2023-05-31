@@ -1746,6 +1746,7 @@ external -> static
 pub struct VarChainMap {
   pub changing_hm: HashMap<Var, SymbolVar>,
   pub static_hm: HashMap<Var, AffineVar>,
+  pub lower_bound_hm: HashMap<Var, u32>,
 }
 
 impl VarChainMap {
@@ -1753,6 +1754,7 @@ impl VarChainMap {
     VarChainMap {
       changing_hm: HashMap::new(),
       static_hm: HashMap::new(),
+      lower_bound_hm: HashMap::new(),
     }
   }
 
@@ -1775,6 +1777,7 @@ impl VarChainMap {
 
   pub fn add_static(&mut self, var: Var, avar: AffineVar) -> Option<()> {
     dbg!(var, avar, &self);
+    assert_ne!(avar, 0.into());
     if let Some(&prev_avar) = self.static_hm.get(&var) {
       if prev_avar != avar {
         return None;
@@ -1787,6 +1790,21 @@ impl VarChainMap {
     //     return None;
     //   }
     // };
+    Some(())
+  }
+
+  pub fn lower_bound(&mut self, var: Var, lb: u32) -> Option<()> {
+    let cur_lb = if let Some(&prev_lb) = self.lower_bound_hm.get(&var) {
+      prev_lb.max(lb)
+    } else {
+      lb
+    };
+    self.lower_bound_hm.insert(var, cur_lb);
+    if let Some(&AffineVar { n, a: _, var: _ }) = self.static_hm.get(&var) {
+      if n < cur_lb {
+        return None;
+      }
+    }
     Some(())
   }
 }
@@ -1868,16 +1886,14 @@ pub fn chain_var(
                 println!("chain {} into {}!", start, end);
               }
               let decrease_amt = n - end.n;
-              if a % decrease_amt == 0 {
-                /* (ax + n, ax + m), d = n - m, a = dr
-                   (drx + n, drx + m) chains to
-                   (drx + n, n) & k = rx
+              if a == decrease_amt {
+                /* (ax + n, ax + m), a = n - m,
+                   (ax + m + a, ax + m) chains to
+                   (ax + n, n) & k = x
                 */
-                let rem = a / decrease_amt;
                 let end_out = AVarSum::constant(n);
-                // add k = rx to map
-                var_chain_map
-                  .add_static(chaining_var, AffineVar { n: 0, a: rem, var: start.var })?;
+                // add k = x to map
+                var_chain_map.add_static(chaining_var, AffineVar { n: 0, a: 1, var: start.var })?;
                 Some((start, end_out))
               } else if a == 1 {
                 // return None;
@@ -2012,109 +2028,6 @@ pub fn chain_var_end(
     }
   }
 }
-
-// pub fn chain_var(
-//   hm: &HashMap<Var, SymbolVar>,
-//   new_hm: &mut HashMap<Var, AffineVar>,
-//   start: AffineVar,
-//   end: &AVarSum,
-//   chaining_var: Var,
-// ) -> Option<(AffineVar, AVarSum)> {
-//   /*
-//   (3, 3) => (3, 3)
-//   (3, x) => (3, 3)
-//   (x, x+2) => (x, x+2y)
-//   // todo:
-//   // decreases are trickier
-//   (x+1, x) => (x, 0) + x = y
-//   (x+3, x) => [(3x, 0), (3x+1, 1), (3x+2, 2)]
-//   maybe you write the above as x -> x mod 3 or something?
-
-//   // also, note that (x, 0) is going as far as possible, which is usually what you want, but not
-//   always, in particular, if you are proving a rule
-
-//   returns: (start, end)
-//   new_hm is the map which we might modify to contain x or k or whatnot
-//    */
-//   match start {
-//     AffineVar { n, a: 0, var: _var } => {
-//       if end.var_map.is_empty() {
-//         let ans = n.min(end.n);
-//         Some((AffineVar::constant(ans), AVarSum::constant(ans)))
-//       } else {
-//         assert_eq!(SymbolVar::from(start), end.sub_map(hm));
-//         Some((start, start.into()))
-//       }
-//     }
-//     AffineVar { n, a, var } => {
-//       if end.var_map.is_empty() {
-//         let sub_start = start.sub_map(hm);
-//         assert_eq!(&AVarSum::from(AffineVar::from(sub_start)), end);
-//         return Some((sub_start.into(), AVarSum::from(AffineVar::from(sub_start))));
-//       }
-//       match end.var_map.iter().exactly_one() {
-//         Err(_) => {
-//           // warning
-//           println!("tried to chain {} into {} and couldn't #1", start, end);
-//           None
-//         }
-//         Ok((&var2, &b)) => {
-//           if var != var2 || a != b {
-//             println!("tried to chain {} into {} and couldn't #2", start, end);
-//             return None;
-//           }
-
-//           if n <= end.n {
-//             // (ax + n, ax + m) -> (ax + n, ax + n + k*(m - n))
-//             let mut end_out: AVarSum = start.into();
-//             let coeff_chain_var = end.n - n;
-//             if coeff_chain_var > 0 {
-//               end_out.add_avar(AffineVar { n: 0, a: coeff_chain_var, var: chaining_var });
-//             }
-//             Some((start, end_out))
-//           } else {
-//             // None
-
-//             if a > 1 {
-//               println!("chain {} into {}!", start, end);
-//             }
-//             let decrease_amt = n - end.n;
-//             if a % decrease_amt == 0 {
-//               /* (ax + n, ax + m), d = n - m, a = dr
-//                  (drx + n, drx + m) chains to
-//                  (drx + n, n) & k = rx
-//               */
-//               let rem = a / decrease_amt;
-//               let end_out = AVarSum::constant(n);
-//               // add k = rx to map
-//               if new_hm.contains_key(&chaining_var) {
-//                 println!("tried to chain {} into {} and couldn't #3", start, end);
-//                 return None;
-//               }
-//               new_hm.insert(chaining_var, AffineVar { n: 0, a: rem, var: start.var });
-//               Some((start, end_out))
-//             } else if a == 1 {
-//               // return None;
-//               //(x + d + c, x + c) -> (x + d + c, d + c) + x = dk
-//               let end_out = AVarSum::constant(n);
-//               // add x = dk to map
-//               if new_hm.contains_key(&var) {
-//                 dbg!(hm, new_hm);
-//                 println!("tried to chain {} into {} and couldn't #4", start, end);
-//                 return None;
-//               }
-//               new_hm.insert(var, AffineVar { n: 0, a: decrease_amt, var: chaining_var });
-//               Some((start, end_out))
-//             } else {
-//               println!("tried to chain {} into {} and couldn't #5", start, end);
-//               None
-//             }
-//           }
-//         }
-//       }
-//     }
-//   }
-// }
 
 trait GetVars {
   fn get_vars(&self) -> impl Iterator<Item = Var> + '_;
@@ -2260,8 +2173,6 @@ pub fn chain_rule<S: TapeSymbol>(
     return None;
   }
   let chaining_var: Var = get_newest_var(&rule);
-  // let mut changing_hm = HashMap::new();
-  // let mut static_hm = HashMap::new();
   let mut var_chain_map = VarChainMap::new();
   let (mut left_start_out, mut left_end_out) =
     chain_side(left_start, left_end, chaining_var, &mut var_chain_map)?;
@@ -2308,8 +2219,247 @@ pub fn chain_rule<S: TapeSymbol>(
   ans
 }
 
+fn set_var_to_repeat(
+  var_chain_map: &mut VarChainMap,
+  start: AffineVar,
+  end: &AVarSum,
+  chaining_var: Var,
+) -> Option<()> {
+  /*
+  internal hm is like, when you chain (F, x) to (F, x+1), you have set x = x+1
+  so you couldn't somewhere else set x = x+2
+  external hm is like, when you chain (F, x) to (F, 3), you have set x = 3
+  so not only can x not be anything except 3 anywhere else, you sub 3 for x everywhere else
+  internal / external => changing / static
+   */
+  match start {
+    AffineVar { n, a: 0, var: _var } => {
+      if end.var_map.is_empty() {
+        if n == end.n {
+          Some(())
+        } else {
+          None
+        }
+      } else {
+        match end.var_map.iter().exactly_one() {
+          Ok((&end_var, &end_a)) => {
+            let int_match = n.checked_sub(end.n)?;
+            if int_match > 0 && int_match % end_a == 0 {
+              var_chain_map.add_static(end_var, (int_match / end_a).into())
+            } else {
+              None
+            }
+          }
+          Err(_) => {
+            println!("tried to repeat {} into {} and couldn't #1", start, end);
+            return None;
+          }
+        }
+      }
+    }
+    AffineVar { n, a, var } => {
+      if end.var_map.is_empty() {
+        let int_match = end.n.checked_sub(n)?;
+        if int_match > 0 && int_match % a == 0 {
+          var_chain_map.add_static(var, (int_match / a).into())
+        } else {
+          None
+        }
+      } else {
+        match end.var_map.iter().exactly_one() {
+          Ok((&end_var, &b)) => {
+            if var != end_var {
+              println!("tried to repeat {} into {} and couldn't #2", start, end);
+              return None;
+            }
+            // when we match ax + n to by + m we learn the internal fact
+            // x -> (b/a)y + (m-n)/a
+            let diff: i32 = i32::try_from(end.n).unwrap() - i32::try_from(n).unwrap();
+            let b_i32: i32 = i32::try_from(b).unwrap();
+            let a_i32 = i32::try_from(a).unwrap();
+            if diff % a_i32 != 0 || b_i32 % a_i32 != 0 {
+              return None;
+            }
+            var_chain_map.add_changing(var, SymbolVar { n: (diff / a_i32), a: (b / a), var })?;
+            if n <= end.n {
+              return Some(());
+            }
+
+            if n <= end.n {
+              Some(())
+            } else {
+              if a > 1 {
+                println!("chain {} into {}!", start, end);
+              }
+              let decrease_amt = n - end.n;
+              if a == decrease_amt {
+                /* (ax + n, ax + m), a = n - m,
+                   (ax + m + a, ax + m) chains to
+                   (ax + n, n) & k = x
+                */
+                // add k = x to map
+                var_chain_map.add_static(chaining_var, AffineVar { n: 0, a: 1, var: start.var })
+              } else if a == 1 {
+                //(x + d + c, x + c) -> (x + d + c, d + c) + x = dk
+                // add x = dk to map
+                var_chain_map
+                  .add_static(var, AffineVar { n: 0, a: decrease_amt, var: chaining_var })
+              } else {
+                println!("tried to repeat {} into {} and couldn't #3", start, end);
+                None
+              }
+            }
+          }
+          Err(_) => {
+            println!("tried to repeat {} into {} and couldn't #4", start, end);
+            None
+          }
+        }
+      }
+    }
+  }
+}
+
+pub fn set_end_var_to_repeat(
+  var_chain_map: &mut VarChainMap,
+  start: AffineVar,
+  end: &AVarSum,
+  chaining_var: Var,
+) -> Option<()> {
+  /*
+  (x, 3) -> lower bound x to 3 (or x -> y+3) then (3+y, 3) -> (3+yk, 3)
+  (x, y) -> lower bound x to y and y to x ??
+
+   */
+  match start {
+    AffineVar { n, a: 0, var: _var } => {
+      if end.var_map.is_empty() {
+        Some(())
+      } else {
+        match end.var_map.iter().exactly_one() {
+          Ok((&end_var, &end_a)) => {
+            //(2, 3+x)
+            if n <= end.n {
+              Some(())
+            } else {
+              // (3, 2+x)
+              // lower bound end_a * end_var to n - end.n
+
+              let rem = n - end.n;
+              let lb = rem.div_ceil(end_a);
+              var_chain_map.lower_bound(end_var, lb)
+            }
+          }
+          Err(_) => {
+            println!("tried to endrepeat {} into {} and couldn't #1", start, end);
+            None
+          }
+        }
+      }
+    }
+    AffineVar { n, a, var } => {
+      if end.var_map.is_empty() {
+        if end.n <= n {
+          Some(())
+        } else {
+          // lower bound a * var to end.n - n
+          let rem = end.n - n;
+          let lb = rem.div_ceil(a);
+          var_chain_map.lower_bound(var, lb)
+        }
+      } else {
+        match end.var_map.iter().exactly_one() {
+          Ok((&end_var, &b)) => {
+            if var != end_var {
+              println!("tried to repeat {} into {} and couldn't #2", start, end);
+              return None;
+            }
+            // when we match ax + n to by + m we learn the internal fact
+            // x -> (b/a)y + (m-n)/a
+            let diff: i32 = i32::try_from(end.n).unwrap() - i32::try_from(n).unwrap();
+            let b_i32: i32 = i32::try_from(b).unwrap();
+            let a_i32 = i32::try_from(a).unwrap();
+            if diff % a_i32 != 0 || b_i32 % a_i32 != 0 {
+              return None;
+            }
+            var_chain_map.add_changing(var, SymbolVar { n: (diff / a_i32), a: (b / a), var })?;
+            if n <= end.n {
+              return Some(());
+            }
+
+            if n <= end.n {
+              Some(())
+            } else {
+              if a > 1 {
+                println!("chain {} into {}!", start, end);
+              }
+              let decrease_amt = n - end.n;
+              if a == decrease_amt {
+                /* (ax + n, ax + m), a = n - m,
+                   (ax + m + a, ax + m) chains to
+                   (ax + n, n) & k = x
+                */
+                // add k = x to map
+                var_chain_map.add_static(chaining_var, AffineVar { n: 0, a: 1, var: start.var })
+              } else if a == 1 {
+                //(x + d + c, x + c) -> (x + d + c, d + c) + x = dk
+                // add x = dk to map
+                var_chain_map
+                  .add_static(var, AffineVar { n: 0, a: decrease_amt, var: chaining_var })
+              } else {
+                println!("tried to repeat {} into {} and couldn't #3", start, end);
+                None
+              }
+            }
+          }
+          Err(_) => {
+            println!("tried to repeat {} into {} and couldn't #4", start, end);
+            None
+          }
+        }
+      }
+    }
+  }
+}
+
+fn side_is_repeatable<S: TapeSymbol>(
+  start: &[(S, AffineVar)],
+  end: &[(S, AVarSum)],
+  chaining_var: Var,
+  var_chain_map: &mut VarChainMap,
+) -> Option<()> {
+  let s_len = start.len();
+  let e_len = end.len();
+
+  let (start_slice, end_slice) = match s_len.cmp(&e_len) {
+    Less => (0, e_len - s_len),
+    Equal => (0, 0),
+    Greater => {
+      if s_len == e_len + 1 && start[0].0 == S::empty() {
+        (1, 0)
+      } else {
+        return None;
+      }
+    }
+  };
+
+  for (i, (&(s_sym, s_var), (e_sym, e_var))) in
+    zip_eq(start[start_slice..].iter(), end[end_slice..].iter()).enumerate()
+  {
+    if s_sym != *e_sym {
+      return None;
+    }
+    if i == 0 && start_slice == 0 && end_slice == 0 && s_sym == S::empty() {
+      set_end_var_to_repeat(var_chain_map, s_var, e_var, chaining_var)?;
+    } else {
+      set_var_to_repeat(var_chain_map, s_var, e_var, chaining_var)?;
+    };
+  }
+  Some(())
+}
+
 pub fn rule_runs_forever_if_consumes_all<S: TapeSymbol>(
-  Rule {
+  rule @ Rule {
     start:
       Config {
         state: state_start,
@@ -2344,46 +2494,15 @@ pub fn rule_runs_forever_if_consumes_all<S: TapeSymbol>(
   if head_start != head_end {
     return false;
   }
+  let chaining_var: Var = get_newest_var(&rule);
+  let mut var_chain_map = VarChainMap::new();
 
-  fn test_side<S: TapeSymbol>(
-    start: &Vec<(S, AffineVar)>,
-    end: &Vec<(S, AVarSum)>,
-    sv_hm: &mut HashMap<Var, SymbolVar>,
-  ) -> Option<()> {
-    let end_sv = end
-      .iter()
-      .map(|(s, avar)| {
-        SymbolVar::try_from(avar.clone())
-          .ok()
-          .map(|svar| (*s, svar))
-      })
-      .collect::<Option<Vec<(S, SymbolVar)>>>()?;
-
-    let rtm = match_rule_tape(sv_hm, start, &end_sv, true)?;
-    dbg!(rtm);
-    match rtm {
-      // in this case, we are trying to consume more symbols
-      // the first check is that they are actually past the end of the tape
-      // which is only allowed if they are empty
-      ConsumedEnd((s, _)) => {
-        if end.len() > start.len() || s != S::empty() {
-          return None;
-        }
-      }
-      // in this case, we can add stuff we spit out to the end of the tape
-      Leftover(_svar) => {
-        assert!(end.len() >= start.len());
-      }
-    };
-    Some(())
-  }
-
-  let mut sv_hm = HashMap::new();
-  let left_matched = test_side(left_start, left_end, &mut sv_hm);
+  let left_repeatable = side_is_repeatable(left_start, left_end, chaining_var, &mut var_chain_map);
   dbg!("left success");
-  let right_matched = test_side(right_start, right_end, &mut sv_hm);
-  dbg!(left_matched, right_matched);
-  return left_matched.is_some() && right_matched.is_some();
+  let right_repeatable =
+    side_is_repeatable(right_start, right_end, chaining_var, &mut var_chain_map);
+  dbg!(left_repeatable, right_repeatable);
+  return left_repeatable.is_some() && right_repeatable.is_some();
 }
 
 pub mod parse {
@@ -4027,7 +4146,11 @@ phase: B  (T, 1) (F, 1) |>F<| (T, 0 + 1*x_1 + 1*x_0)",
   fn rule_runs_forever_if_consumes_all_driver(rule: &str, ans: bool) {
     let rule = parse_exact(parse_rule(rule));
     let runs_forever = rule_runs_forever_if_consumes_all(&rule);
-    assert_eq!(runs_forever, ans);
+    assert_eq!(
+      runs_forever, ans,
+      "rule that failed:\n{}\nans should have been {} but was {}",
+      rule, ans, runs_forever
+    );
   }
 
   #[test]
@@ -4049,6 +4172,7 @@ phase: B  (T, 3 + 2*x_1) |>F<| (F, 1 + 2*x_1)";
 into:
 phase: B  (T, 1 + 4*x_1) |>F<| (F, 3)";
     rule_runs_forever_if_consumes_all_driver(rule_str, true);
+
     let rule_str = "phase: B  (T, 1 + 2*x_1) |>F<| (F, 3 + 2*x_1)
 into:
 phase: B  (F, 1) (T, 1) (F, 1) (T, 1 + 4*x_1) |>F<| ";
@@ -4058,6 +4182,7 @@ phase: B  (F, 1) (T, 1) (F, 1) (T, 1 + 4*x_1) |>F<| ";
 into:
 phase: B  (T, 1 + 6*x_1) |>F<| (F, 1) (T, 1) (F, 1)";
     rule_runs_forever_if_consumes_all_driver(rule_str, false);
+
     let rule_str = "phase: B  (F, 0 + 2*x_1) (T, 1 + 2*x_1) |>F<| (T, 3 + 2*x_1)
 into:
 phase: B  (T, 1 + 6*x_1) |>F<| (T, 3)";
