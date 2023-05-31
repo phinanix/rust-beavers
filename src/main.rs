@@ -685,6 +685,16 @@ fn undecided_size_4_random_100() -> Vec<&'static str> {
   ]
 }
 
+fn decided_by_chain_update_31may() -> Vec<&'static str> {
+  vec![
+    "1RB1LD_1LB0LC_0LD1RH_1RD0RA",
+    "1RB1RH_1LB0LC_1RC0RD_0LA1LC",
+    "1RB1RC_1LB1LA_0RD0RC_0LB1RH",
+    "1RB1LC_1LB1LA_1RD1RB_1RH0RC",
+    "1RB1LC_1LB1LA_1RD0RB_1RH0RC",
+    "1RB1LC_1LB1LA_1RD1RB_1RH0RA",
+  ]
+}
 fn scan_3_dregs() {
   for m_str in undecided_size_3() {
     let machine = SmallBinMachine::from_compact_format(m_str);
@@ -803,20 +813,24 @@ fn scan_from_machine(
   // }
 }
 fn main() {
-  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  let num_lr_steps = 1500;
-  let num_rule_steps = 100;
-  scan_from_machine(
-    &first_machine,
-    num_lr_steps,
-    num_rule_steps,
-    // Some("size3_holdouts_2_may.txt"),
-    // Some("size4_holdouts_10_may_yes_d_larger_1.txt"),
-    None,
-  );
+  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // let num_lr_steps = 1500;
+  // let num_rule_steps = 100;
+  // scan_from_machine(
+  //   &first_machine,
+  //   num_lr_steps,
+  //   num_rule_steps,
+  //   // Some("size3_holdouts_2_may.txt"),
+  //   // Some("size4_holdouts_31_may_29e2280.txt"),
+  //   None,
+  // );
 
   // investigating runs_forever behavior
   // let machine = SmallBinMachine::from_compact_format("1RB1LC_0LA1RH_1RD0LC_1RC1RA");
+  let chain_update = decided_by_chain_update_31may();
+  let machine = SmallBinMachine::from_compact_format(chain_update[0]);
+  run_machine(&machine);
+
   // let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
 
   // let undecided_size_4_random = strs_to_machine(undecided_size_4_random());
@@ -858,9 +872,6 @@ fn main() {
   - what exactly is failing in "failure to guess" eg random_100 at 5,9,15,19,22,23,28
      or random at 11,12,13,18,23
    */
-  // let m_str = "1RB1LA_1RC1RB_1RD1RH_0LD0LA";
-  // let machine = SmallBinMachine::from_compact_format(m_str);
-  // run_machine(&machine);
 
   // scan_3_dregs();
 }

@@ -370,6 +370,9 @@ impl<S: TapeSymbol> Rulebook<S> {
 
   pub fn add_rule(&mut self, rule: Rule<S>) {
     let consumes_all = rule_runs_forever_if_consumes_all(&rule);
+    if consumes_all {
+      dbg!(&rule);
+    }
     self.1[rule.start_edge_index()].push((rule, consumes_all));
   }
 
