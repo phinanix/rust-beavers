@@ -21,10 +21,12 @@ use rules::{
 use simulate::{tnf_simulate, ExpTape};
 use turing::{get_machine, Bit, SmallBinMachine, Turing, INFINITE};
 
+mod chain;
 mod linrecur;
 mod rules;
 mod simulate;
 mod turing;
+
 /*
 to prove tail eating dragon:
 - only detect rules when start and end state are same (done)
