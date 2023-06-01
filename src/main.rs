@@ -22,6 +22,7 @@ use turing::{Bit, SmallBinMachine, Turing, INFINITE};
 
 mod chain;
 mod linrecur;
+
 mod parse;
 mod rules;
 mod simulate;
@@ -326,6 +327,7 @@ fn scan_from_machine(
   //   run_machine(machine);
   // }
 }
+
 fn main() {
   let first_machine = SmallBinMachine::start_machine(4, Bit(true));
   let num_lr_steps = 1500;

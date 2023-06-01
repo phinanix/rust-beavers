@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{run_machine, turing::SmallBinMachine};
 
 pub fn decrease_rules_make_worse() -> Vec<&'static str> {
@@ -489,4 +491,77 @@ pub fn scan_3_size_2() {
     let machine = SmallBinMachine::from_compact_format(m_str);
     run_machine(&machine);
   }
+}
+
+/*
+notes on the machines:
+counter_like is not quite an actual counter I think but the proof is very similar, it is
+in the haskell repo (todo: figure out how to analogize it to a counter)
+answer: it's a fibonacci counter, with the invariant that there is no FTF anywhere
+
+tailEatingDragonFast satisfies
+A (T, x) >T<
+A (T, 3x) >T<
+(eg 12, 57, 285)
+via subrules such as
+A T >T< F
+A >T< F T
+giving
+A (T, x) >T< F
+A >T< F (T, x)
+as well as
+A >T< (F, 1) (T, 3)
+D (T, 3) (F, 1) >T<
+and the chain rule
+D >T< (T, x)
+D (T, x) >T<
+leading to an overall behavior (57, 95) of *
+A (F, 3)        (T, x) >T<
+A (T, 3) (F, 1) (T, x-1) >T<
+and (95, 130)
+A FF (T, x) (F, 1) (T, y) >T<
+A (T, x+3) (F, 1) (T, y-1) >T<
+which chains to
+A (F, 2y) (T, x) (F, 1) (T, y) >T<
+A (T, x+3y) (F, 1) >T<
+which along with * gives
+A (F, ??) (T, x)
+A (T, 3) (F, 1) (T, x-1)
+A (T, 3x) (F, 1) >T<
+which is almost right if you fiddle a little
+
+my rule prover proves:
+
+phase: C  (T, 1 + x) |>F<| (T, x)
+into:
+phase: C  (T, 1) |>F<| (T, 2*x)
+
+phase: A  (T, 1 + x) |>T<| (F, 1) (T, x)
+into:
+phase: A  (T, 1) |>T<| (F, 1) (T, 2*x)
+
+phase: D  (T, 1 + x) (F, 1) |>F<| (T, x)
+into:
+phase: D  (T, 1) (F, 1) |>F<| (T, 2*x)
+ */
+const MACHINES: [(&str, &str); 10] = [
+  ("bb2", "1RB1LB_1LA1RH"),
+  ("bb3", "1RB1RH_0RC1RB_1LC1LA"),
+  ("bb4", ""),
+  ("binary_counter", "0LB0RA_1LC1LH_1RA1LC"),
+  ("checkerboard_sweeper", "1RB0LC_0LC1RA_1LH1LA"),
+  ("sweeper", "1RB1LH_0LC0RB_1LC1LA"),
+  ("counter_like", "1RB0LC_0LA0RB_1RA1RD_1LA1RH"),
+  ("tailEatingDragonFast", "1RB0RD_1RC1RH_0LA1RA_1LC1RD"),
+  ("tailEatingDragonSlow", "1RB1LA_1RC0RD_1LA1RH_0LA1RD"),
+  ("ternaryCounter", "1RB0LC_1LA1RA_0RA0LD_1RH1LC"),
+];
+
+pub fn get_machine(name: &str) -> SmallBinMachine {
+  let machine_map = HashMap::from(MACHINES);
+  SmallBinMachine::from_compact_format(
+    machine_map
+      .get(name)
+      .expect(&format!("{} wasn't a valid machine name", name)),
+  )
 }

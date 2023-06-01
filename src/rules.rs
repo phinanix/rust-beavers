@@ -1406,7 +1406,8 @@ mod test {
   use super::*;
   use crate::{
     parse::{parse_avar, parse_exact, parse_half_tape, parse_rule, parse_tape},
-    turing::{get_machine, Bit, START},
+    turing::{Bit, START},
+    turing_examples::get_machine,
   };
 
   #[test]

@@ -153,7 +153,7 @@ pub fn aggregate_and_display_lr_res(results: Vec<LRResult>) {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::turing::{get_machine, SmallBinMachine};
+  use crate::{turing::SmallBinMachine, turing_examples::get_machine};
 
   #[test]
   fn lr_finds_simple_machine() {

@@ -541,7 +541,8 @@ mod test {
   use crate::{
     parse::parse_tape,
     rules::{RS_LEFT, RS_RIGHT},
-    turing::{get_machine, HALT},
+    turing::HALT,
+    turing_examples::get_machine,
   };
 
   #[test]
