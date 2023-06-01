@@ -1,20 +1,20 @@
 use defaultmap::defaulthashmap;
 use nom::{
   branch::alt,
-  bytes::complete::{is_a, tag},
+  bytes::complete::tag,
   character::complete::{char, one_of},
   combinator::{map, map_res, recognize},
   error::{FromExternalError, ParseError},
   multi::{many0, many1, separated_list0},
   sequence::{delimited, separated_pair, terminated, Tuple},
-  IResult, InputIter,
+  IResult,
 };
 use std::num::ParseIntError;
 
 use crate::{
   rules::{AVarSum, AffineVar, Config, Rule, Var},
   tape::ExpTape,
-  turing::{Bit, State, AB, HALT},
+  turing::{Bit, State, AB},
 };
 
 pub fn parse_exact<X>(res: IResult<&str, X>) -> X {
@@ -259,6 +259,7 @@ pub fn parse_end_half_tape(input: &str) -> Vec<(Bit, AVarSum)> {
   out
 }
 
+#[cfg(test)]
 mod test {
   use nom::Finish;
   use proptest::{prelude::*, strategy::Strategy};

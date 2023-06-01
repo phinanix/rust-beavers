@@ -709,14 +709,12 @@ pub fn rule_runs_forever_if_consumes_all<S: TapeSymbol>(
   return left_repeatable.is_some() && right_repeatable.is_some();
 }
 
+#[cfg(test)]
 mod test {
-  use nom::{Finish, IResult};
 
   use crate::{
     parse::{
-      parse_avar, parse_avar_gen, parse_avar_sum, parse_config_tape_side,
-      parse_end_config_tape_side, parse_end_half_tape, parse_exact, parse_half_tape, parse_rule,
-      parse_tape,
+      parse_avar, parse_avar_sum, parse_end_half_tape, parse_exact, parse_half_tape, parse_rule,
     },
     rules::av_to_avs,
     tape::TapeHalf,

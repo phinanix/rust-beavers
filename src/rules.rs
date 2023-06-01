@@ -17,34 +17,28 @@
 */
 
 use crate::{
-  chain::{chain_rule, rule_runs_forever_if_consumes_all},
+  chain::rule_runs_forever_if_consumes_all,
   simulate::{one_rule_step, RuleStepResult::*},
-  tape::{
-    ExpTape, Signature,
-    StepResult::{FellOffTape, Success, UndefinedEdge},
-    TapeChange, TapeChangeKind, TapeHalf,
-  },
+  tape::ExpTape,
   turing::{
-    Bit,
     Dir::{self, L, R},
-    Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, INFINITE, START,
+    Edge, State, TapeSymbol, Trans, Turing, HALT,
   },
 };
 use defaultmap::{defaulthashmap, DefaultHashMap};
 use either::Either::{self, Left, Right};
-use itertools::{chain, zip_eq, Itertools};
-use proptest::{prelude::*, sample::select};
+use itertools::{chain, Itertools};
+
 use smallvec::{smallvec, SmallVec};
+use std::hash::Hash;
 use std::{
-  cmp::Ordering::*,
   collections::{HashMap, HashSet},
   iter::zip,
   ops::Add,
   vec,
 };
-use std::{collections::hash_map::Iter, hash::Hash};
 use std::{
-  fmt::{Debug, Display, Write},
+  fmt::{Debug, Display},
   ops::AddAssign,
 };
 
@@ -1407,19 +1401,13 @@ pub fn get_newest_var<S>(
   }
 }
 
+#[cfg(test)]
 mod test {
   use super::*;
   use crate::{
-    parse::{
-      parse_avar, parse_avar_gen, parse_avar_sum, parse_config_tape_side,
-      parse_end_config_tape_side, parse_exact, parse_half_tape, parse_rule, parse_tape,
-      parse_tape_side,
-    },
-    tape::TapeHalf,
-    turing::{get_machine, Bit},
-    turing_examples::undecided_size_3,
+    parse::{parse_avar, parse_exact, parse_half_tape, parse_rule, parse_tape},
+    turing::{get_machine, Bit, START},
   };
-  use nom::{Finish, IResult};
 
   #[test]
   fn affinevar_sub() {
@@ -1494,7 +1482,7 @@ mod test {
       match_avar_num(var, 6, false),
       Some((Right(1), Some((Var(0), 1))))
     );
-    let (_leftover, var) = parse_avar_gen::<nom::error::Error<&str>>(&"3 + 0*x_0").unwrap();
+    let (_leftover, var) = parse_avar(&"3 + 0*x_0").unwrap();
     assert_eq!(match_avar_num(var, 2, false), Some((Left(1), None)));
     assert_eq!(match_avar_num(var, 3, false), Some((Right(0), None)));
     assert_eq!(match_avar_num(var, 5, false), Some((Right(2), None)));

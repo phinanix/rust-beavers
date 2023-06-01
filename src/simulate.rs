@@ -412,6 +412,7 @@ pub fn aggregate_and_display_proving_res(results: &Vec<(SmallBinMachine, State, 
   );
 }
 
+#[cfg(test)]
 mod test {
 
   use crate::{

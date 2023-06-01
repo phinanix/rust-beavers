@@ -1,20 +1,13 @@
 #[allow(unused)]
 use either::Either::{self, Left, Right};
-use nom::{
-  bytes::complete::tag,
-  error::{FromExternalError, ParseError},
-  sequence::Tuple,
-  IResult,
-};
+
 use std::{
-  fmt::{Debug, Display, Pointer, Write},
-  iter::zip,
-  num::ParseIntError,
+  fmt::{Debug, Display},
   vec,
 };
 
 use crate::{
-  rules::{ConsumeGrow, ReadShift, TapeCount},
+  rules::{ReadShift, TapeCount},
   turing::{Bit, Dir, Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, START},
 };
 
@@ -542,10 +535,11 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<Small
   out
 }
 
+#[cfg(test)]
 mod test {
   use super::*;
   use crate::{
-    parse::{parse_avar_gen, parse_rule, parse_tape},
+    parse::parse_tape,
     rules::{RS_LEFT, RS_RIGHT},
     turing::{get_machine, HALT},
   };

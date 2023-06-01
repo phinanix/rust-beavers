@@ -466,6 +466,7 @@ pub fn get_machine(name: &str) -> SmallBinMachine {
   )
 }
 
+#[cfg(test)]
 mod test {
   use itertools::Itertools;
 
