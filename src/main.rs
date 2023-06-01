@@ -6,7 +6,8 @@ use std::{collections::HashSet, fs, io, process::exit};
 
 use crate::{
   linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
-  rules::{simulate_proving_rules, AffineVar},
+  rules::{detect_chain_rules, AffineVar, Rulebook},
+  simulate::{aggregate_and_display_proving_res, simulate_proving_rules, simulate_using_rules},
   tape::Tape,
   turing::HALT,
 };
@@ -15,9 +16,6 @@ use itertools::Itertools;
 use rand::prelude::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use rules::{
-  aggregate_and_display_proving_res, detect_chain_rules, simulate_using_rules, Rulebook,
-};
 use tape::{tnf_simulate, ExpTape};
 use turing::{get_machine, Bit, SmallBinMachine, Turing, INFINITE};
 
@@ -25,6 +23,7 @@ mod chain;
 mod linrecur;
 mod parse;
 mod rules;
+mod simulate;
 mod tape;
 mod turing;
 
