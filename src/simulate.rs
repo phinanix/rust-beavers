@@ -416,7 +416,7 @@ mod test {
 
   use crate::{
     parse::{parse_exact, parse_tape_side},
-    undecided_size_3,
+    turing_examples::undecided_size_3,
   };
 
   use super::*;

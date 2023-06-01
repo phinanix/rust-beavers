@@ -1417,7 +1417,7 @@ mod test {
     },
     tape::TapeHalf,
     turing::{get_machine, Bit},
-    undecided_size_3,
+    turing_examples::undecided_size_3,
   };
   use nom::{Finish, IResult};
 
