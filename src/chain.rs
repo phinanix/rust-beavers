@@ -713,14 +713,12 @@ mod test {
   use nom::{Finish, IResult};
 
   use crate::{
-    rules::{
-      av_to_avs,
-      parse::{
-        parse_avar, parse_avar_gen, parse_avar_sum, parse_config_tape_side,
-        parse_end_config_tape_side, parse_end_half_tape, parse_exact, parse_half_tape, parse_rule,
-        parse_tape,
-      },
+    parse::{
+      parse_avar, parse_avar_gen, parse_avar_sum, parse_config_tape_side,
+      parse_end_config_tape_side, parse_end_half_tape, parse_exact, parse_half_tape, parse_rule,
+      parse_tape,
     },
+    rules::av_to_avs,
     tape::TapeHalf,
     turing::{Bit, Dir},
   };

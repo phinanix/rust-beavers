@@ -23,6 +23,7 @@ use turing::{get_machine, Bit, SmallBinMachine, Turing, INFINITE};
 
 mod chain;
 mod linrecur;
+mod parse;
 mod rules;
 mod tape;
 mod turing;
