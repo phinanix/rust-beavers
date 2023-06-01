@@ -16,16 +16,9 @@
  implement it soon-ish in order to not get too behind.
 */
 
-/*
- we need a struct that can handle both
- >S< S^n -> T^n >T<
- and
- 0 1^n >0< -> 1^(n+1) >0<
-*/
-
 use crate::{
   chain::{chain_rule, rule_runs_forever_if_consumes_all},
-  simulate::{
+  tape::{
     ExpTape, Signature,
     StepResult::{FellOffTape, Success, UndefinedEdge},
     TapeChange, TapeChangeKind, TapeHalf,
@@ -1839,7 +1832,7 @@ pub mod parse {
   use std::num::ParseIntError;
 
   use crate::{
-    simulate::ExpTape,
+    tape::ExpTape,
     turing::{Bit, State, AB, HALT},
   };
 
@@ -2266,7 +2259,7 @@ mod test {
       parse_end_config_tape_side, parse_exact, parse_half_tape, parse_rule, parse_tape,
       parse_tape_side,
     },
-    simulate::TapeHalf,
+    tape::TapeHalf,
     turing::{get_machine, Bit},
     undecided_size_3,
   };

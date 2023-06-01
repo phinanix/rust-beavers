@@ -721,7 +721,7 @@ mod test {
         parse_tape,
       },
     },
-    simulate::TapeHalf,
+    tape::TapeHalf,
     turing::{Bit, Dir},
   };
 
