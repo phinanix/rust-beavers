@@ -3079,6 +3079,18 @@ mod test {
       mb_rtm,
       Some(ConsumedEnd((Bit(true), AffineVar::constant(1))))
     );
+
+    println!("starting match 3");
+    let start = parse_half_tape("(T, 2 + 1*x_0)");
+    assert_eq!(start.len(), 1, "{:?}", start);
+    let end: Vec<(Bit, SymbolVar)> = parse_half_tape("(T, 2)")
+      .into_iter()
+      .map(|(b, avar)| (b, avar.into()))
+      .collect_vec();
+    assert_eq!(end.len(), 1);
+    let mut hm = HashMap::new();
+    let mb_rtm = match_rule_tape(&mut hm, &start, &end, true);
+    assert_eq!(mb_rtm, None);
     todo!();
 
     //     let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<|
