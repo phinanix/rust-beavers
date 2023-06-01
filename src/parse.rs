@@ -208,7 +208,7 @@ pub fn parse_tape(input: &str) -> IResult<&str, ExpTape<Bit, u32>> {
 
 pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
   input: &'a str,
-) -> IResult<&str, Config<Bit, AffineVar>, E> {
+) -> IResult<&str, Config<State, Bit, AffineVar>, E> {
   let (input, (_, state, _, left, _, head, _, mut right)) = (
     tag("phase: "),
     alt((parse_state_number, parse_state_letter)),
@@ -226,7 +226,7 @@ pub fn parse_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, Pars
 
 pub fn parse_end_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, ParseIntError>>(
   input: &'a str,
-) -> IResult<&str, Config<Bit, AVarSum>, E> {
+) -> IResult<&str, Config<State, Bit, AVarSum>, E> {
   let (input, (_, state, _, left, _, head, _, mut right)) = (
     tag("phase: "),
     alt((parse_state_number, parse_state_letter)),
@@ -242,7 +242,7 @@ pub fn parse_end_config<'a, E: ParseError<&'a str> + FromExternalError<&'a str, 
   Ok((input, Config { state, left, head, right }))
 }
 
-pub fn parse_rule(input: &str) -> IResult<&str, Rule<Bit>> {
+pub fn parse_rule(input: &str) -> IResult<&str, Rule<State, Bit>> {
   let (input, (start, _, end)) = (parse_config, tag("\ninto:\n"), parse_end_config).parse(input)?;
   Ok((input, Rule { start, end }))
 }
@@ -375,7 +375,7 @@ mod test {
       right: vec![],
     };
     let inp = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| ";
-    let ans: Result<(&str, Config<Bit, AffineVar>), nom::error::VerboseError<&str>> =
+    let ans: Result<(&str, Config<State, Bit, AffineVar>), nom::error::VerboseError<&str>> =
       parse_config(inp).finish();
     assert_eq!(ans, Ok(("", start)));
   }

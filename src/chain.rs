@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::{
   rules::{get_newest_var, AVarSum, AffineVar, Config, Rule, SymbolVar, Var},
-  turing::TapeSymbol,
+  turing::{Phase, TapeSymbol},
 };
 
 /* the rules:
@@ -352,7 +352,7 @@ pub fn chain_side<S: TapeSymbol>(
   Some((start_out, end_out))
 }
 
-pub fn chain_rule<S: TapeSymbol>(
+pub fn chain_rule<P: Phase, S: TapeSymbol>(
   rule @ Rule {
     start:
       Config {
@@ -368,8 +368,8 @@ pub fn chain_rule<S: TapeSymbol>(
         head: head_end,
         right: right_end,
       },
-  }: &Rule<S>,
-) -> Option<Rule<S>> {
+  }: &Rule<P, S>,
+) -> Option<Rule<P, S>> {
   // we're going to match the start to the end
   // and then have to deal with all the ends in a nasty way
   if state_start != state_end {
@@ -664,7 +664,7 @@ fn side_is_repeatable<S: TapeSymbol>(
   Some(())
 }
 
-pub fn rule_runs_forever_if_consumes_all<S: TapeSymbol>(
+pub fn rule_runs_forever_if_consumes_all<P: Phase, S: TapeSymbol>(
   rule @ Rule {
     start:
       Config {
@@ -680,7 +680,7 @@ pub fn rule_runs_forever_if_consumes_all<S: TapeSymbol>(
         head: head_end,
         right: right_end,
       },
-  }: &Rule<S>,
+  }: &Rule<P, S>,
 ) -> bool {
   /*
   this is sort of a lightweight or bad verson of chaining

@@ -31,14 +31,26 @@ impl Dir {
     }
   }
 }
+
+pub trait Phase: Clone + Copy + PartialEq + Eq + Hash + Debug + Display {
+  const HALT: Self;
+  const START: Self;
+  const INFINITE: Self;
+}
+
 // the state a machine is in. 0 is Halt
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct State(pub u8);
 
-pub const HALT: State = State(0);
-pub const START: State = State(1);
-pub const INFINITE: State = State(255);
+// pub const HALT: State = State(0);
+// pub const START: State = State(1);
+// pub const INFINITE: State = State(255);
 
+impl Phase for State {
+  const HALT: Self = State(0);
+  const START: Self = State(1);
+  const INFINITE: Self = State(255);
+}
 impl Display for State {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
@@ -68,16 +80,17 @@ impl TapeSymbol for Bit {
 
 // the input to a TM's transition function
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Edge<S>(pub State, pub S);
+pub struct Edge<P, S>(pub P, pub S);
 
-impl<S: TapeSymbol> Edge<S> {
+impl<P: Phase, S: TapeSymbol> Edge<P, S> {
   pub fn edge_index(&self) -> usize {
-    let &Self(State(state), symbol) = self;
-    //index by state, then by symbol, so output is state*num_symbols + index_symbol
-    let symbols = S::all_symbols();
-    let num_symbols = symbols.len();
-    let symbol_index = symbols.into_iter().position(|s| s == symbol).unwrap();
-    return (state - 1) as usize * num_symbols + symbol_index;
+    todo!();
+    // let &Self(State(state), symbol) = self;
+    // //index by state, then by symbol, so output is state*num_symbols + index_symbol
+    // let symbols = S::all_symbols();
+    // let num_symbols = symbols.len();
+    // let symbol_index = symbols.into_iter().position(|s| s == symbol).unwrap();
+    // return (state - 1) as usize * num_symbols + symbol_index;
   }
 }
 
@@ -85,17 +98,17 @@ impl<S: TapeSymbol> Edge<S> {
 // by convention, state 0 is halting. you can theoretically do anything when you halt but the
 // convention is to go R and write a 1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Trans<S> {
-  pub state: State,
+pub struct Trans<P, S> {
+  pub state: P,
   pub symbol: S,
   pub dir: Dir,
 }
 
-pub const HALT_TRANS: Trans<Bit> = Trans { state: HALT, symbol: Bit(true), dir: R };
+pub const HALT_TRANS: Trans<State, Bit> = Trans { state: State::HALT, symbol: Bit(true), dir: R };
 
 pub const AB: &str = "HABCDEFG";
 
-impl Trans<Bit> {
+impl Trans<State, Bit> {
   fn possible_trans(max_state: u8) -> Vec<Self> {
     let mut out = vec![HALT_TRANS];
     for state in 1..=max_state {
@@ -156,22 +169,23 @@ impl Trans<Bit> {
   }
 }
 // S = symbol
-pub trait Turing<S> {
-  fn all_states(&self) -> Vec<State>;
+// P = phase (aka state, but that is overloaded)
+pub trait Turing<P, S> {
+  fn all_states(&self) -> Vec<P>;
   fn num_states(&self) -> u8 {
     self.all_states().len() as u8
   }
-  fn step(&self, edge: Edge<S>) -> Option<Trans<S>>;
+  fn step(&self, edge: Edge<P, S>) -> Option<Trans<P, S>>;
   fn to_compact_format(&self) -> String;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SmallBinMachine {
   num_states: u8,
-  table: SmallVec<[Option<Trans<Bit>>; 14]>,
+  table: SmallVec<[Option<Trans<State, Bit>>; 14]>,
 }
 
-impl Turing<Bit> for SmallBinMachine {
+impl Turing<State, Bit> for SmallBinMachine {
   fn all_states(&self) -> Vec<State> {
     (1..=self.num_states)
       .into_iter()
@@ -183,7 +197,7 @@ impl Turing<Bit> for SmallBinMachine {
     self.num_states
   }
 
-  fn step(&self, edge: Edge<Bit>) -> Option<Trans<Bit>> {
+  fn step(&self, edge: Edge<State, Bit>) -> Option<Trans<State, Bit>> {
     *self.table.get(self.edge_index(edge)).unwrap()
   }
 
@@ -193,7 +207,7 @@ impl Turing<Bit> for SmallBinMachine {
 }
 
 impl SmallBinMachine {
-  fn edge_index(&self, Edge(State(state), Bit(symbol)): Edge<Bit>) -> usize {
+  fn edge_index(&self, Edge(State(state), Bit(symbol)): Edge<State, Bit>) -> usize {
     assert_ne!(state, 0); // you can't make progress from a halt state
     let state = state - 1; // the table has no entries for halting states ofc
     assert!(state < self.num_states, "{}", self.to_compact_format());
@@ -236,7 +250,7 @@ impl SmallBinMachine {
   pub fn define_trans_in_machine(
     &self,
     edge_index: usize,
-    new_transitions: &[Trans<Bit>],
+    new_transitions: &[Trans<State, Bit>],
   ) -> Vec<Self> {
     let mut out = vec![];
     for &trans in new_transitions {
@@ -247,7 +261,7 @@ impl SmallBinMachine {
     out
   }
 
-  pub fn branch_on_edge(&self, edge: Edge<Bit>) -> Vec<Self> {
+  pub fn branch_on_edge(&self, edge: Edge<State, Bit>) -> Vec<Self> {
     let edge_index = self.edge_index(edge);
     assert_eq!(self.table[edge_index], None);
     if self.num_undefined_trans() == 1 {
@@ -286,7 +300,7 @@ impl SmallBinMachine {
 
   pub fn remove_unused_states(mut self) -> Self {
     let mut used_states = HashSet::new();
-    used_states.insert(START);
+    used_states.insert(State::START);
     for trans in self.table.iter() {
       match trans {
         Some(Trans { state, symbol: _, dir: _ }) => {
@@ -428,7 +442,7 @@ mod test {
   #[test]
   fn possible_trans() {
     let mut possible_trans = Trans::possible_trans(2);
-    let mut ans: Vec<Trans<Bit>> = vec![
+    let mut ans: Vec<Trans<State, Bit>> = vec![
       "1RH", "0LA", "0RA", "1LA", "1RA", "0LB", "0RB", "1LB", "1RB",
     ]
     .into_iter()

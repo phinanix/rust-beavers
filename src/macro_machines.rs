@@ -28,7 +28,7 @@ use itertools::{repeat_n, Itertools};
 
 use crate::{
   tape::{ExpTape, StepResult::*},
-  turing::{Dir, SmallBinMachine, State, TapeSymbol, Turing, HALT},
+  turing::{Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing},
 };
 
 fn state_dir_to_macro_state(state: State, dir: Dir) -> State {
@@ -48,45 +48,6 @@ impl<S: TapeSymbol, const N: usize> MacroSymbol<S, N> {
       .multi_cartesian_product()
       .map(|s_vec| MacroSymbol(s_vec.try_into().unwrap()))
       .collect_vec()
-  }
-
-  pub fn from_tape(
-    ExpTape { mut left, head, mut right, tape_end_inf }: ExpTape<S, u32>,
-    dir: Dir,
-  ) -> Self {
-    assert!(!tape_end_inf);
-    //panics if the tape is the wrong size
-    match dir {
-      Dir::L => {
-        assert_eq!(left.len(), 0);
-        ExpTape::push_rle(&mut right, head, false);
-        Self(ExpTape::splat(&mut right.iter().rev()).try_into().unwrap())
-      }
-      Dir::R => {
-        assert_eq!(right.len(), 0);
-        ExpTape::push_rle(&mut left, head, false);
-        Self(ExpTape::splat(&mut left.iter()).try_into().unwrap())
-      }
-    }
-  }
-}
-
-pub struct MacroMachine<S, const N: usize>(
-  HashMap<(State, Dir, MacroSymbol<S, N>), (State, Dir, MacroSymbol<S, N>, u32)>,
-);
-
-impl<S: TapeSymbol, const N: usize> MacroMachine<S, N> {
-  pub fn new(machine: &impl Turing<S>) -> Self {
-    let mut hm = HashMap::new();
-    for state in machine.all_states() {
-      for dir in [Dir::L, Dir::R] {
-        for macro_symbol in MacroSymbol::all_symbols() {
-          let ans = Self::calculate_macro_step(machine, state, dir, macro_symbol);
-          hm.insert((state, dir, macro_symbol), ans);
-        }
-      }
-    }
-    Self(hm)
   }
 
   fn make_tape(dir: Dir, MacroSymbol(arr): MacroSymbol<S, N>) -> ExpTape<S, u32> {
@@ -110,14 +71,53 @@ impl<S: TapeSymbol, const N: usize> MacroMachine<S, N> {
     }
   }
 
+  pub fn from_tape(
+    ExpTape { mut left, head, mut right, tape_end_inf }: ExpTape<S, u32>,
+    dir: Dir,
+  ) -> Self {
+    assert!(!tape_end_inf);
+    //panics if the tape is the wrong size
+    match dir {
+      Dir::L => {
+        assert_eq!(left.len(), 0);
+        ExpTape::push_rle(&mut right, head, false);
+        Self(ExpTape::splat(&mut right.iter().rev()).try_into().unwrap())
+      }
+      Dir::R => {
+        assert_eq!(right.len(), 0);
+        ExpTape::push_rle(&mut left, head, false);
+        Self(ExpTape::splat(&mut left.iter()).try_into().unwrap())
+      }
+    }
+  }
+}
+
+pub struct MacroMachine<P, S, const N: usize>(
+  HashMap<(P, Dir, MacroSymbol<S, N>), (P, Dir, MacroSymbol<S, N>, u32)>,
+);
+
+impl<P: Phase, S: TapeSymbol, const N: usize> MacroMachine<P, S, N> {
+  pub fn new(machine: &impl Turing<P, S>) -> Self {
+    let mut hm = HashMap::new();
+    for state in machine.all_states() {
+      for dir in [Dir::L, Dir::R] {
+        for macro_symbol in MacroSymbol::all_symbols() {
+          let ans = Self::calculate_macro_step(machine, state, dir, macro_symbol);
+          hm.insert((state, dir, macro_symbol), ans);
+        }
+      }
+    }
+    Self(hm)
+  }
+
   pub fn calculate_macro_step(
-    machine: &impl Turing<S>,
-    mut state: State,
+    machine: &impl Turing<P, S>,
+    mut state: P,
     dir: Dir,
     sym: MacroSymbol<S, N>,
-  ) -> (State, Dir, MacroSymbol<S, N>, u32) {
+  ) -> (P, Dir, MacroSymbol<S, N>, u32) {
     // 1) make the tape for the machine to run on
-    let mut tape = Self::make_tape(dir, sym);
+    let mut tape = MacroSymbol::make_tape(dir, sym);
     // 2) calculate the step limit
     let step_limit: usize =
       usize::from(machine.num_states()) * S::num_symbols().pow(N.try_into().unwrap()) * N;
@@ -136,7 +136,7 @@ impl<S: TapeSymbol, const N: usize> MacroMachine<S, N> {
         }
         Success(state, _) => state,
       };
-      if state == HALT {
+      if state == P::HALT {
         todo!(); // b
       }
     }
@@ -145,10 +145,10 @@ impl<S: TapeSymbol, const N: usize> MacroMachine<S, N> {
 
   pub fn macro_step(
     &self,
-    state: State,
+    state: P,
     dir: Dir,
     sym: MacroSymbol<S, N>,
-  ) -> (State, Dir, MacroSymbol<S, N>, u32) {
+  ) -> (P, Dir, MacroSymbol<S, N>, u32) {
     let mb_ans = self.0.get(&(state, dir, sym));
     *mb_ans.unwrap()
   }
@@ -196,10 +196,10 @@ mod test {
     let sym = MacroSymbol([Bit(true), Bit(true), Bit(false), Bit(false)]);
     let mut left_ans = parse_exact(parse_tape(" |>T<| (T, 1) (F, 2)"));
     left_ans.tape_end_inf = false;
-    assert_eq!(MacroMachine::make_tape(Dir::L, sym), left_ans);
+    assert_eq!(MacroSymbol::make_tape(Dir::L, sym), left_ans);
     let mut right_ans = parse_exact(parse_tape("(T, 2) (F, 1) |>F<| "));
     right_ans.tape_end_inf = false;
-    assert_eq!(MacroMachine::make_tape(Dir::R, sym), right_ans);
+    assert_eq!(MacroSymbol::make_tape(Dir::R, sym), right_ans);
   }
 
   #[test]

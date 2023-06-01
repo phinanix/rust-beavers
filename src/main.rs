@@ -10,7 +10,7 @@ use crate::{
   rules::{detect_chain_rules, Rulebook},
   simulate::{aggregate_and_display_proving_res, simulate_proving_rules},
   tape::Tape,
-  turing::HALT,
+  turing::{Phase, State},
 };
 use either::Either::Right;
 use itertools::Itertools;
@@ -18,7 +18,7 @@ use rand::prelude::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use tape::tnf_simulate;
-use turing::{Bit, SmallBinMachine, Turing, INFINITE};
+use turing::{Bit, SmallBinMachine, Turing};
 
 mod chain;
 mod linrecur;
@@ -127,7 +127,10 @@ fn search_for_translated_cyclers(
     // println!("m: {}, res: {:?}", m_str, lr_res);
     match lr_res {
       LRResult::Halt { num_steps: lr_num_steps } => {
-        assert_eq!((final_state, normal_num_steps), (Right(HALT), lr_num_steps))
+        assert_eq!(
+          (final_state, normal_num_steps),
+          (Right(State::HALT), lr_num_steps)
+        )
       }
       _ => (),
     }
@@ -194,7 +197,7 @@ fn prove_with_rules(
     println!("working on machine {}", machine.to_compact_format());
     let mut rulebook = Rulebook::chain_rulebook(&machine);
     let (new_state, steps) = simulate_proving_rules(&machine, num_steps, &mut rulebook, false);
-    if new_state == INFINITE && verbose {
+    if new_state == State::INFINITE && verbose {
       println!("\n{}", machine.to_compact_format());
       simulate_proving_rules(
         &machine,
@@ -209,7 +212,7 @@ fn prove_with_rules(
   results
     .into_iter()
     .filter_map(|(m, s, _steps)| {
-      if s != INFINITE && s != HALT {
+      if s != State::INFINITE && s != State::HALT {
         Some(m)
       } else {
         None
@@ -224,7 +227,7 @@ fn get_which_proven(machines: &Vec<SmallBinMachine>, num_steps: u32, verbose: bo
     // println!("working on machine {}", machine.to_compact_format());
     let mut rulebook = Rulebook::chain_rulebook(machine);
     let (new_state, _steps) = simulate_proving_rules(machine, num_steps, &mut rulebook, verbose);
-    if new_state == INFINITE {
+    if new_state == State::INFINITE {
       out.push(i);
     }
   }

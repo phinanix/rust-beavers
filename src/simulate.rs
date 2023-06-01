@@ -7,28 +7,28 @@ use crate::{
     RuleProof::DirectSimulation, Rulebook, TapeCount, Var,
   },
   tape::{ExpTape, Signature, StepResult::*},
-  turing::{Dir, SmallBinMachine, State, TapeSymbol, Turing, HALT, INFINITE, START},
+  turing::{Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing},
 };
 use defaultmap::{defaulthashmap, DefaultHashMap};
 use either::Either::{self, Left, Right};
 use itertools::{zip_eq, Itertools};
 use std::cmp::Ordering::*;
 
-pub enum RuleStepResult<C> {
+pub enum RuleStepResult<P, C> {
   VarInfinite(Var),
-  RFellOffTape(State, Dir),
-  RSuccess(State, HashMap<Var, C>, Either<ReadShift, ConsumeGrow<C>>),
+  RFellOffTape(P, Dir),
+  RSuccess(P, HashMap<Var, C>, Either<ReadShift, ConsumeGrow<C>>),
 }
 use RuleStepResult::*;
 
-pub fn one_rule_step<S: TapeSymbol, C: TapeCount>(
-  machine: &impl Turing<S>,
+pub fn one_rule_step<P: Phase, S: TapeSymbol, C: TapeCount>(
+  machine: &impl Turing<P, S>,
   exptape: &mut ExpTape<S, C>,
-  state: State,
-  rulebook: &Rulebook<S>,
+  state: P,
+  rulebook: &Rulebook<P, S>,
   step: u32,
   verbose: bool,
-) -> RuleStepResult<C> {
+) -> RuleStepResult<P, C> {
   let (new_state, hm, rs) = match apply_rules(exptape, state, rulebook, false) {
     Some(Left(var)) => return VarInfinite(var),
     Some(Right((state, tc, cg))) => {
@@ -49,22 +49,22 @@ pub fn one_rule_step<S: TapeSymbol, C: TapeCount>(
   return RSuccess(new_state, hm, rs);
 }
 
-pub fn simulate_using_rules<S: TapeSymbol, C: TapeCount>(
-  machine: &impl Turing<S>,
+pub fn simulate_using_rules<P: Phase, S: TapeSymbol, C: TapeCount>(
+  machine: &impl Turing<P, S>,
   num_steps: u32,
-  rulebook: &Rulebook<S>,
+  rulebook: &Rulebook<P, S>,
   verbose: bool,
-) -> (State, u32, ExpTape<S, C>) {
+) -> (P, u32, ExpTape<S, C>) {
   let mut exptape = ExpTape::new(true);
-  let mut state = START;
+  let mut state = P::START;
   for step in 1..num_steps + 1 {
     state = match one_rule_step(machine, &mut exptape, state, rulebook, step, verbose) {
-      VarInfinite(_var) => return (INFINITE, step, exptape),
+      VarInfinite(_var) => return (P::INFINITE, step, exptape),
       RFellOffTape(_, _) => panic!("fell off tape unexpectedly"),
       RSuccess(state, _, _) => state,
     };
-    if state == HALT {
-      return (HALT, step, exptape);
+    if state == P::HALT {
+      return (P::HALT, step, exptape);
     }
     // println!("step: {} phase: {} tape: {}", step, state, exptape);
   }
@@ -194,11 +194,11 @@ fn make_side<S: TapeSymbol>(
   (start_out, end_out, var_used)
 }
 
-pub fn detect_rule<S: TapeSymbol>(
-  history: &Vec<(u32, State, ExpTape<S, u32>)>,
+pub fn detect_rule<P: Phase, S: TapeSymbol>(
+  history: &Vec<(u32, P, ExpTape<S, u32>)>,
   rs: ReadShift,
   verbose: bool,
-) -> Vec<Rule<S>> {
+) -> Vec<Rule<P, S>> {
   /* we're detecting an additive rule, so any numbers that don't change, we guess don't change
   and any numbers that do change, we guess change by that constant each time
   so we need to
@@ -254,14 +254,14 @@ pub fn detect_rule<S: TapeSymbol>(
   vec![rule]
 }
 
-pub fn detect_rules<S: TapeSymbol>(
+pub fn detect_rules<P: Phase, S: TapeSymbol>(
   step: u32,
-  state: State,
+  state: P,
   exptape: &ExpTape<S, u32>,
-  signatures: &mut DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>>,
+  signatures: &mut DefaultHashMap<(P, Signature<S>), Vec<(u32, P, ExpTape<S, u32>)>>,
   readshifts: &Vec<ReadShift>,
   verbose: bool,
-) -> Vec<Rule<S>> {
+) -> Vec<Rule<P, S>> {
   let cur_sig_vec = &mut signatures[(state, exptape.signature())];
   cur_sig_vec.push((step, state, exptape.clone()));
   if cur_sig_vec.len() > 1 {
@@ -286,16 +286,16 @@ pub fn detect_rules<S: TapeSymbol>(
   return vec![];
 }
 
-pub fn proving_rules_step<S: TapeSymbol>(
-  machine: &impl Turing<S>,
+pub fn proving_rules_step<P: Phase, S: TapeSymbol>(
+  machine: &impl Turing<P, S>,
   step: u32,
-  mut state: State,
+  mut state: P,
   exptape: &mut ExpTape<S, u32>,
-  rulebook: &mut Rulebook<S>,
-  signatures: &mut DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>>,
+  rulebook: &mut Rulebook<P, S>,
+  signatures: &mut DefaultHashMap<(P, Signature<S>), Vec<(u32, P, ExpTape<S, u32>)>>,
   readshifts: &mut Vec<ReadShift>,
   verbose: bool,
-) -> State {
+) -> P {
   if verbose {
     // println!("\nstarting step {}", step);
   }
@@ -306,7 +306,7 @@ pub fn proving_rules_step<S: TapeSymbol>(
         if verbose {
           println!("proved machine runs forever using a rule");
         }
-        return INFINITE;
+        return P::INFINITE;
       }
       RSuccess(new_state, hm, cg_or_rs) => (new_state, hm, cg_or_rs),
       RFellOffTape(_, _) => panic!("unexpectedly fell off tape"),
@@ -319,8 +319,8 @@ pub fn proving_rules_step<S: TapeSymbol>(
   }
   readshifts.push(readshift);
 
-  if state == HALT {
-    return HALT;
+  if state == P::HALT {
+    return P::HALT;
   }
 
   let rules = detect_rules(step, state, &exptape, signatures, &readshifts, false);
@@ -350,20 +350,20 @@ pub fn proving_rules_step<S: TapeSymbol>(
   state
 }
 
-pub fn simulate_proving_rules<S: TapeSymbol>(
-  machine: &impl Turing<S>,
+pub fn simulate_proving_rules<P: Phase, S: TapeSymbol>(
+  machine: &impl Turing<P, S>,
   num_steps: u32,
-  rulebook: &mut Rulebook<S>,
+  rulebook: &mut Rulebook<P, S>,
   verbose: bool,
-) -> (State, u32) {
+) -> (P, u32) {
   /*
   the plan to detect rules:
   store the signatures of everything seen so far
   if you see the same signature more than once, there is a possible rule
   */
   let mut exptape = ExpTape::new(true);
-  let mut state = START;
-  let mut signatures: DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>> =
+  let mut state = P::START;
+  let mut signatures: DefaultHashMap<(P, Signature<S>), Vec<(u32, P, ExpTape<S, u32>)>> =
     defaulthashmap!();
   let mut readshifts = vec![];
   for step in 1..num_steps + 1 {
@@ -377,7 +377,7 @@ pub fn simulate_proving_rules<S: TapeSymbol>(
       &mut readshifts,
       verbose,
     );
-    if state == INFINITE || state == HALT {
+    if state == P::INFINITE || state == P::HALT {
       return (state, step);
     }
     if exptape.numbers_too_large() {
@@ -422,31 +422,31 @@ mod test {
 
   use super::*;
 
-  fn simultaneous_step_prove_step<S: TapeSymbol>(
-    machine: &impl Turing<S>,
+  fn simultaneous_step_prove_step<P: Phase, S: TapeSymbol>(
+    machine: &impl Turing<P, S>,
     step: u32,
     normal_tape: &mut ExpTape<S, u32>,
-    mut normal_state: State,
+    mut normal_state: P,
     rule_tape: &mut ExpTape<S, u32>,
-    rule_state: State,
-    rulebook: &mut Rulebook<S>,
-    signatures: &mut DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>>,
+    rule_state: P,
+    rulebook: &mut Rulebook<P, S>,
+    signatures: &mut DefaultHashMap<(P, Signature<S>), Vec<(u32, P, ExpTape<S, u32>)>>,
     readshifts: &mut Vec<ReadShift>,
     verbose: bool,
-  ) -> Option<(State, State)> {
+  ) -> Option<(P, P)> {
     assert_eq!(normal_state, rule_state);
     assert_eq!(normal_tape, rule_tape);
     let new_rule_state = proving_rules_step(
       machine, step, rule_state, rule_tape, rulebook, signatures, readshifts, verbose,
     );
-    if new_rule_state == INFINITE {
+    if new_rule_state == P::INFINITE {
       return None;
     }
 
     let mut num_steps_to_match = 0;
 
     while (new_rule_state, &mut *rule_tape) != (normal_state, normal_tape) {
-      if num_steps_to_match > 300 || normal_state == HALT {
+      if num_steps_to_match > 300 || normal_state == P::HALT {
         panic!(
           "machine diverged:\n{} {}\nvs\n{} {}",
           new_rule_state, rule_tape, normal_state, normal_tape
@@ -461,13 +461,16 @@ mod test {
     return Some((normal_state, new_rule_state));
   }
 
-  fn compare_machine_with_proving_rules<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) {
+  fn compare_machine_with_proving_rules<P: Phase, S: TapeSymbol>(
+    machine: &impl Turing<P, S>,
+    num_steps: u32,
+  ) {
     let mut normal_tape = ExpTape::new(true);
-    let mut normal_state = START;
+    let mut normal_state = P::START;
     let mut rule_tape = ExpTape::new(true);
-    let mut rule_state = START;
+    let mut rule_state = P::START;
     let mut rulebook = Rulebook::chain_rulebook(machine);
-    let mut signatures: DefaultHashMap<(State, Signature<S>), Vec<(u32, State, ExpTape<S, u32>)>> =
+    let mut signatures: DefaultHashMap<(P, Signature<S>), Vec<(u32, P, ExpTape<S, u32>)>> =
       defaulthashmap!();
     let mut readshifts = vec![];
     for step in 1..num_steps + 1 {

@@ -1,6 +1,6 @@
 use crate::{
   tape::Tape,
-  turing::{TapeSymbol, Turing, HALT, START},
+  turing::{Phase, TapeSymbol, Turing},
 };
 use either::Either::{Left, Right};
 
@@ -14,13 +14,13 @@ pub enum LRResult {
 }
 use LRResult::*;
 
-pub fn lr_simulate<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) -> LRResult
+pub fn lr_simulate<P: Phase, S: TapeSymbol>(machine: &impl Turing<P, S>, num_steps: u32) -> LRResult
 where
   Tape<S>: std::fmt::Display,
 {
   let to_print = false;
   let mut tape: Tape<S> = Tape::new();
-  let mut state = START;
+  let mut state = P::START;
   let mut cur_displacement = 0;
   let mut steps_taken = 0;
 

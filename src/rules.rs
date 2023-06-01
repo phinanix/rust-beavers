@@ -22,7 +22,7 @@ use crate::{
   tape::ExpTape,
   turing::{
     Dir::{self, L, R},
-    Edge, State, TapeSymbol, Trans, Turing, HALT,
+    Edge, Phase, State, TapeSymbol, Trans, Turing,
   },
 };
 use defaultmap::{defaulthashmap, DefaultHashMap};
@@ -211,14 +211,14 @@ impl Subbable for AffineVar {
 // much like Tape / ExpTape, the *last* thing in the Vec is the closest to the head,
 // for both left and right
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub struct Config<S, V> {
-  pub state: State,
+pub struct Config<P, S, V> {
+  pub state: P,
   pub left: Vec<(S, V)>,
   pub head: S,
   pub right: Vec<(S, V)>,
 }
 
-impl<S: Display + Copy, V: Display> Display for Config<S, V> {
+impl<P: Display, S: Display + Copy, V: Display> Display for Config<P, S, V> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "phase: {}  ", self.state)?;
     for (s, v) in self.left.iter() {
@@ -238,27 +238,26 @@ impl<S: Display + Copy, V: Display> Display for Config<S, V> {
   }
 }
 
-impl<S> Config<S, AffineVar> {
-  fn vec_u32_to_avar(u32s: Vec<(S, u32)>) -> Vec<(S, AffineVar)> {
-    u32s
-      .into_iter()
-      .map(|(s, u32)| (s, AffineVar::constant(u32)))
-      .collect()
-  }
-
+pub fn vec_u32_to_avar<S>(u32s: Vec<(S, u32)>) -> Vec<(S, AffineVar)> {
+  u32s
+    .into_iter()
+    .map(|(s, u32)| (s, AffineVar::constant(u32)))
+    .collect()
+}
+impl<P, S> Config<P, S, AffineVar> {
   fn from_tape_state(
-    state: State,
+    state: P,
     ExpTape { left, head, right, tape_end_inf: _ }: ExpTape<S, u32>,
   ) -> Self {
     Self {
       state,
-      left: Config::vec_u32_to_avar(left),
+      left: vec_u32_to_avar(left),
       head,
-      right: Config::vec_u32_to_avar(right),
+      right: vec_u32_to_avar(right),
     }
   }
 
-  fn to_tape_state(self) -> (State, ExpTape<S, SymbolVar>) {
+  fn to_tape_state(self) -> (P, ExpTape<S, SymbolVar>) {
     match self {
       Config { state, left, head, right } => {
         let tape = ExpTape { left, head, right, tape_end_inf: false };
@@ -275,15 +274,15 @@ pub fn av_to_avs<S>(avs: Vec<(S, AffineVar)>) -> Vec<(S, AVarSum)> {
     .collect()
 }
 
-impl<S> Config<S, AVarSum> {
+impl<P, S> Config<P, S, AVarSum> {
   pub fn from_avars(
-    Config { state, left, head, right }: Config<S, AffineVar>,
-  ) -> Config<S, AVarSum> {
+    Config { state, left, head, right }: Config<P, S, AffineVar>,
+  ) -> Config<P, S, AVarSum> {
     Self::new_from_avars(state, left, head, right)
   }
 
   pub fn new_from_avars(
-    state: State,
+    state: P,
     left: Vec<(S, AffineVar)>,
     head: S,
     right: Vec<(S, AffineVar)>,
@@ -296,7 +295,7 @@ impl<S> Config<S, AVarSum> {
     }
   }
 
-  fn to_tape_state(self) -> Option<(State, ExpTape<S, SymbolVar>)> {
+  fn to_tape_state(self) -> Option<(P, ExpTape<S, SymbolVar>)> {
     match self {
       Config { state, left, head, right } => {
         let tape = ExpTape { left, head, right, tape_end_inf: false };
@@ -309,18 +308,18 @@ impl<S> Config<S, AVarSum> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Rule<S> {
-  pub start: Config<S, AffineVar>,
-  pub end: Config<S, AVarSum>,
+pub struct Rule<P, S> {
+  pub start: Config<P, S, AffineVar>,
+  pub end: Config<P, S, AVarSum>,
 }
 
-impl<S: Display + Copy> Display for Rule<S> {
+impl<P: Display, S: Display + Copy> Display for Rule<P, S> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}\ninto:\n{}", self.start, self.end)
   }
 }
 
-impl<S: TapeSymbol> Rule<S> {
+impl<P: Phase, S: TapeSymbol> Rule<P, S> {
   pub fn start_edge_index(&self) -> usize {
     match self {
       Rule {
@@ -333,9 +332,9 @@ impl<S: TapeSymbol> Rule<S> {
 
 //each rule has a bool, which is whether this rule applies forever if it consumes all
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Rulebook<S>(u8, SmallVec<[Vec<(Rule<S>, bool)>; 14]>);
+pub struct Rulebook<P, S>(u8, SmallVec<[Vec<(Rule<P, S>, bool)>; 14]>);
 
-impl<S: Display + Copy> Display for Rulebook<S> {
+impl<P: Display, S: Display + Copy> Display for Rulebook<P, S> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "rulebook:\n")?;
     for rules_vec in self.1.iter() {
@@ -347,7 +346,7 @@ impl<S: Display + Copy> Display for Rulebook<S> {
   }
 }
 
-impl<S: TapeSymbol> Rulebook<S> {
+impl<P: Phase, S: TapeSymbol> Rulebook<P, S> {
   pub fn new(num_states: u8) -> Self {
     let mut sv = smallvec![];
     //todo: multisymbol
@@ -357,7 +356,7 @@ impl<S: TapeSymbol> Rulebook<S> {
     Self(num_states, sv)
   }
 
-  pub fn add_rule(&mut self, rule: Rule<S>) {
+  pub fn add_rule(&mut self, rule: Rule<P, S>) {
     let consumes_all = rule_runs_forever_if_consumes_all(&rule);
     if consumes_all {
       dbg!(&rule);
@@ -365,16 +364,16 @@ impl<S: TapeSymbol> Rulebook<S> {
     self.1[rule.start_edge_index()].push((rule, consumes_all));
   }
 
-  pub fn add_rules(&mut self, rules: Vec<Rule<S>>) {
+  pub fn add_rules(&mut self, rules: Vec<Rule<P, S>>) {
     for rule in rules {
       self.add_rule(rule);
     }
   }
-  pub fn get_rules(&self, edge: Edge<S>) -> &Vec<(Rule<S>, bool)> {
+  pub fn get_rules(&self, edge: Edge<P, S>) -> &Vec<(Rule<P, S>, bool)> {
     &self.1[edge.edge_index()]
   }
 
-  pub fn chain_rulebook(machine: &impl Turing<S>) -> Self {
+  pub fn chain_rulebook(machine: &impl Turing<P, S>) -> Self {
     let chain_rules = detect_chain_rules(machine);
     let mut rulebook = Rulebook::new(machine.num_states());
     rulebook.add_rules(chain_rules);
@@ -735,13 +734,13 @@ pub struct ConsumeGrow<C> {
   right_grow: C,
 }
 
-pub fn apply_rule_extra_info<S: TapeSymbol, C: TapeCount>(
+pub fn apply_rule_extra_info<P: Phase, S: TapeSymbol, C: TapeCount>(
   tape: &mut ExpTape<S, C>,
-  cur_state: State,
-  rule @ Rule { start: Config { state, left, head, right }, end }: &Rule<S>,
+  cur_state: P,
+  rule @ Rule { start: Config { state, left, head, right }, end }: &Rule<P, S>,
   applies_forever: bool,
   verbose: bool,
-) -> Option<Either<Var, (State, HashMap<Var, C>, ConsumeGrow<C>)>> {
+) -> Option<Either<Var, (P, HashMap<Var, C>, ConsumeGrow<C>)>> {
   /*
   Option<_>: rule might not apply. if it does, returns
   Left: a Var which was sent to infinity
@@ -820,13 +819,13 @@ pub fn apply_rule_extra_info<S: TapeSymbol, C: TapeCount>(
   }
 }
 
-pub fn apply_rule<S: TapeSymbol, C: TapeCount>(
+pub fn apply_rule<P: Phase, S: TapeSymbol, C: TapeCount>(
   tape: &mut ExpTape<S, C>,
-  cur_state: State,
-  rule: &Rule<S>,
+  cur_state: P,
+  rule: &Rule<P, S>,
   applies_forever: bool,
   verbose: bool,
-) -> Option<Either<Var, State>> {
+) -> Option<Either<Var, P>> {
   match apply_rule_extra_info(tape, cur_state, rule, applies_forever, verbose) {
     None => None,
     Some(Left(v)) => Some(Left(v)),
@@ -834,12 +833,12 @@ pub fn apply_rule<S: TapeSymbol, C: TapeCount>(
   }
 }
 
-pub fn apply_rules<S: TapeSymbol, C: TapeCount>(
+pub fn apply_rules<P: Phase, S: TapeSymbol, C: TapeCount>(
   tape: &mut ExpTape<S, C>,
-  state: State,
-  rulebook: &Rulebook<S>,
+  state: P,
+  rulebook: &Rulebook<P, S>,
   verbose: bool,
-) -> Option<Either<Var, (State, HashMap<Var, C>, ConsumeGrow<C>)>> {
+) -> Option<Either<Var, (P, HashMap<Var, C>, ConsumeGrow<C>)>> {
   let edge = Edge(state, tape.head);
   let rules = rulebook.get_rules(edge);
   for (rule, applies_forever) in rules {
@@ -856,7 +855,7 @@ pub fn apply_rules<S: TapeSymbol, C: TapeCount>(
   return None;
 }
 
-pub fn detect_chain_rules<S: TapeSymbol>(machine: &impl Turing<S>) -> Vec<Rule<S>> {
+pub fn detect_chain_rules<P: Phase, S: TapeSymbol>(machine: &impl Turing<P, S>) -> Vec<Rule<P, S>> {
   /* whenever there is a transition XS -> XTD for state X, symbols S,T, dir D
     there is a chain rule (X, >S< S^n) -> (X, T^n >T<) (shown here for R).
   */
@@ -1231,14 +1230,14 @@ fn process_goal_tape<S: TapeSymbol>(
   )
 }
 
-pub fn prove_rule<S: TapeSymbol>(
-  machine: &impl Turing<S>,
-  rule: Rule<S>,
-  rulebook: &Rulebook<S>,
+pub fn prove_rule<P: Phase, S: TapeSymbol>(
+  machine: &impl Turing<P, S>,
+  rule: Rule<P, S>,
+  rulebook: &Rulebook<P, S>,
   prover_steps: u32,
   too_negative: i32,
   verbose: bool,
-) -> Option<(Rule<S>, RuleProof)> {
+) -> Option<(Rule<P, S>, RuleProof)> {
   if verbose {
     println!("\nworking to prove rule:\n{}", &rule);
     println!("using rulebook:{}", rulebook);
@@ -1265,7 +1264,7 @@ pub fn prove_rule<S: TapeSymbol>(
         VarInfinite(_) => return None,
         RFellOffTape(_, _) => return None,
       };
-    if new_state == HALT {
+    if new_state == P::HALT {
       if verbose {
         println!("proving the rule failed because we transitioned to HALT")
       }
@@ -1320,10 +1319,10 @@ fn update_affine_var(
   AffineVar { n: n + amt_to_add, a, var }
 }
 
-fn update_config<S, V: Subbable>(
-  Config { state, left, head, right }: Config<S, V>,
+fn update_config<P, S, V: Subbable>(
+  Config { state, left, head, right }: Config<P, S, V>,
   neg_map: &DefaultHashMap<Var, i32>,
-) -> Config<S, V> {
+) -> Config<P, S, V> {
   Config {
     state,
     left: left
@@ -1338,10 +1337,10 @@ fn update_config<S, V: Subbable>(
   }
 }
 
-fn package_rule<S: TapeSymbol>(
-  Rule { start, end }: Rule<S>,
+fn package_rule<P, S: TapeSymbol>(
+  Rule { start, end }: Rule<P, S>,
   neg_map: &DefaultHashMap<Var, i32>,
-) -> Rule<S> {
+) -> Rule<P, S> {
   Rule {
     start: update_config(start, neg_map),
     end: update_config(end, neg_map),
@@ -1376,7 +1375,7 @@ fn add_vars_to_set<S, V: GetVars>(hs: &mut HashSet<Var>, stuff: &Vec<(S, V)>) {
   }
 }
 
-pub fn get_newest_var<S>(
+pub fn get_newest_var<P, S>(
   Rule {
     start: Config { state: _state, left, head: _head, right },
     end:
@@ -1386,7 +1385,7 @@ pub fn get_newest_var<S>(
         head: __head,
         right: end_right,
       },
-  }: &Rule<S>,
+  }: &Rule<P, S>,
 ) -> Var {
   let mut vars_used = HashSet::new();
   add_vars_to_set(&mut vars_used, left);
@@ -1406,7 +1405,7 @@ mod test {
   use super::*;
   use crate::{
     parse::{parse_avar, parse_exact, parse_half_tape, parse_rule, parse_tape},
-    turing::{Bit, START},
+    turing::Bit,
     turing_examples::get_machine,
   };
 
@@ -1647,16 +1646,16 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
     assert_eq!(tape, tape_copy);
   }
 
-  fn simultaneous_step_chain_step<S: TapeSymbol>(
-    machine: &impl Turing<S>,
+  fn simultaneous_step_chain_step<P: Phase, S: TapeSymbol>(
+    machine: &impl Turing<P, S>,
     normal_tape: &mut ExpTape<S, u32>,
-    mut normal_state: State,
+    mut normal_state: P,
     rule_tape: &mut ExpTape<S, u32>,
-    rule_state: State,
-    rulebook: &Rulebook<S>,
+    rule_state: P,
+    rulebook: &Rulebook<P, S>,
     step: u32,
     verbose: bool,
-  ) -> (State, State) {
+  ) -> (P, P) {
     assert_eq!(normal_state, rule_state);
     assert_eq!(normal_tape, rule_tape);
     let rule_result = one_rule_step(machine, rule_tape, rule_state, rulebook, step, verbose);
@@ -1669,7 +1668,7 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
     let mut num_steps_to_match = 0;
 
     while (new_rule_state, &mut *rule_tape) != (normal_state, normal_tape) {
-      if num_steps_to_match > 20 || normal_state == HALT {
+      if num_steps_to_match > 20 || normal_state == P::HALT {
         panic!(
           "machine diverged: {} {}\nvs\n{} {}",
           new_rule_state, rule_tape, normal_state, normal_tape
@@ -1684,11 +1683,14 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
     return (normal_state, new_rule_state);
   }
 
-  fn compare_machine_with_chain<S: TapeSymbol>(machine: &impl Turing<S>, num_steps: u32) {
+  fn compare_machine_with_chain<P: Phase, S: TapeSymbol>(
+    machine: &impl Turing<P, S>,
+    num_steps: u32,
+  ) {
     let mut normal_tape = ExpTape::new(true);
-    let mut normal_state = START;
+    let mut normal_state = P::START;
     let mut rule_tape = ExpTape::new(true);
-    let mut rule_state = START;
+    let mut rule_state = P::START;
     let rulebook = Rulebook::chain_rulebook(machine);
     for step in 1..num_steps + 1 {
       (normal_state, rule_state) = simultaneous_step_chain_step(

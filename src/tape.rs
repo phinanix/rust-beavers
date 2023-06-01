@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
   rules::{ReadShift, TapeCount},
-  turing::{Bit, Dir, Edge, SmallBinMachine, State, TapeSymbol, Trans, Turing, HALT, START},
+  turing::{Bit, Dir, Edge, Phase, SmallBinMachine, State, TapeSymbol, Trans, Turing},
 };
 
 // tape has two stacks and a symbol the machine is currently reading
@@ -99,7 +99,11 @@ impl<S: TapeSymbol> Tape<S> {
   // mutably updates self; returns new state
   // return either new state and the dir we went to get there (Right)
   // or the Edge that the machine couldn't handle (Left)
-  pub fn step_dir(&mut self, state: State, t: &impl Turing<S>) -> Either<Edge<S>, (State, Dir)> {
+  pub fn step_dir<P: Phase>(
+    &mut self,
+    state: P,
+    t: &impl Turing<P, S>,
+  ) -> Either<Edge<P, S>, (P, Dir)> {
     let edge = Edge(state, self.head);
     let Trans { state, symbol, dir } = match t.step(edge) {
       Some(trans) => trans,
@@ -111,20 +115,20 @@ impl<S: TapeSymbol> Tape<S> {
   }
 
   // return either new state (Right) or the Edge that the machine couldn't handle (Left)
-  pub fn step(&mut self, state: State, t: &impl Turing<S>) -> Either<Edge<S>, State> {
+  pub fn step<P: Phase>(&mut self, state: P, t: &impl Turing<P, S>) -> Either<Edge<P, S>, P> {
     match self.step_dir(state, t) {
       Left(e) => Left(e),
       Right((s, _d)) => Right(s),
     }
   }
 
-  pub fn simulate(
+  pub fn simulate<P: Phase>(
     &mut self,
-    machine: &impl Turing<S>,
-    mut state: State,
+    machine: &impl Turing<P, S>,
+    mut state: P,
     num_steps: u32,
     print: bool,
-  ) -> (Either<Edge<S>, State>, u32) {
+  ) -> (Either<Edge<P, S>, P>, u32) {
     /* return:
     0: from step
     1: the number of steps executed
@@ -142,13 +146,13 @@ impl<S: TapeSymbol> Tape<S> {
     (Right(state), num_steps)
   }
 
-  pub fn simulate_from_start(
-    machine: &impl Turing<S>,
+  pub fn simulate_from_start<P: Phase>(
+    machine: &impl Turing<P, S>,
     num_steps: u32,
     print: bool,
-  ) -> (Either<Edge<S>, State>, u32, Self) {
+  ) -> (Either<Edge<P, S>, P>, u32, Self) {
     let mut tape = Self::new();
-    let (new_state, num_steps) = tape.simulate(machine, START, num_steps, print);
+    let (new_state, num_steps) = tape.simulate(machine, P::START, num_steps, print);
     (new_state, num_steps, tape)
   }
 }
@@ -258,15 +262,15 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
 //  Success: the new state, plus the one-step-readshift
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StepResult<S> {
-  UndefinedEdge(Edge<S>),
-  FellOffTape(State, Dir),
-  Success(State, ReadShift),
+pub enum StepResult<P, S> {
+  UndefinedEdge(Edge<P, S>),
+  FellOffTape(P, Dir),
+  Success(P, ReadShift),
 }
 use StepResult::*;
 
-impl<S> StepResult<S> {
-  pub fn expect_success(self) -> (State, ReadShift) {
+impl<P, S> StepResult<P, S> {
+  pub fn expect_success(self) -> (P, ReadShift) {
     match self {
       Success(state, rs) => (state, rs),
       _ => panic!("success was expected"),
@@ -338,7 +342,7 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
   }
 
   //todo: these 3 functions are duplicated, some chance we want to dedub with Tape, not sure
-  pub fn step_extra_info(&mut self, state: State, t: &impl Turing<S>) -> StepResult<S> {
+  pub fn step_extra_info<P: Phase>(&mut self, state: P, t: &impl Turing<P, S>) -> StepResult<P, S> {
     let edge = Edge(state, self.head);
     let Trans { state, symbol, dir } = match t.step(edge) {
       Some(trans) => trans,
@@ -353,12 +357,12 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
     Success(state, rs)
   }
 
-  fn simulate(
+  fn simulate<P: Phase>(
     &mut self,
-    machine: &impl Turing<S>,
-    mut state: State,
+    machine: &impl Turing<P, S>,
+    mut state: P,
     num_steps: u32,
-  ) -> (Either<Edge<S>, State>, u32) {
+  ) -> (Either<Edge<P, S>, P>, u32) {
     /* return:
     0: from step
     1: the number of steps executed
@@ -377,12 +381,12 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
 }
 
 impl<'a, S: TapeSymbol + 'a> ExpTape<S, u32> {
-  pub fn simulate_from_start(
-    machine: &impl Turing<S>,
+  pub fn simulate_from_start<P: Phase>(
+    machine: &impl Turing<P, S>,
     num_steps: u32,
-  ) -> (Either<Edge<S>, State>, u32, Self) {
+  ) -> (Either<Edge<P, S>, P>, u32, Self) {
     let mut tape = Self::new(true);
-    let (new_state, num_steps) = tape.simulate(machine, START, num_steps);
+    let (new_state, num_steps) = tape.simulate(machine, P::START, num_steps);
     (new_state, num_steps, tape)
   }
 
@@ -479,7 +483,7 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<Small
 
   let mut stack = vec![TnfState {
     machine: inp_machine,
-    state: START,
+    state: State::START,
     tape: Tape::new(),
     num_steps: 0,
   }];
@@ -511,7 +515,6 @@ mod test {
   use crate::{
     parse::parse_tape,
     rules::{RS_LEFT, RS_RIGHT},
-    turing::HALT,
     turing_examples::get_machine,
   };
 
@@ -593,7 +596,7 @@ mod test {
   fn sim_bb2() {
     let bb2 = get_machine("bb2");
     let (state, num_steps, tape) = Tape::simulate_from_start(&bb2, 10, false);
-    assert_eq!(state, Right(HALT));
+    assert_eq!(state, Right(State::HALT));
     assert_eq!(num_steps, 6);
     assert_eq!(tape, Tape::from_bools(vec![true, true], true, vec![true]));
     let (e_state, e_steps, e_tape) = ExpTape::simulate_from_start(&bb2, 10);
@@ -606,7 +609,7 @@ mod test {
   fn sim_bb3() {
     let bb3 = get_machine("bb3");
     let (state, num_steps, tape) = Tape::simulate_from_start(&bb3, 30, false);
-    assert_eq!(state, Right(HALT));
+    assert_eq!(state, Right(State::HALT));
     assert_eq!(num_steps, 14);
     assert_eq!(
       tape,
