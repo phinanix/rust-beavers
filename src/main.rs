@@ -22,7 +22,7 @@ use turing::{Bit, SmallBinMachine, Turing, INFINITE};
 
 mod chain;
 mod linrecur;
-
+mod macro_machines;
 mod parse;
 mod rules;
 mod simulate;

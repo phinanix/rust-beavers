@@ -51,6 +51,9 @@ impl Display for State {
 pub trait TapeSymbol: Copy + Eq + Hash + Debug + Display {
   fn empty() -> Self;
   fn all_symbols() -> Vec<Self>;
+  fn num_symbols() -> usize {
+    Self::all_symbols().len()
+  }
 }
 
 impl TapeSymbol for Bit {

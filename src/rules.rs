@@ -1263,7 +1263,7 @@ pub fn prove_rule<S: TapeSymbol>(
       match one_rule_step(machine, &mut proving_tape, state, rulebook, step, verbose) {
         RSuccess(new_state, hm, rs) => (new_state, hm, rs),
         VarInfinite(_) => return None,
-        RFellOffTape(_) => return None,
+        RFellOffTape(_, _) => return None,
       };
     if new_state == HALT {
       if verbose {
@@ -1663,7 +1663,7 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
     let new_rule_state = match rule_result {
       RSuccess(state, _, _) => state,
       VarInfinite(_) => panic!("ran forever?"),
-      RFellOffTape(_) => panic!("fell off tape unexpectedly"),
+      RFellOffTape(_, _) => panic!("fell off tape unexpectedly"),
     };
 
     let mut num_steps_to_match = 0;

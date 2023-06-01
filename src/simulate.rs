@@ -16,7 +16,7 @@ use std::cmp::Ordering::*;
 
 pub enum RuleStepResult<C> {
   VarInfinite(Var),
-  RFellOffTape(Dir),
+  RFellOffTape(State, Dir),
   RSuccess(State, HashMap<Var, C>, Either<ReadShift, ConsumeGrow<C>>),
 }
 use RuleStepResult::*;
@@ -39,7 +39,7 @@ pub fn one_rule_step<S: TapeSymbol, C: TapeCount>(
     }
     None => match exptape.step_extra_info(state, machine) {
       UndefinedEdge(_edge) => unreachable!("machine is defined"),
-      FellOffTape(dir) => return RFellOffTape(dir),
+      FellOffTape(state, dir) => return RFellOffTape(state, dir),
       Success(state, rs) => (state, HashMap::default(), Left(rs)),
     },
   };
@@ -60,7 +60,7 @@ pub fn simulate_using_rules<S: TapeSymbol, C: TapeCount>(
   for step in 1..num_steps + 1 {
     state = match one_rule_step(machine, &mut exptape, state, rulebook, step, verbose) {
       VarInfinite(_var) => return (INFINITE, step, exptape),
-      RFellOffTape(_) => panic!("fell off tape unexpectedly"),
+      RFellOffTape(_, _) => panic!("fell off tape unexpectedly"),
       RSuccess(state, _, _) => state,
     };
     if state == HALT {
@@ -309,7 +309,7 @@ pub fn proving_rules_step<S: TapeSymbol>(
         return INFINITE;
       }
       RSuccess(new_state, hm, cg_or_rs) => (new_state, hm, cg_or_rs),
-      RFellOffTape(_) => panic!("unexpectedly fell off tape"),
+      RFellOffTape(_, _) => panic!("unexpectedly fell off tape"),
     };
   state = new_state;
 

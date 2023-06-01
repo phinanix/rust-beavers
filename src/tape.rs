@@ -253,30 +253,14 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
   }
 }
 
-#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
-pub enum TapeChangeKind {
-  Grew,
-  Shrunk,
-}
-use TapeChangeKind::*;
-
-pub fn combine_one_step_tape_change(tc1: TapeChange, tc2: TapeChange) -> TapeChange {
-  match (tc1, tc2) {
-    (None, _) => tc2,
-    (_, None) => tc1,
-    (Some((_d1, tc1)), Some((_d2, tc2))) => {
-      assert_eq!((tc1, tc2), (Shrunk, Grew));
-      None
-    }
-  }
-}
-
-pub type TapeChange = Option<(Dir, TapeChangeKind)>;
+//  UndefinedEdge: an edge if that edge is not defined
+//  FellOffTape: returns a dir if the machine attempted to move off that dir (if the tape is finite)
+//  Success: the new state, plus the one-step-readshift
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StepResult<S> {
   UndefinedEdge(Edge<S>),
-  FellOffTape(Dir),
+  FellOffTape(State, Dir),
   Success(State, ReadShift),
 }
 use StepResult::*;
@@ -291,18 +275,13 @@ impl<S> StepResult<S> {
 }
 
 impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
-  // impl<S: TapeSymbol> ExpTape<S, u32> {
-  fn push_rle(stack: &mut Vec<(S, C)>, item: S, tape_end_inf: bool) -> Option<TapeChangeKind> {
+  pub fn push_rle(stack: &mut Vec<(S, C)>, item: S, tape_end_inf: bool) {
     match stack.last_mut() {
       // if the stack is empty and the symbol we're pushing is empty, then we can just drop the
       // symbol on the ground since we're adding an empty to the infinite empty stack
-      // if so, we return Shrunk to indicate we did that, else None
       None => {
         if item != TapeSymbol::empty() || !tape_end_inf {
           stack.push((item, 1.into()));
-          None
-        } else {
-          Some(TapeChangeKind::Shrunk)
         }
       }
       Some((s, count)) => {
@@ -311,19 +290,18 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
         } else {
           stack.push((item, 1.into()));
         }
-        None
       }
     }
   }
 
-  fn pop_rle(stack: &mut Vec<(S, C)>, tape_end_inf: bool) -> Option<(S, Option<TapeChangeKind>)> {
+  fn pop_rle(stack: &mut Vec<(S, C)>, tape_end_inf: bool) -> Option<S> {
     // if we grew the tape from the edge, return Some(Grew), else None
     let ans = match stack.last_mut() {
       None => {
         if !tape_end_inf {
           return None;
         } else {
-          return Some((TapeSymbol::empty(), Some(TapeChangeKind::Grew)));
+          return Some(TapeSymbol::empty());
         };
       }
       Some((s, count)) => {
@@ -337,26 +315,22 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
       }
       _ => (),
     }
-    return Some((ans, None));
+    return Some(ans);
   }
 
-  fn move_right(&mut self) -> Option<TapeChange> {
-    let tc1 = Self::push_rle(&mut self.left, self.head, self.tape_end_inf).map(|tc| (Dir::L, tc));
-    let (new_head, tck2) = Self::pop_rle(&mut self.right, self.tape_end_inf)?;
-    let tc2 = tck2.map(|tc| (Dir::R, tc));
-    self.head = new_head;
-    Some(combine_one_step_tape_change(tc1, tc2))
+  fn move_right(&mut self) -> Option<()> {
+    Self::push_rle(&mut self.left, self.head, self.tape_end_inf);
+    self.head = Self::pop_rle(&mut self.right, self.tape_end_inf)?;
+    Some(())
   }
 
-  fn move_left(&mut self) -> Option<TapeChange> {
-    let tc1 = Self::push_rle(&mut self.right, self.head, self.tape_end_inf).map(|tc| (Dir::R, tc));
-    let (new_head, tck2) = Self::pop_rle(&mut self.left, self.tape_end_inf)?;
-    let tc2 = tck2.map(|tc| (Dir::L, tc));
-    self.head = new_head;
-    Some(combine_one_step_tape_change(tc1, tc2))
+  fn move_left(&mut self) -> Option<()> {
+    Self::push_rle(&mut self.right, self.head, self.tape_end_inf);
+    self.head = Self::pop_rle(&mut self.left, self.tape_end_inf)?;
+    Some(())
   }
 
-  fn move_dir(&mut self, d: Dir) -> Option<TapeChange> {
+  fn move_dir(&mut self, d: Dir) -> Option<()> {
     match d {
       Dir::L => self.move_left(),
       Dir::R => self.move_right(),
@@ -365,10 +339,6 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
 
   //todo: these 3 functions are duplicated, some chance we want to dedub with Tape, not sure
   pub fn step_extra_info(&mut self, state: State, t: &impl Turing<S>) -> StepResult<S> {
-    // returns left when there is an exceptional condition
-    //  - returns an edge if that edge is not defined
-    //  - returns a dir if the machine attempted to move off that dir (if the tape is finite)
-    // extra info: tape grew, shrank or nothing, on the L/R
     let edge = Edge(state, self.head);
     let Trans { state, symbol, dir } = match t.step(edge) {
       Some(trans) => trans,
@@ -376,8 +346,8 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
     };
     self.head = symbol;
     match self.move_dir(dir) {
-      Some(_tc) => (),
-      None => return FellOffTape(dir),
+      Some(()) => (),
+      None => return FellOffTape(state, dir),
     };
     let rs = ReadShift::rs_in_dir(dir);
     Success(state, rs)
@@ -398,7 +368,7 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
         UndefinedEdge(edge) => return (Left(edge), step),
         Success(HALT, _) => return (Right(HALT), step),
         Success(state, _) => state,
-        FellOffTape(_) => panic!("unexpectedly fell off tape!"),
+        FellOffTape(_, _) => panic!("unexpectedly fell off tape!"),
       };
       println!("step: {} phase: {} tape: {}", step, state, self);
     }
@@ -406,7 +376,7 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
   }
 }
 
-impl<S: TapeSymbol> ExpTape<S, u32> {
+impl<'a, S: TapeSymbol + 'a> ExpTape<S, u32> {
   pub fn simulate_from_start(
     machine: &impl Turing<S>,
     num_steps: u32,
@@ -416,11 +386,11 @@ impl<S: TapeSymbol> ExpTape<S, u32> {
     (new_state, num_steps, tape)
   }
 
-  fn splat(rle_vec: &Vec<(S, u32)>) -> Vec<S> {
+  pub fn splat(rle_vec: &mut impl Iterator<Item = &'a (S, u32)>) -> Vec<S> {
     let mut out = vec![];
     for &(symbol, count) in rle_vec {
       for _ in 0..count {
-        out.push(symbol);
+        out.push(symbol.clone());
       }
     }
     out
@@ -429,9 +399,9 @@ impl<S: TapeSymbol> ExpTape<S, u32> {
   fn to_tape(ExpTape { left, head, right, tape_end_inf }: &ExpTape<S, u32>) -> Tape<S> {
     assert!(tape_end_inf);
     Tape {
-      left: Self::splat(left),
+      left: Self::splat(&mut left.iter()),
       head: *head,
-      right: Self::splat(right),
+      right: Self::splat(&mut right.iter()),
     }
   }
 
