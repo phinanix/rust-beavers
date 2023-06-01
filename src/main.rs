@@ -813,23 +813,23 @@ fn scan_from_machine(
   // }
 }
 fn main() {
-  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  // let num_lr_steps = 1500;
-  // let num_rule_steps = 100;
-  // scan_from_machine(
-  //   &first_machine,
-  //   num_lr_steps,
-  //   num_rule_steps,
-  //   // Some("size3_holdouts_2_may.txt"),
-  //   // Some("size4_holdouts_31_may_29e2280.txt"),
-  //   None,
-  // );
+  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  let num_lr_steps = 1500;
+  let num_rule_steps = 100;
+  scan_from_machine(
+    &first_machine,
+    num_lr_steps,
+    num_rule_steps,
+    // Some("size3_holdouts_2_may.txt"),
+    // Some("size4_holdouts_31_may_29e2280.txt"),
+    None,
+  );
 
   // investigating runs_forever behavior
   // let machine = SmallBinMachine::from_compact_format("1RB1LC_0LA1RH_1RD0LC_1RC1RA");
-  let chain_update = decided_by_chain_update_31may();
-  let machine = SmallBinMachine::from_compact_format(chain_update[0]);
-  run_machine(&machine);
+  // let chain_update = decided_by_chain_update_31may();
+  // let machine = SmallBinMachine::from_compact_format(chain_update[0]);
+  // run_machine(&machine);
 
   // let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
 

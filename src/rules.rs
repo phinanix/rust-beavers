@@ -3091,92 +3091,121 @@ mod test {
     let mut hm = HashMap::new();
     let mb_rtm = match_rule_tape(&mut hm, &start, &end, true);
     assert_eq!(mb_rtm, None);
-    todo!();
 
-    //     let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<|
-    // into:
-    // phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
-    //     let (_leftover, rule) = parse_rule(rule_str).unwrap();
-    //     let tape_str = "(T, 1) |>T<| (T, 7)";
-    //     let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
-    //     let tape_copy = tape.clone();
-    //     println!("app1");
-    //     assert_eq!(
-    //       apply_rule_extra_info(&mut tape, State(3), &rule, true),
-    //       None
-    //     );
-    //     assert_eq!(tape, tape_copy);
-    //     //now we apply the rule to a tape that works
-    //     let tape_str = "(T, 2) |>T<| (T, 7)";
-    //     let output_str = "(T, 1) |>F<| (F, 1) (T, 8)";
-    //     let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
-    //     let (_leftover, output_tape) = parse_tape(output_str).unwrap();
-    //     println!("app2");
-    //     assert_eq!(
-    //       apply_rule(&mut tape, State(3), &rule, true),
-    //       Some(Right(State(1)))
-    //     );
-    //     println!(
-    //       "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
-    //       rule_str, tape, output_tape
-    //     );
-    //     assert_eq!(tape, output_tape);
-    //     //and a different tape
-    //     let tape_str = "(T, 2) (F, 2) (T, 4) |>T<| (T, 7)";
-    //     let output_str = "(T, 2) (F, 1) (T, 1) |>F<| (F, 3) (T, 8)";
-    //     let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
-    //     let (_leftover, output_tape) = parse_tape(output_str).unwrap();
-    //     println!("app3");
-    //     assert_eq!(
-    //       apply_rule(&mut tape, State(3), &rule, true),
-    //       Some(Right(State(1)))
-    //     );
-    //     println!(
-    //       "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
-    //       rule_str, tape, output_tape
-    //     );
-    //     assert_eq!(tape, output_tape);
-    //     //and another
-    //     let tape_str = "(T, 2) (F, 1) (T, 4) |>T<| (T, 7)";
-    //     let output_str = "(T, 3) |>F<| (F, 3) (T, 8)";
-    //     let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
-    //     let (_leftover, output_tape) = parse_tape(output_str).unwrap();
-    //     println!("app4");
-    //     assert_eq!(
-    //       apply_rule(&mut tape, State(3), &rule, true),
-    //       Some(Right(State(1)))
-    //     );
-    //     println!(
-    //       "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
-    //       rule_str, tape, output_tape
-    //     );
-    //     assert_eq!(tape, output_tape);
+    let rule_str = "phase: 3  (F, 1) (T, 1 + 1*x_0) |>T<| 
+into:
+phase: 1  (T, 1) |>F<| (F, 0 + 1*x_0) (T, 1)";
+    let (_leftover, rule) = parse_rule(rule_str).unwrap();
+    let tape_str = "(T, 1) |>T<| (T, 7)";
+    let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
+    let tape_copy = tape.clone();
+    println!("app1");
+    assert_eq!(
+      apply_rule_extra_info(
+        &mut tape,
+        State(3),
+        &rule,
+        rule_runs_forever_if_consumes_all(&rule),
+        true
+      ),
+      None
+    );
+    assert_eq!(tape, tape_copy);
+    //now we apply the rule to a tape that works
+    let tape_str = "(T, 2) |>T<| (T, 7)";
+    let output_str = "(T, 1) |>F<| (F, 1) (T, 8)";
+    let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
+    let (_leftover, output_tape) = parse_tape(output_str).unwrap();
+    println!("app2");
+    assert_eq!(
+      apply_rule(
+        &mut tape,
+        State(3),
+        &rule,
+        rule_runs_forever_if_consumes_all(&rule),
+        true
+      ),
+      Some(Right(State(1)))
+    );
+    println!(
+      "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
+      rule_str, tape, output_tape
+    );
+    assert_eq!(tape, output_tape);
+    //and a different tape
+    let tape_str = "(T, 2) (F, 2) (T, 4) |>T<| (T, 7)";
+    let output_str = "(T, 2) (F, 1) (T, 1) |>F<| (F, 3) (T, 8)";
+    let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
+    let (_leftover, output_tape) = parse_tape(output_str).unwrap();
+    println!("app3");
+    assert_eq!(
+      apply_rule(
+        &mut tape,
+        State(3),
+        &rule,
+        rule_runs_forever_if_consumes_all(&rule),
+        true
+      ),
+      Some(Right(State(1)))
+    );
+    println!(
+      "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
+      rule_str, tape, output_tape
+    );
+    assert_eq!(tape, output_tape);
+    //and another
+    let tape_str = "(T, 2) (F, 1) (T, 4) |>T<| (T, 7)";
+    let output_str = "(T, 3) |>F<| (F, 3) (T, 8)";
+    let (_leftover, mut tape) = parse_tape(tape_str).unwrap();
+    let (_leftover, output_tape) = parse_tape(output_str).unwrap();
+    println!("app4");
+    assert_eq!(
+      apply_rule(
+        &mut tape,
+        State(3),
+        &rule,
+        rule_runs_forever_if_consumes_all(&rule),
+        true
+      ),
+      Some(Right(State(1)))
+    );
+    println!(
+      "rule\n{}\nactual tape\n{}\ngoal tape\n{}",
+      rule_str, tape, output_tape
+    );
+    assert_eq!(tape, output_tape);
 
-    //     /* regression test for:
-    //     step: 33 phase: C tape: (T, 1) |>T<| (F, 1) (T, 1) (F, 2) (T, 1)
-    //     rule:
-    //     phase: C  (T, 0 + 1*x_0) |>T<| (F, 2)
-    //     into:
-    //     phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)
-    //     rule_applied
-    //     step: 34 phase: A tape: (T, 2) |>T<| (F, 2) (T, 1) (F, 2) (T, 1)
-    //     */
-    //     println!("app5");
-    //     let rule_str = "phase: C  (T, 0 + 1*x_0) |>T<| (F, 2)
-    // into:
-    // phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
-    //     let rule = parse_exact(parse_rule(rule_str));
-    //     let tape_str = "(T, 1) |>T<| (F, 1) (T, 1) (F, 2) (T, 1)";
-    //     let mut tape = parse_exact(parse_tape(tape_str));
-    //     let tape_copy = tape.clone();
-    //     println!("applying {} to \n{}", rule, tape);
-    //     assert_eq!(
-    //       apply_rule_extra_info(&mut tape, State(3), &rule, true),
-    //       None,
-    //       "wrong tape was: {}",
-    //       tape,
-    //     );
-    //     assert_eq!(tape, tape_copy);
+    /* regression test for:
+    step: 33 phase: C tape: (T, 1) |>T<| (F, 1) (T, 1) (F, 2) (T, 1)
+    rule:
+    phase: C  (T, 0 + 1*x_0) |>T<| (F, 2)
+    into:
+    phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)
+    rule_applied
+    step: 34 phase: A tape: (T, 2) |>T<| (F, 2) (T, 1) (F, 2) (T, 1)
+    */
+    println!("app5");
+    let rule_str = "phase: C  (T, 0 + 1*x_0) |>T<| (F, 2)
+into:
+phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
+    let rule = parse_exact(parse_rule(rule_str));
+    let tape_str = "(T, 1) |>T<| (F, 1) (T, 1) (F, 2) (T, 1)";
+    let mut tape = parse_exact(parse_tape(tape_str));
+    let tape_copy = tape.clone();
+    println!("applying {} to \n{}", rule, tape);
+    assert_eq!(
+      apply_rule_extra_info(
+        &mut tape,
+        State(3),
+        &rule,
+        rule_runs_forever_if_consumes_all(&rule),
+        true
+      ),
+      None,
+      "wrong tape was: {}",
+      tape,
+    );
+    assert_eq!(tape, tape_copy);
   }
 
   fn simultaneous_step_prove_step<S: TapeSymbol>(
