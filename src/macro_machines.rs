@@ -204,6 +204,12 @@ mod test {
 
   #[test]
   fn test_from_tape() {
-    todo!();
+    let sym = MacroSymbol([Bit(true), Bit(true), Bit(false), Bit(false)]);
+    let mut left_tape = parse_exact(parse_tape(" |>T<| (T, 1) (F, 2)"));
+    left_tape.tape_end_inf = false;
+    let mut right_tape = parse_exact(parse_tape("(T, 2) (F, 1) |>F<| "));
+    right_tape.tape_end_inf = false;
+    assert_eq!(MacroSymbol::from_tape(left_tape, Dir::L), sym);
+    assert_eq!(MacroSymbol::from_tape(right_tape, Dir::R), sym);
   }
 }
