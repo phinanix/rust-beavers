@@ -135,7 +135,7 @@ fn search_for_translated_cyclers(
       _ => (),
     }
     match final_state {
-      Right(HALT) => assert_eq!(lr_res, LRResult::Halt { num_steps: normal_num_steps }),
+      Right(State::HALT) => assert_eq!(lr_res, LRResult::Halt { num_steps: normal_num_steps }),
       _ => (),
     }
   }

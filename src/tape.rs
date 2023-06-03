@@ -136,7 +136,7 @@ impl<S: TapeSymbol> Tape<S> {
     for step in 1..num_steps + 1 {
       state = match self.step(state, machine) {
         Left(edge) => return (Left(edge), step),
-        Right(HALT) => return (Right(HALT), step),
+        Right(state) if state == P::HALT => return (Right(P::HALT), step),
         Right(state) => state,
       };
       if print {
@@ -370,7 +370,7 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
     for step in 1..num_steps + 1 {
       state = match self.step_extra_info(state, machine) {
         UndefinedEdge(edge) => return (Left(edge), step),
-        Success(HALT, _) => return (Right(HALT), step),
+        Success(state, _) if state == P::HALT => return (Right(P::HALT), step),
         Success(state, _) => state,
         FellOffTape(_, _) => panic!("unexpectedly fell off tape!"),
       };

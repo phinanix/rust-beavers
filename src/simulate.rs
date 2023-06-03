@@ -401,8 +401,8 @@ pub fn aggregate_and_display_proving_res(results: &Vec<(SmallBinMachine, State, 
   let mut inconclusive_count = 0;
   for (_m, state, _steps) in results {
     match *state {
-      HALT => halt_count += 1,
-      INFINITE => inf_count += 1,
+      State::HALT => halt_count += 1,
+      State::INFINITE => inf_count += 1,
       _ => inconclusive_count += 1,
     }
   }

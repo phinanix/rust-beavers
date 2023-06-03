@@ -34,7 +34,9 @@ where
   while steps_taken < num_steps {
     state = match tape.step_dir(state, machine) {
       Left(_unknown_edge) => unreachable!("machine is defined"),
-      Right((HALT, _dir)) => return Halt { num_steps: steps_taken + 1 },
+      Right((new_state, _dir)) if new_state == P::HALT => {
+        return Halt { num_steps: steps_taken + 1 }
+      }
       Right((new_state, dir)) => {
         cur_displacement += dir.to_displacement();
         leftmost = leftmost.min(cur_displacement);

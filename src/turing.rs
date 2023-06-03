@@ -36,6 +36,8 @@ pub trait Phase: Clone + Copy + PartialEq + Eq + Hash + Debug + Display {
   const HALT: Self;
   const START: Self;
   const INFINITE: Self;
+  // laws: never returns 0; is 1-1
+  fn as_byte(self: Self) -> u8;
 }
 
 // the state a machine is in. 0 is Halt
@@ -50,11 +52,15 @@ impl Phase for State {
   const HALT: Self = State(0);
   const START: Self = State(1);
   const INFINITE: Self = State(255);
+  fn as_byte(self: Self) -> u8 {
+    self.0
+  }
 }
+
 impl Display for State {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      &HALT => f.write_str("HALT"),
+      &State::HALT => f.write_str("HALT"),
       &State(i) => f.write_char(AB.chars().nth(i as usize).unwrap()),
     }
   }
@@ -84,13 +90,13 @@ pub struct Edge<P, S>(pub P, pub S);
 
 impl<P: Phase, S: TapeSymbol> Edge<P, S> {
   pub fn edge_index(&self) -> usize {
-    todo!();
-    // let &Self(State(state), symbol) = self;
-    // //index by state, then by symbol, so output is state*num_symbols + index_symbol
-    // let symbols = S::all_symbols();
-    // let num_symbols = symbols.len();
-    // let symbol_index = symbols.into_iter().position(|s| s == symbol).unwrap();
-    // return (state - 1) as usize * num_symbols + symbol_index;
+    // todo!();
+    let &Self(phase, symbol) = self;
+    //index by state, then by symbol, so output is state*num_symbols + index_symbol
+    let symbols = S::all_symbols();
+    let num_symbols = symbols.len();
+    let symbol_index = symbols.into_iter().position(|s| s == symbol).unwrap();
+    return (phase.as_byte() - 1) as usize * num_symbols + symbol_index;
   }
 }
 
