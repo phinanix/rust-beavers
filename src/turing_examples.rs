@@ -544,10 +544,10 @@ phase: D  (T, 1 + x) (F, 1) |>F<| (T, x)
 into:
 phase: D  (T, 1) (F, 1) |>F<| (T, 2*x)
  */
-const MACHINES: [(&str, &str); 10] = [
+const MACHINES: [(&str, &str); 9] = [
   ("bb2", "1RB1LB_1LA1RH"),
   ("bb3", "1RB1RH_0RC1RB_1LC1LA"),
-  ("bb4", ""),
+  // ("bb4", ""),
   ("binary_counter", "0LB0RA_1LC1LH_1RA1LC"),
   ("checkerboard_sweeper", "1RB0LC_0LC1RA_1LH1LA"),
   ("sweeper", "1RB1LH_0LC0RB_1LC1LA"),
@@ -564,4 +564,12 @@ pub fn get_machine(name: &str) -> SmallBinMachine {
       .get(name)
       .expect(&format!("{} wasn't a valid machine name", name)),
   )
+}
+
+pub fn all_machine_examples() -> Vec<(&'static str, SmallBinMachine)> {
+  let mut out = vec![];
+  for (name, machine_str) in MACHINES {
+    out.push((name, SmallBinMachine::from_compact_format(machine_str)));
+  }
+  out
 }

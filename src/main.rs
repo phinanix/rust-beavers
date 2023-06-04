@@ -10,7 +10,8 @@ use crate::{
   rules::{detect_chain_rules, Rulebook},
   simulate::{aggregate_and_display_proving_res, simulate_proving_rules},
   tape::Tape,
-  turing::{Phase, State},
+  turing::{Phase, State, HALT},
+  turing_examples::get_machine,
 };
 use either::Either::Right;
 use itertools::Itertools;
@@ -32,10 +33,7 @@ mod turing_examples;
 
 /*
 to prove tail eating dragon:
-- only detect rules when start and end state are same (done)
 - detect rules that are more than additive (mx + b?)
-- when detecting rules, use ReadShift or similar to not detect extra garbage (like in TailEatingDragonFast)
-
 
 high level todo:
 - when you guess a rule, assert that it is conserving
@@ -68,21 +66,6 @@ rule proving status: it "mostly" "works"
 current issues that need fixing:
 1) it tries to prove the same rule over and over, which is obviously a big waste of time
 2) relatedly, it doesn't know when a rule means it can run forever, so we need to detect that
-3) biggest issue, it guesses and proves rules that are not "conserving" of tape symbols. there are
-   two sub-issues here, essentially.
-   a) it guesses rules based on reduced tape signatures (that don't include the infinite ends), but
-   the rule (T, x) -> (T, x+1) of course can't hold in a vacuum, it can only hold in the context of
-   eating an F from the edge of the tape. ideally we would just prove rules that hold in all
-   contexts (this is what readshift is doing in Haskell-bbs but I don't know if that's the easiest
-   way to fix this).
-   b) when proving a rule, it also freely grabs symbols from the edge of the tape.
-
-   as is, these two issues balance each other out, but it seems perhaps better to fix both of them.
-   path to fixing:
-   - make Exptape.step return whether you grew/shrunk the tape from the infinite edge (done)
-   - make rule application return whether you grew/shrunk the tape (done)
-   - in proving, explode if the tape would grow (done)
-   - in rule-guessing, track the growing and shrinking such that we can guess a conserving-rule (done)
 
 musings on rules (1 may 23)
 some rules are "necessary", most obviously anything made by chaining - in that we can't necessarily prove anything without using them
@@ -127,15 +110,12 @@ fn search_for_translated_cyclers(
     // println!("m: {}, res: {:?}", m_str, lr_res);
     match lr_res {
       LRResult::Halt { num_steps: lr_num_steps } => {
-        assert_eq!(
-          (final_state, normal_num_steps),
-          (Right(State::HALT), lr_num_steps)
-        )
+        assert_eq!((final_state, normal_num_steps), (Right(HALT), lr_num_steps))
       }
       _ => (),
     }
     match final_state {
-      Right(State::HALT) => assert_eq!(lr_res, LRResult::Halt { num_steps: normal_num_steps }),
+      Right(HALT) => assert_eq!(lr_res, LRResult::Halt { num_steps: normal_num_steps }),
       _ => (),
     }
   }
@@ -154,7 +134,7 @@ fn run_machine(machine: &SmallBinMachine) {
 
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
-  let num_steps = 100;
+  let num_steps = 85;
   Tape::simulate_from_start(machine, num_steps, true);
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
@@ -212,7 +192,7 @@ fn prove_with_rules(
   results
     .into_iter()
     .filter_map(|(m, s, _steps)| {
-      if s != State::INFINITE && s != State::HALT {
+      if s != State::INFINITE && s != HALT {
         Some(m)
       } else {
         None
@@ -332,17 +312,17 @@ fn scan_from_machine(
 }
 
 fn main() {
-  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  let num_lr_steps = 1500;
-  let num_rule_steps = 100;
-  scan_from_machine(
-    &first_machine,
-    num_lr_steps,
-    num_rule_steps,
-    // Some("size3_holdouts_2_may.txt"),
-    // Some("size4_holdouts_31_may_29e2280.txt"),
-    None,
-  );
+  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // let num_lr_steps = 1500;
+  // let num_rule_steps = 100;
+  // scan_from_machine(
+  //   &first_machine,
+  //   num_lr_steps,
+  //   num_rule_steps,
+  //   // Some("size3_holdouts_2_may.txt"),
+  //   // Some("size4_holdouts_31_may_29e2280.txt"),
+  //   None,
+  // );
 
   // investigating runs_forever behavior
   // let machine = SmallBinMachine::from_compact_format("1RB1LC_0LA1RH_1RD0LC_1RC1RA");
@@ -350,7 +330,7 @@ fn main() {
   // let machine = SmallBinMachine::from_compact_format(chain_update[0]);
   // run_machine(&machine);
 
-  // let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
+  let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
 
   // let undecided_size_4_random = strs_to_machine(undecided_size_4_random());
   // let undecided_size_4_random_100 = strs_to_machine(undecided_size_4_random_100());
@@ -380,8 +360,8 @@ fn main() {
   // let machine = SmallBinMachine::from_compact_format(m_str);
   // let machine = undecided_size_4_random_100.get(18).unwrap();
 
-  // dbg!(machine.to_compact_format());
-  // run_machine(&machine);
+  dbg!(machine.to_compact_format());
+  run_machine(&machine);
 
   // }
 

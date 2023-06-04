@@ -66,8 +66,8 @@ pub fn simulate_using_rules<P: Phase, S: TapeSymbol, C: TapeCount>(
       RFellOffTape(_, _) => panic!("fell off tape unexpectedly"),
       RSuccess(state, _, _) => state,
     };
-    if state == P::HALT {
-      return (P::HALT, step, exptape);
+    if state.halted() {
+      return (state, step, exptape);
     }
     // println!("step: {} phase: {} tape: {}", step, state, exptape);
   }
@@ -328,11 +328,11 @@ pub fn proving_rules_step<P: Phase, S: TapeSymbol>(
   }
   readshifts.push(readshift);
 
-  if state == P::HALT {
-    return P::HALT;
+  if state.halted() {
+    return state;
   }
 
-  let rules = detect_rules(step, state, &exptape, signatures, &readshifts, false);
+  let rules = detect_rules(step, state, &exptape, signatures, &readshifts, true);
   for rule in rules {
     if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, false) {
       if pf != DirectSimulation(1) {
@@ -386,7 +386,7 @@ pub fn simulate_proving_rules<P: Phase, S: TapeSymbol>(
       &mut readshifts,
       verbose,
     );
-    if state == P::INFINITE || state == P::HALT {
+    if state == P::INFINITE || state.halted() {
       return (state, step);
     }
     if exptape.numbers_too_large() {
@@ -410,7 +410,7 @@ pub fn aggregate_and_display_proving_res(results: &Vec<(SmallBinMachine, State, 
   let mut inconclusive_count = 0;
   for (_m, state, _steps) in results {
     match *state {
-      State::HALT => halt_count += 1,
+      HALT => halt_count += 1,
       State::INFINITE => inf_count += 1,
       _ => inconclusive_count += 1,
     }
@@ -455,7 +455,7 @@ mod test {
     let mut num_steps_to_match = 0;
 
     while (new_rule_state, &mut *rule_tape) != (normal_state, normal_tape) {
-      if num_steps_to_match > 300 || normal_state == P::HALT {
+      if num_steps_to_match > 300 || normal_state.halted() {
         panic!(
           "machine diverged:\n{} {}\nvs\n{} {}",
           new_rule_state, rule_tape, normal_state, normal_tape

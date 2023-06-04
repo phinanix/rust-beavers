@@ -36,7 +36,7 @@ where
       Left(_unknown_edge) => unreachable!("machine is defined"),
       Right((new_state, mb_dir, steps)) => {
         steps_taken += steps;
-        if new_state == P::HALT {
+        if new_state.halted() {
           return Halt { num_steps: steps_taken + 1 };
         }
         //unwrap justified because we didn't halt

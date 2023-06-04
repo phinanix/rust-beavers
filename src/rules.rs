@@ -1272,7 +1272,7 @@ pub fn prove_rule<P: Phase, S: TapeSymbol>(
         RSRInfinite => return None,
         RFellOffTape(_, _) => return None,
       };
-    if new_state == P::HALT {
+    if new_state.halted() {
       if verbose {
         println!("proving the rule failed because we transitioned to HALT")
       }
@@ -1677,7 +1677,7 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
     let mut num_steps_to_match = 0;
 
     while (new_rule_state, &mut *rule_tape) != (normal_state, normal_tape) {
-      if num_steps_to_match > 20 || normal_state == P::HALT {
+      if num_steps_to_match > 20 || normal_state.halted() {
         panic!(
           "machine diverged: {} {}\nvs\n{} {}",
           new_rule_state, rule_tape, normal_state, normal_tape

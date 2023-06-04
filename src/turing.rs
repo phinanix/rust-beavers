@@ -24,6 +24,12 @@ pub enum Dir {
 use Dir::*;
 
 impl Dir {
+  pub fn flip(&self) -> Self {
+    match self {
+      L => R,
+      R => L,
+    }
+  }
   pub fn to_displacement(&self) -> i32 {
     match self {
       L => -1,
@@ -32,8 +38,17 @@ impl Dir {
   }
 }
 
+impl Display for Dir {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      L => write!(f, "L"),
+      R => write!(f, "R"),
+    }
+  }
+}
+
 pub trait Phase: Clone + Copy + PartialEq + Eq + Hash + Debug + Display {
-  const HALT: Self;
+  fn halted(self: Self) -> bool;
   const START: Self;
   const INFINITE: Self;
   // laws: never returns 0; is 1-1
@@ -44,12 +59,15 @@ pub trait Phase: Clone + Copy + PartialEq + Eq + Hash + Debug + Display {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct State(pub u8);
 
-// pub const HALT: State = State(0);
 // pub const START: State = State(1);
 // pub const INFINITE: State = State(255);
 
+pub const HALT: State = State(0);
+
 impl Phase for State {
-  const HALT: Self = State(0);
+  fn halted(self: Self) -> bool {
+    self == State(0)
+  }
   const START: Self = State(1);
   const INFINITE: Self = State(255);
   fn as_byte(self: Self) -> u8 {
@@ -60,7 +78,7 @@ impl Phase for State {
 impl Display for State {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      &State::HALT => f.write_str("HALT"),
+      &HALT => f.write_str("HALT"),
       &State(i) => f.write_char(AB.chars().nth(i as usize).unwrap()),
     }
   }
@@ -122,7 +140,7 @@ pub enum Trans<P, S> {
 use Trans::*;
 
 pub const HALT_TRANS: Trans<State, Bit> = Halt {
-  state: State::HALT,
+  state: HALT,
   symbol: Bit(true),
   mb_dir: Some(R),
   steps: 1,
@@ -168,12 +186,7 @@ impl Trans<State, Bit> {
           .try_into()
           .unwrap();
         if state == 0 {
-          return Some(Halt {
-            state: State::HALT,
-            symbol,
-            mb_dir: Some(dir),
-            steps: 1,
-          });
+          return Some(Halt { state: HALT, symbol, mb_dir: Some(dir), steps: 1 });
         }
         return Some(Step { state: State(state), symbol, dir, steps: 1 });
       }
@@ -202,7 +215,7 @@ impl Trans<State, Bit> {
       }
 
       &Halt {
-        state: State::HALT,
+        state: HALT,
         symbol: Bit(symbol),
         mb_dir: Some(dir),
         steps: _,

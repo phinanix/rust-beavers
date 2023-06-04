@@ -3,6 +3,7 @@ use either::Either::{self, Left, Right};
 
 use std::{
   fmt::{Debug, Display},
+  ops::AddAssign,
   vec,
 };
 
@@ -147,8 +148,8 @@ impl<S: TapeSymbol> Tape<S> {
         Left(edge) => return (Left(edge), step),
         Right((state, steps)) => {
           machine_steps += steps;
-          if state == P::HALT {
-            return (Right(P::HALT), machine_steps);
+          if state.halted() {
+            return (Right(state), machine_steps);
           }
           state
         }
@@ -263,17 +264,6 @@ impl<S, N> ExpTape<S, N> {
   }
 }
 
-impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
-  pub fn new(tape_end_inf: bool) -> Self {
-    ExpTape {
-      left: vec![],
-      head: TapeSymbol::empty(),
-      right: vec![],
-      tape_end_inf,
-    }
-  }
-}
-
 //  UndefinedEdge: an edge if that edge is not defined
 //  FellOffTape: returns a dir if the machine attempted to move off that dir (if the tape is finite)
 //  Success: the new state, plus the one-step-readshift
@@ -297,6 +287,15 @@ impl<P, S> StepResult<P, S> {
 }
 
 impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
+  pub fn new(tape_end_inf: bool) -> Self {
+    ExpTape {
+      left: vec![],
+      head: TapeSymbol::empty(),
+      right: vec![],
+      tape_end_inf,
+    }
+  }
+
   pub fn push_rle(stack: &mut Vec<(S, C)>, item: S, tape_end_inf: bool) {
     match stack.last_mut() {
       // if the stack is empty and the symbol we're pushing is empty, then we can just drop the
@@ -371,8 +370,8 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
     self.head = symbol;
     match mb_dir {
       None => {
-        assert_eq!(state, P::HALT);
-        Success(P::HALT, ReadShift { l: 0, r: 0, s: 0 }, steps)
+        assert!(state.halted());
+        Success(state, ReadShift { l: 0, r: 0, s: 0 }, steps)
       }
       Some(dir) => {
         match self.move_dir(dir) {
@@ -401,8 +400,8 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
         UndefinedEdge(edge) => return (Left(edge), step),
         Success(state, _, steps) => {
           machine_steps += steps;
-          if state == P::HALT {
-            return (Right(P::HALT), machine_steps);
+          if state.halted() {
+            return (Right(state), machine_steps);
           }
           state
         }
@@ -435,6 +434,14 @@ impl<'a, S: TapeSymbol + 'a> ExpTape<S, u32> {
     out
   }
 
+  pub fn un_splat(not_rle: &mut impl Iterator<Item = &'a S>, tape_end_inf: bool) -> Vec<(S, u32)> {
+    let mut out = vec![];
+    for &s in not_rle {
+      ExpTape::push_rle(&mut out, s, tape_end_inf);
+    }
+    out
+  }
+
   fn to_tape(ExpTape { left, head, right, tape_end_inf }: &ExpTape<S, u32>) -> Tape<S> {
     assert!(tape_end_inf);
     Tape {
@@ -451,6 +458,13 @@ impl<'a, S: TapeSymbol + 'a> ExpTape<S, u32> {
       .iter()
       .chain(right.iter())
       .any(|&(_s, n)| n > too_large)
+  }
+
+  pub fn len(&self) -> u32 {
+    let Self { left, head: _, right, tape_end_inf: _ } = self;
+    let l_sum: u32 = left.iter().map(|(_s, n)| n).sum();
+    let r_sum: u32 = right.iter().map(|(_s, n)| n).sum();
+    l_sum + r_sum + 1
   }
 }
 
@@ -544,12 +558,26 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<Small
   out
 }
 
+pub fn push_exptape<S: Eq, C: AddAssign>(tape: &mut Vec<(S, C)>, item: (S, C)) {
+  match tape.last_mut() {
+    None => tape.push(item),
+    Some((tape_s, tape_c)) => {
+      if *tape_s == item.0 {
+        *tape_c += item.1;
+      } else {
+        tape.push(item);
+      }
+    }
+  }
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
   use crate::{
     parse::parse_tape,
     rules::{RS_LEFT, RS_RIGHT},
+    turing::HALT,
     turing_examples::get_machine,
   };
 
@@ -631,7 +659,7 @@ mod test {
   fn sim_bb2() {
     let bb2 = get_machine("bb2");
     let (state, num_steps, tape) = Tape::simulate_from_start(&bb2, 10, false);
-    assert_eq!(state, Right(State::HALT));
+    assert_eq!(state, Right(HALT));
     assert_eq!(num_steps, 6);
     assert_eq!(tape, Tape::from_bools(vec![true, true], true, vec![true]));
     let (e_state, e_steps, e_tape) = ExpTape::simulate_from_start(&bb2, 10);
@@ -644,7 +672,7 @@ mod test {
   fn sim_bb3() {
     let bb3 = get_machine("bb3");
     let (state, num_steps, tape) = Tape::simulate_from_start(&bb3, 30, false);
-    assert_eq!(state, Right(State::HALT));
+    assert_eq!(state, Right(HALT));
     assert_eq!(num_steps, 14);
     assert_eq!(
       tape,
