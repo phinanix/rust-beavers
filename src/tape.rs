@@ -8,7 +8,7 @@ use std::{
 
 use crate::{
   rules::{ReadShift, TapeCount},
-  turing::{Bit, Dir, Edge, Phase, SmallBinMachine, State, TapeSymbol, Trans, Turing},
+  turing::{Bit, Dir, Edge, Phase, SmallBinMachine, State, TapeSymbol, Trans::*, Turing},
 };
 
 // tape has two stacks and a symbol the machine is currently reading
@@ -97,28 +97,36 @@ impl<S: TapeSymbol> Tape<S> {
   }
 
   // mutably updates self; returns new state
-  // return either new state and the dir we went to get there (Right)
+  // return either new state the dir we went to get there and the  (Right)
   // or the Edge that the machine couldn't handle (Left)
   pub fn step_dir<P: Phase>(
     &mut self,
     state: P,
     t: &impl Turing<P, S>,
-  ) -> Either<Edge<P, S>, (P, Dir)> {
+  ) -> Either<Edge<P, S>, (P, Option<Dir>, u32)> {
     let edge = Edge(state, self.head);
-    let Trans { state, symbol, dir } = match t.step(edge) {
-      Some(trans) => trans,
+    let (state, symbol, mb_dir, steps) = match t.step(edge) {
+      Some(Step { state, symbol, dir, steps }) => (state, symbol, Some(dir), steps),
+      Some(Halt { state, symbol, mb_dir, steps }) => (state, symbol, mb_dir, steps),
+      Some(Infinite) => return Right((P::INFINITE, None, 0)),
       None => return Left(edge),
     };
     self.head = symbol;
-    self.move_dir(dir);
-    Right((state, dir))
+    if let Some(dir) = mb_dir {
+      self.move_dir(dir);
+    }
+    Right((state, mb_dir, steps))
   }
 
   // return either new state (Right) or the Edge that the machine couldn't handle (Left)
-  pub fn step<P: Phase>(&mut self, state: P, t: &impl Turing<P, S>) -> Either<Edge<P, S>, P> {
+  pub fn step<P: Phase>(
+    &mut self,
+    state: P,
+    t: &impl Turing<P, S>,
+  ) -> Either<Edge<P, S>, (P, u32)> {
     match self.step_dir(state, t) {
       Left(e) => Left(e),
-      Right((s, _d)) => Right(s),
+      Right((s, _d, steps)) => Right((s, steps)),
     }
   }
 
@@ -126,24 +134,33 @@ impl<S: TapeSymbol> Tape<S> {
     &mut self,
     machine: &impl Turing<P, S>,
     mut state: P,
-    num_steps: u32,
+    num_simulator_steps: u32,
     print: bool,
   ) -> (Either<Edge<P, S>, P>, u32) {
     /* return:
     0: from step
     1: the number of steps executed
      */
-    for step in 1..num_steps + 1 {
+    let mut machine_steps = 0;
+    for step in 1..num_simulator_steps + 1 {
       state = match self.step(state, machine) {
         Left(edge) => return (Left(edge), step),
-        Right(state) if state == P::HALT => return (Right(P::HALT), step),
-        Right(state) => state,
+        Right((state, steps)) => {
+          machine_steps += steps;
+          if state == P::HALT {
+            return (Right(P::HALT), machine_steps);
+          }
+          state
+        }
       };
       if print {
-        println!("step: {} state: {} tape: {}", step, state, &self);
+        println!(
+          "step: {} machine_step: {} state: {} tape: {}",
+          step, machine_steps, state, &self
+        );
       }
     }
-    (Right(state), num_steps)
+    (Right(state), machine_steps)
   }
 
   pub fn simulate_from_start<P: Phase>(
@@ -264,15 +281,16 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StepResult<P, S> {
   UndefinedEdge(Edge<P, S>),
-  FellOffTape(P, Dir),
-  Success(P, ReadShift),
+  SRInfinite,
+  FellOffTape(P, Dir, u32),
+  Success(P, ReadShift, u32),
 }
 use StepResult::*;
 
 impl<P, S> StepResult<P, S> {
-  pub fn expect_success(self) -> (P, ReadShift) {
+  pub fn expect_success(self) -> (P, ReadShift, u32) {
     match self {
-      Success(state, rs) => (state, rs),
+      Success(state, rs, steps) => (state, rs, steps),
       _ => panic!("success was expected"),
     }
   }
@@ -344,39 +362,56 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
   //todo: these 3 functions are duplicated, some chance we want to dedub with Tape, not sure
   pub fn step_extra_info<P: Phase>(&mut self, state: P, t: &impl Turing<P, S>) -> StepResult<P, S> {
     let edge = Edge(state, self.head);
-    let Trans { state, symbol, dir } = match t.step(edge) {
-      Some(trans) => trans,
+    let (state, symbol, mb_dir, steps) = match t.step(edge) {
+      Some(Infinite) => return SRInfinite,
+      Some(Halt { state, symbol, mb_dir, steps }) => (state, symbol, mb_dir, steps),
+      Some(Step { state, symbol, dir, steps }) => (state, symbol, Some(dir), steps),
       None => return UndefinedEdge(edge),
     };
     self.head = symbol;
-    match self.move_dir(dir) {
-      Some(()) => (),
-      None => return FellOffTape(state, dir),
-    };
-    let rs = ReadShift::rs_in_dir(dir);
-    Success(state, rs)
+    match mb_dir {
+      None => {
+        assert_eq!(state, P::HALT);
+        Success(P::HALT, ReadShift { l: 0, r: 0, s: 0 }, steps)
+      }
+      Some(dir) => {
+        match self.move_dir(dir) {
+          Some(()) => (),
+          None => return FellOffTape(state, dir, steps),
+        };
+        let rs = ReadShift::rs_in_dir(dir);
+        Success(state, rs, steps)
+      }
+    }
   }
 
   fn simulate<P: Phase>(
     &mut self,
     machine: &impl Turing<P, S>,
     mut state: P,
-    num_steps: u32,
+    num_simulator_steps: u32,
   ) -> (Either<Edge<P, S>, P>, u32) {
     /* return:
     0: from step
     1: the number of steps executed
      */
-    for step in 1..num_steps + 1 {
+    let mut machine_steps = 0;
+    for step in 1..num_simulator_steps + 1 {
       state = match self.step_extra_info(state, machine) {
         UndefinedEdge(edge) => return (Left(edge), step),
-        Success(state, _) if state == P::HALT => return (Right(P::HALT), step),
-        Success(state, _) => state,
-        FellOffTape(_, _) => panic!("unexpectedly fell off tape!"),
+        Success(state, _, steps) => {
+          machine_steps += steps;
+          if state == P::HALT {
+            return (Right(P::HALT), machine_steps);
+          }
+          state
+        }
+        SRInfinite => return (Right(P::INFINITE), machine_steps),
+        FellOffTape(_, _, _) => panic!("unexpectedly fell off tape!"),
       };
       println!("step: {} phase: {} tape: {}", step, state, self);
     }
-    (Right(state), num_steps)
+    (Right(state), machine_steps)
   }
 }
 
@@ -531,49 +566,49 @@ mod test {
     //1LC
     let mut nothing_tape = parse_tape("(T, 2) |>F<| ").unwrap().1;
     let res = nothing_tape.step_extra_info(State(2), &machine);
-    assert_eq!(res, Success(State(3), RS_LEFT));
+    assert_eq!(res, Success(State(3), RS_LEFT, 1));
     assert_eq!(nothing_tape, parse_tape("(T, 1) |>T<| (T, 1)").unwrap().1);
 
     //1LC
     let mut grow_tape = parse_tape(" |>F<| (F, 1)").unwrap().1;
     let res = grow_tape.step_extra_info(State(2), &machine);
-    assert_eq!(res, Success(State(3), RS_LEFT));
+    assert_eq!(res, Success(State(3), RS_LEFT, 1));
     assert_eq!(grow_tape, parse_tape(" |>F<| (T, 1) (F, 1)").unwrap().1);
 
     //0LB
     let mut shrink_tape = parse_tape("(T, 1) |>F<| ").unwrap().1;
     let res = shrink_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Success(State(2), RS_LEFT));
+    assert_eq!(res, Success(State(2), RS_LEFT, 1));
     assert_eq!(shrink_tape, parse_tape(" |>T<| ").unwrap().1);
 
     //0LB
     let mut both_tape = parse_tape(" |>F<| ").unwrap().1;
     let res = both_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Success(State(2), RS_LEFT));
+    assert_eq!(res, Success(State(2), RS_LEFT, 1));
     assert_eq!(both_tape, parse_tape(" |>F<| ").unwrap().1);
 
     //1RA
     let mut nothing2_tape = parse_tape("(T, 2) |>F<| (F, 1) (T, 1)").unwrap().1;
     let res = nothing2_tape.step_extra_info(State(3), &machine);
-    assert_eq!(res, Success(State(1), RS_RIGHT));
+    assert_eq!(res, Success(State(1), RS_RIGHT, 1));
     assert_eq!(nothing2_tape, parse_tape("(T, 3) |>F<| (T, 1)").unwrap().1);
 
     //0RA
     let mut grow2_tape = parse_tape("(T, 1) |>T<| ").unwrap().1;
     let res = grow2_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Success(State(1), RS_RIGHT));
+    assert_eq!(res, Success(State(1), RS_RIGHT, 1));
     assert_eq!(grow2_tape, parse_tape("(T, 1) (F, 1) |>F<| ").unwrap().1);
 
     //0RA
     let mut shrink2_tape = parse_tape(" |>T<| (T, 1)").unwrap().1;
     let res = shrink2_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Success(State(1), RS_RIGHT));
+    assert_eq!(res, Success(State(1), RS_RIGHT, 1));
     assert_eq!(shrink2_tape, parse_tape(" |>T<| ").unwrap().1);
 
     //0RA
     let mut both_tape = parse_tape(" |>T<| ").unwrap().1;
     let res = both_tape.step_extra_info(State(1), &machine);
-    assert_eq!(res, Success(State(1), RS_RIGHT));
+    assert_eq!(res, Success(State(1), RS_RIGHT, 1));
     assert_eq!(both_tape, parse_tape(" |>F<| ").unwrap().1);
   }
 

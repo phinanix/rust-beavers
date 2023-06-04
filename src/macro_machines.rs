@@ -126,7 +126,7 @@ impl<P: Phase, S: TapeSymbol, const N: usize> MacroMachine<P, S, N> {
     for step in 1..=step_limit {
       state = match tape.step_extra_info(state, machine) {
         UndefinedEdge(_) => todo!(), // d
-        FellOffTape(state, d) => {
+        FellOffTape(state, d, steps) => {
           return (
             state,
             d,
@@ -134,7 +134,8 @@ impl<P: Phase, S: TapeSymbol, const N: usize> MacroMachine<P, S, N> {
             step.try_into().unwrap(),
           ); // c
         }
-        Success(state, _) => state,
+        Success(state, _, steps) => state,
+        SRInfinite => todo!(), // smaller machine infinite
       };
       if state == P::HALT {
         todo!(); // b

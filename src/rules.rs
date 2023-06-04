@@ -862,33 +862,40 @@ pub fn detect_chain_rules<P: Phase, S: TapeSymbol>(machine: &impl Turing<P, S>) 
   let mut out = vec![];
   for state_in in machine.all_states() {
     for symbol_in in S::all_symbols() {
-      let Trans { state: state_out, symbol: symbol_out, dir } = machine
+      if let Trans::Step {
+        state: state_out,
+        symbol: symbol_out,
+        dir,
+        steps: _,
+      } = machine
         .step(Edge(state_in, symbol_in))
-        .expect("machine is defined");
-      if state_in == state_out {
-        let sym_var = AffineVar { n: 0, a: 1, var: Var(0) };
-        let half_tape_in = vec![(symbol_in, sym_var)];
-        let half_tape_out = vec![(symbol_out, sym_var)];
-        match dir {
-          L => {
-            let start = Config {
-              state: state_in,
-              left: half_tape_in,
-              head: symbol_in,
-              right: vec![],
-            };
-            let end = Config::new_from_avars(state_in, vec![], symbol_in, half_tape_out);
-            out.push(Rule { start, end });
-          }
-          R => {
-            let start = Config {
-              state: state_in,
-              left: vec![],
-              head: symbol_in,
-              right: half_tape_in,
-            };
-            let end = Config::new_from_avars(state_in, half_tape_out, symbol_in, vec![]);
-            out.push(Rule { start, end });
+        .expect("machine is defined")
+      {
+        if state_in == state_out {
+          let sym_var = AffineVar { n: 0, a: 1, var: Var(0) };
+          let half_tape_in = vec![(symbol_in, sym_var)];
+          let half_tape_out = vec![(symbol_out, sym_var)];
+          match dir {
+            L => {
+              let start = Config {
+                state: state_in,
+                left: half_tape_in,
+                head: symbol_in,
+                right: vec![],
+              };
+              let end = Config::new_from_avars(state_in, vec![], symbol_in, half_tape_out);
+              out.push(Rule { start, end });
+            }
+            R => {
+              let start = Config {
+                state: state_in,
+                left: vec![],
+                head: symbol_in,
+                right: half_tape_in,
+              };
+              let end = Config::new_from_avars(state_in, half_tape_out, symbol_in, vec![]);
+              out.push(Rule { start, end });
+            }
           }
         }
       }
@@ -1262,6 +1269,7 @@ pub fn prove_rule<P: Phase, S: TapeSymbol>(
       match one_rule_step(machine, &mut proving_tape, state, rulebook, step, verbose) {
         RSuccess(new_state, hm, rs) => (new_state, hm, rs),
         VarInfinite(_) => return None,
+        RSRInfinite => return None,
         RFellOffTape(_, _) => return None,
       };
     if new_state == P::HALT {
@@ -1662,6 +1670,7 @@ phase: A  (T, 1 + 1*x_0) |>T<| (F, 1)";
     let new_rule_state = match rule_result {
       RSuccess(state, _, _) => state,
       VarInfinite(_) => panic!("ran forever?"),
+      RSRInfinite => panic!("ran forever?"),
       RFellOffTape(_, _) => panic!("fell off tape unexpectedly"),
     };
 

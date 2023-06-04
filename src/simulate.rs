@@ -16,6 +16,7 @@ use std::cmp::Ordering::*;
 
 pub enum RuleStepResult<P, C> {
   VarInfinite(Var),
+  RSRInfinite,
   RFellOffTape(P, Dir),
   RSuccess(P, HashMap<Var, C>, Either<ReadShift, ConsumeGrow<C>>),
 }
@@ -39,8 +40,9 @@ pub fn one_rule_step<P: Phase, S: TapeSymbol, C: TapeCount>(
     }
     None => match exptape.step_extra_info(state, machine) {
       UndefinedEdge(_edge) => unreachable!("machine is defined"),
-      FellOffTape(state, dir) => return RFellOffTape(state, dir),
-      Success(state, rs) => (state, HashMap::default(), Left(rs)),
+      SRInfinite => return RSRInfinite,
+      FellOffTape(state, dir, step) => return RFellOffTape(state, dir),
+      Success(state, rs, step) => (state, HashMap::default(), Left(rs)),
     },
   };
   if verbose {
@@ -60,6 +62,7 @@ pub fn simulate_using_rules<P: Phase, S: TapeSymbol, C: TapeCount>(
   for step in 1..num_steps + 1 {
     state = match one_rule_step(machine, &mut exptape, state, rulebook, step, verbose) {
       VarInfinite(_var) => return (P::INFINITE, step, exptape),
+      RSRInfinite => return (P::INFINITE, step, exptape),
       RFellOffTape(_, _) => panic!("fell off tape unexpectedly"),
       RSuccess(state, _, _) => state,
     };
@@ -305,6 +308,12 @@ pub fn proving_rules_step<P: Phase, S: TapeSymbol>(
       VarInfinite(_var) => {
         if verbose {
           println!("proved machine runs forever using a rule");
+        }
+        return P::INFINITE;
+      }
+      RSRInfinite => {
+        if verbose {
+          println!("proved machine runs forever using a trans");
         }
         return P::INFINITE;
       }

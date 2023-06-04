@@ -104,13 +104,29 @@ impl<P: Phase, S: TapeSymbol> Edge<P, S> {
 // by convention, state 0 is halting. you can theoretically do anything when you halt but the
 // convention is to go R and write a 1.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Trans<P, S> {
-  pub state: P,
-  pub symbol: S,
-  pub dir: Dir,
+pub enum Trans<P, S> {
+  Step {
+    state: P,
+    symbol: S,
+    dir: Dir,
+    steps: u32,
+  },
+  Halt {
+    state: P,
+    symbol: S,
+    mb_dir: Option<Dir>,
+    steps: u32,
+  },
+  Infinite,
 }
+use Trans::*;
 
-pub const HALT_TRANS: Trans<State, Bit> = Trans { state: State::HALT, symbol: Bit(true), dir: R };
+pub const HALT_TRANS: Trans<State, Bit> = Halt {
+  state: State::HALT,
+  symbol: Bit(true),
+  mb_dir: Some(R),
+  steps: 1,
+};
 
 pub const AB: &str = "HABCDEFG";
 
@@ -120,7 +136,7 @@ impl Trans<State, Bit> {
     for state in 1..=max_state {
       for symbol in Bit::all_symbols() {
         for dir in [L, R] {
-          out.push(Trans { state: State(state), symbol, dir })
+          out.push(Step { state: State(state), symbol, dir, steps: 1 })
         }
       }
     }
@@ -151,7 +167,15 @@ impl Trans<State, Bit> {
           .expect("state was not a letter")
           .try_into()
           .unwrap();
-        return Some(Trans { state: State(state), symbol, dir });
+        if state == 0 {
+          return Some(Halt {
+            state: State::HALT,
+            symbol,
+            mb_dir: Some(dir),
+            steps: 1,
+          });
+        }
+        return Some(Step { state: State(state), symbol, dir, steps: 1 });
       }
       _ => panic!("{} is not a valid trans", inp),
     }
@@ -159,7 +183,12 @@ impl Trans<State, Bit> {
 
   fn to_compact_format(&self) -> String {
     match self {
-      &Trans { state: State(state), symbol: Bit(symbol), dir } => {
+      &Step {
+        state: State(state),
+        symbol: Bit(symbol),
+        dir,
+        steps: _,
+      } => {
         let symbol_chr = if symbol { '1' } else { '0' };
         //todo factor this into dir
         let dir_chr = if dir == L { 'L' } else { 'R' };
@@ -171,6 +200,27 @@ impl Trans<State, Bit> {
         out.push(state_chr);
         out
       }
+
+      &Halt {
+        state: State::HALT,
+        symbol: Bit(symbol),
+        mb_dir: Some(dir),
+        steps: _,
+      } => {
+        let symbol_chr = if symbol { '1' } else { '0' };
+        //todo factor this into dir
+        let dir_chr = if dir == L { 'L' } else { 'R' };
+        let state_chr = 'H';
+        let mut out = String::new();
+        out.push(symbol_chr);
+        out.push(dir_chr);
+        out.push(state_chr);
+        out
+      }
+      &Halt { state: not_halt, symbol: _, mb_dir: _, steps: _ } => {
+        unreachable!("halt with not halt {}", not_halt)
+      }
+      &Infinite => unreachable!("SmallBinMachine has no infinite trans"),
     }
   }
 }
@@ -221,7 +271,12 @@ impl SmallBinMachine {
   }
 
   pub fn start_machine(num_states: u8, first_write: Bit) -> Self {
-    let trans = Trans { state: State(2), symbol: first_write, dir: R };
+    let trans = Step {
+      state: State(2),
+      symbol: first_write,
+      dir: R,
+      steps: 1,
+    };
     let mut table = smallvec![Some(trans)];
     for _ in 1..(num_states * 2) {
       table.push(None);
@@ -309,10 +364,10 @@ impl SmallBinMachine {
     used_states.insert(State::START);
     for trans in self.table.iter() {
       match trans {
-        Some(Trans { state, symbol: _, dir: _ }) => {
+        Some(Step { state, symbol: _, dir: _, steps: _ }) => {
           used_states.insert(*state);
         }
-        None => (),
+        _ => (),
       }
     }
     let unused_states = self
@@ -424,7 +479,12 @@ mod test {
 
   #[test]
   fn trans_from_string() {
-    let trans = Trans { state: State(3), dir: L, symbol: Bit(true) };
+    let trans = Step {
+      state: State(3),
+      dir: L,
+      symbol: Bit(true),
+      steps: 1,
+    };
     let trans_str = "1LC";
     assert_eq!(Some(trans), Trans::from_compact_format(trans_str));
     assert_eq!(trans_str, Trans::to_compact_format(&trans));
@@ -435,9 +495,24 @@ mod test {
     let machine_str = "1RB0RB_1LA---";
     let num_states = 2;
     let table = smallvec![
-      Some(Trans { state: State(2), dir: R, symbol: Bit(true) }),
-      Some(Trans { state: State(2), dir: R, symbol: Bit(false) }),
-      Some(Trans { state: State(1), dir: L, symbol: Bit(true) }),
+      Some(Step {
+        state: State(2),
+        dir: R,
+        symbol: Bit(true),
+        steps: 1
+      }),
+      Some(Step {
+        state: State(2),
+        dir: R,
+        symbol: Bit(false),
+        steps: 1
+      }),
+      Some(Step {
+        state: State(1),
+        dir: L,
+        symbol: Bit(true),
+        steps: 1
+      }),
       None
     ];
     let machine = SmallBinMachine { num_states, table };

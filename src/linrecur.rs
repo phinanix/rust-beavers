@@ -34,17 +34,19 @@ where
   while steps_taken < num_steps {
     state = match tape.step_dir(state, machine) {
       Left(_unknown_edge) => unreachable!("machine is defined"),
-      Right((new_state, _dir)) if new_state == P::HALT => {
-        return Halt { num_steps: steps_taken + 1 }
-      }
-      Right((new_state, dir)) => {
-        cur_displacement += dir.to_displacement();
+      Right((new_state, mb_dir, steps)) => {
+        steps_taken += steps;
+        if new_state == P::HALT {
+          return Halt { num_steps: steps_taken + 1 };
+        }
+        //unwrap justified because we didn't halt
+        cur_displacement += mb_dir.unwrap().to_displacement();
         leftmost = leftmost.min(cur_displacement);
         rightmost = rightmost.max(cur_displacement);
         new_state
       }
     };
-    steps_taken += 1;
+
     if to_print {
       println!("steps: {} state: {:?} tape: {}", steps_taken, state, &tape);
     }
