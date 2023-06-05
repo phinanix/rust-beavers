@@ -43,7 +43,7 @@ pub enum MacroState<P> {
 use MacroState::*;
 
 impl<P: Phase> MacroState<P> {
-  fn get_state(&self) -> P {
+  pub fn get_state(&self) -> P {
     match self {
       &Halted(p, _) => p,
       &NotHalted(p, _) => p,

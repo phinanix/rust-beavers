@@ -7,7 +7,7 @@ use crate::{
     RuleProof::DirectSimulation, Rulebook, TapeCount, Var,
   },
   tape::{ExpTape, Signature, StepResult::*},
-  turing::{Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing},
+  turing::{Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT},
 };
 use defaultmap::{defaulthashmap, DefaultHashMap};
 use either::Either::{self, Left, Right};
@@ -332,9 +332,9 @@ pub fn proving_rules_step<P: Phase, S: TapeSymbol>(
     return state;
   }
 
-  let rules = detect_rules(step, state, &exptape, signatures, &readshifts, true);
+  let rules = detect_rules(step, state, &exptape, signatures, &readshifts, verbose);
   for rule in rules {
-    if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 20, -5, false) {
+    if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 50, -5, verbose) {
       if pf != DirectSimulation(1) {
         if let Some(chained_rule) = chain_rule(&final_rule) {
           if verbose {
@@ -418,6 +418,26 @@ pub fn aggregate_and_display_proving_res(results: &Vec<(SmallBinMachine, State, 
   println!(
     "halted: {} infinite: {} inconclusive: {}",
     halt_count, inf_count, inconclusive_count
+  );
+}
+
+pub fn aggregate_and_display_macro_proving_res<const N: usize>(
+  results: &Vec<(SmallBinMachine, State, u32, usize)>,
+) {
+  let mut halt_count = 0;
+  let mut inf_counts: [u32; N] = [0; N];
+  let mut inconclusive_count = 0;
+  for (_m, state, _steps, macro_size) in results {
+    match *state {
+      HALT => halt_count += 1,
+      State::INFINITE => inf_counts[*macro_size - 1] += 1,
+      _ => inconclusive_count += 1,
+    }
+  }
+  let total_infinite: u32 = inf_counts.iter().sum();
+  println!(
+    "halted: {} infinite: {} inconclusive: {}\ninf_counts: {:?}",
+    halt_count, total_infinite, inconclusive_count, inf_counts,
   );
 }
 

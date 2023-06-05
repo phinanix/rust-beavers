@@ -350,7 +350,7 @@ impl<P: Phase, S: TapeSymbol> Rulebook<P, S> {
   pub fn new(num_states: u8) -> Self {
     let mut sv = smallvec![];
     //todo: multisymbol
-    for _ in 0..2 * num_states {
+    for _ in 0..Edge::<P, S>::num_edges(num_states) {
       sv.push(vec![]);
     }
     Self(num_states, sv)
@@ -359,7 +359,7 @@ impl<P: Phase, S: TapeSymbol> Rulebook<P, S> {
   pub fn add_rule(&mut self, rule: Rule<P, S>) {
     let consumes_all = rule_runs_forever_if_consumes_all(&rule);
     if consumes_all {
-      dbg!(&rule);
+      // dbg!(&rule);
     }
     self.1[rule.start_edge_index()].push((rule, consumes_all));
   }

@@ -37,7 +37,7 @@ where
       Right((new_state, mb_dir, steps)) => {
         steps_taken += steps;
         if new_state.halted() {
-          return Halt { num_steps: steps_taken + 1 };
+          return Halt { num_steps: steps_taken };
         }
         //unwrap justified because we didn't halt
         cur_displacement += mb_dir.unwrap().to_displacement();

@@ -252,6 +252,20 @@ pub fn undecided_size_4_random() -> Vec<&'static str> {
   ]
 }
 
+pub fn decideable_by_macro() -> Vec<&'static str> {
+  /*
+  1 - TFF / TFF bouncer
+  4 - TF / TF bouncer
+  7 - TT / FT bouncer (2-pass)
+   */
+  let size_4_random_100 = undecided_size_4_random_100();
+  vec![
+    size_4_random_100[1],
+    size_4_random_100[4],
+    size_4_random_100[7],
+  ]
+}
+
 pub fn undecided_size_4_random_100() -> Vec<&'static str> {
   /*
   100 random machines chosen from the same set of 20747 for additional categorization
@@ -544,7 +558,7 @@ phase: D  (T, 1 + x) (F, 1) |>F<| (T, x)
 into:
 phase: D  (T, 1) (F, 1) |>F<| (T, 2*x)
  */
-const MACHINES: [(&str, &str); 9] = [
+const MACHINES: [(&str, &str); 10] = [
   ("bb2", "1RB1LB_1LA1RH"),
   ("bb3", "1RB1RH_0RC1RB_1LC1LA"),
   // ("bb4", ""),
@@ -555,6 +569,7 @@ const MACHINES: [(&str, &str); 9] = [
   ("tailEatingDragonFast", "1RB0RD_1RC1RH_0LA1RA_1LC1RD"),
   ("tailEatingDragonSlow", "1RB1LA_1RC0RD_1LA1RH_0LA1RD"),
   ("ternaryCounter", "1RB0LC_1LA1RA_0RA0LD_1RH1LC"),
+  ("4state_halter", "1RB1RH_1RC1RA_1RD1LB_1LD1RC"),
 ];
 
 pub fn get_machine(name: &str) -> SmallBinMachine {

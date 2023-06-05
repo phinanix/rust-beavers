@@ -7,6 +7,7 @@ use std::{collections::HashSet, fs};
 
 use crate::{
   linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
+  macro_machines::MacroMachine,
   rules::{detect_chain_rules, Rulebook},
   simulate::{aggregate_and_display_proving_res, simulate_proving_rules},
   tape::Tape,
@@ -15,11 +16,14 @@ use crate::{
 };
 use either::Either::Right;
 use itertools::Itertools;
+use macro_machines::MacroState;
 use rand::prelude::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
+use simulate::aggregate_and_display_macro_proving_res;
 use tape::tnf_simulate;
 use turing::{Bit, SmallBinMachine, Turing};
+use turing_examples::decideable_by_macro;
 
 mod chain;
 mod linrecur;
@@ -144,6 +148,32 @@ fn run_machine(machine: &SmallBinMachine) {
   simulate_proving_rules(machine, num_steps, &mut rulebook, true);
 }
 
+fn run_machine_macro<const N: usize>(machine: &SmallBinMachine) {
+  println!(
+    "\nrunning machine: {}\nat macro size: {}",
+    machine.to_compact_format(),
+    N
+  );
+  let macro_machine: MacroMachine<_, _, N> = MacroMachine::new(machine.clone());
+  let chain_rules = detect_chain_rules(&macro_machine);
+  println!("{} chain rules:", chain_rules.len());
+  for (i, chain_rule) in chain_rules.iter().enumerate() {
+    println!("{}: {}", i, chain_rule);
+  }
+  println!();
+
+  let mut rulebook = Rulebook::new(macro_machine.num_states());
+  rulebook.add_rules(chain_rules);
+  let num_steps = 30;
+  Tape::simulate_from_start(machine, num_steps, true);
+  // println!("vanilla");
+  // ExpTape::simulate_from_start(machine, num_steps);
+  // println!("using rules");
+  // simulate_using_rules::<Bit, u32>(machine, num_steps, &rulebook, true);
+  println!("\n\nproving rules");
+  simulate_proving_rules(&macro_machine, num_steps, &mut rulebook, true);
+}
+
 fn get_undecided(res: Vec<(SmallBinMachine, LRResult)>) -> Vec<SmallBinMachine> {
   let verbose = true;
   res
@@ -174,7 +204,7 @@ fn prove_with_rules(
 ) -> Vec<SmallBinMachine> {
   let mut results = vec![];
   for machine in machines {
-    println!("working on machine {}", machine.to_compact_format());
+    // println!("working on machine {}", machine.to_compact_format());
     let mut rulebook = Rulebook::chain_rulebook(&machine);
     let (new_state, steps) = simulate_proving_rules(&machine, num_steps, &mut rulebook, false);
     if new_state == State::INFINITE && verbose {
@@ -192,6 +222,60 @@ fn prove_with_rules(
   results
     .into_iter()
     .filter_map(|(m, s, _steps)| {
+      if s != State::INFINITE && s != HALT {
+        Some(m)
+      } else {
+        None
+      }
+    })
+    .collect_vec()
+}
+
+const macro_sizes: [usize; 2] = [2, 3];
+
+fn prove_with_macros(
+  machines: Vec<SmallBinMachine>,
+  num_steps: u32,
+  verbose: bool,
+) -> Vec<SmallBinMachine> {
+  // machine, final state, num steps, macro size used
+  let mut results: Vec<(SmallBinMachine, State, u32, usize)> = vec![];
+  for machine in machines {
+    // println!("working on machine {}", machine.to_compact_format());
+    let mut rulebook = Rulebook::chain_rulebook(&machine);
+    let (new_state, steps) = simulate_proving_rules(&machine, num_steps, &mut rulebook, false);
+    if new_state == State::INFINITE && verbose {
+      println!("\n{}", machine.to_compact_format());
+      simulate_proving_rules(
+        &machine,
+        num_steps,
+        &mut Rulebook::chain_rulebook(&machine),
+        true,
+      );
+    }
+    if new_state == State::INFINITE || new_state == HALT {
+      results.push((machine, new_state, steps, 1));
+    } else {
+      let macro_machine: MacroMachine<State, Bit, 2> = MacroMachine::new(machine.clone());
+      let mut rulebook = Rulebook::chain_rulebook(&macro_machine);
+      let (new_state, steps) =
+        simulate_proving_rules(&macro_machine, num_steps, &mut rulebook, false);
+      if new_state == MacroState::INFINITE || new_state.halted() {
+        results.push((machine, new_state.get_state(), steps, 2));
+      } else {
+        let macro_machine: MacroMachine<State, Bit, 3> = MacroMachine::new(machine.clone());
+        let mut rulebook = Rulebook::chain_rulebook(&macro_machine);
+        let (new_state, steps) =
+          simulate_proving_rules(&macro_machine, num_steps, &mut rulebook, false);
+
+        results.push((machine, new_state.get_state(), steps, 3));
+      }
+    }
+  }
+  aggregate_and_display_macro_proving_res::<3>(&results);
+  results
+    .into_iter()
+    .filter_map(|(m, s, _steps, _macro_size)| {
       if s != State::INFINITE && s != HALT {
         Some(m)
       } else {
@@ -251,7 +335,7 @@ fn scan_from_machine(
     "{} had no halt trans, leaving {} to be decided",
     no_halt_trans_count, remaining_undecided_len,
   );
-  let final_undecided = prove_with_rules(undecided_with_halt, num_rule_steps, false);
+  let final_undecided = prove_with_macros(undecided_with_halt, num_rule_steps, false);
   if let Some(filename) = mb_undecided_file {
     dump_machines_to_file(final_undecided.clone(), filename).expect("file should be openable");
   }
@@ -312,67 +396,23 @@ fn scan_from_machine(
 }
 
 fn main() {
-  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  // let num_lr_steps = 1500;
-  // let num_rule_steps = 100;
-  // scan_from_machine(
-  //   &first_machine,
-  //   num_lr_steps,
-  //   num_rule_steps,
-  //   // Some("size3_holdouts_2_may.txt"),
-  //   // Some("size4_holdouts_31_may_29e2280.txt"),
-  //   None,
-  // );
+  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  let num_lr_steps = 1500;
+  let num_rule_steps = 100;
+  scan_from_machine(
+    &first_machine,
+    num_lr_steps,
+    num_rule_steps,
+    // Some("size3_holdouts_2_may.txt"),
+    // Some("size4_holdouts_31_may_29e2280.txt"),
+    None,
+  );
 
-  // investigating runs_forever behavior
-  // let machine = SmallBinMachine::from_compact_format("1RB1LC_0LA1RH_1RD0LC_1RC1RA");
-  // let chain_update = decided_by_chain_update_31may();
-  // let machine = SmallBinMachine::from_compact_format(chain_update[0]);
-  // run_machine(&machine);
-
-  let machine = get_machine("tailEatingDragonFast"); // 70 to 73, for example
-
-  // let undecided_size_4_random = strs_to_machine(undecided_size_4_random());
-  // let undecided_size_4_random_100 = strs_to_machine(undecided_size_4_random_100());
-  // let decrease_rules_make_worse = decrease_rules_make_worse();
-  // // 11/30 proven: 0, 1, 2, 4, 6, 9, 14, 15, 19, 20, 29
-  // list_which_proven(&undecided_size_4_random, 100, false);
-  // // give ups: 18
-  // // 7/30 proven: 0, 3, 13, 16, 17, 20, 21,
-  // list_which_proven(&undecided_size_4_random_100, 100, false);
-
-  /*
-  5  - couldn't chain
-  15 - couldn't chain
-  22 - couldn't chain
-  23 - couldn't chain
-  9  - couldn't chain
-  19 - couldn't chain
-  28 - couldn't chain
-   */
-  // chainrule fails: 5, 15, 22, 23
-  // other fails: 9, 19, 28
-  // readshift both ways: 0, 17
-  // for i in [5, 15, 22] {
-  //   //, 23, 9, 19, 28] {
-
-  // let m_str = decrease_rules_make_worse.get(11).unwrap();
-  // let machine = SmallBinMachine::from_compact_format(m_str);
-  // let machine = undecided_size_4_random_100.get(18).unwrap();
-
-  dbg!(machine.to_compact_format());
-  run_machine(&machine);
-
-  // }
-
-  /*
-  machines to investigate:
-  - the 16 that fail to be proven with >1 decrease
-  - what exactly is failing in "failure to guess" eg random_100 at 5,9,15,19,22,23,28
-     or random at 11,12,13,18,23
-   */
-
-  // scan_3_dregs();
+  // run_machine(&get_machine("4state_halter"));
+  // let decideable_by_macro = decideable_by_macro();
+  // run_machine_macro::<2>(&SmallBinMachine::from_compact_format(
+  //   decideable_by_macro[2],
+  // ));
 }
 
 /*

@@ -108,13 +108,17 @@ pub struct Edge<P, S>(pub P, pub S);
 
 impl<P: Phase, S: TapeSymbol> Edge<P, S> {
   pub fn edge_index(&self) -> usize {
-    // todo!();
     let &Self(phase, symbol) = self;
     //index by state, then by symbol, so output is state*num_symbols + index_symbol
     let symbols = S::all_symbols();
-    let num_symbols = symbols.len();
+    let num_symbols = S::num_symbols();
     let symbol_index = symbols.into_iter().position(|s| s == symbol).unwrap();
     return (phase.as_byte() - 1) as usize * num_symbols + symbol_index;
+  }
+
+  pub fn num_edges(num_states: u8) -> usize {
+    let num_symbols = S::num_symbols();
+    num_symbols * usize::from(num_states)
   }
 }
 
@@ -458,7 +462,7 @@ impl SmallBinMachine {
     // example compact format
     // 1RB0RD_1LB1LC_1RC1LD_1RE0LD_1RA---
     // groups of 3 make a transition, underscores between pairs, triple --- for undefined
-    assert_eq!(inp.len() % 7, 6);
+    assert_eq!(inp.len() % 7, 6, "{} not right len", inp);
     let num_states: usize = (inp.len() + 1) / 7;
     let mut table = smallvec![];
     for state in 0..num_states {
