@@ -332,9 +332,9 @@ pub fn proving_rules_step<P: Phase, S: TapeSymbol>(
     return state;
   }
 
-  let rules = detect_rules(step, state, &exptape, signatures, &readshifts, verbose);
+  let rules = detect_rules(step, state, &exptape, signatures, &readshifts, false);
   for rule in rules {
-    if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 50, -5, verbose) {
+    if let Some((final_rule, pf)) = prove_rule(machine, rule, rulebook, 50, -5, false) {
       if pf != DirectSimulation(1) {
         if let Some(chained_rule) = chain_rule(&final_rule) {
           if verbose {

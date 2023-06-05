@@ -139,7 +139,7 @@ fn run_machine(machine: &SmallBinMachine) {
   let mut rulebook = Rulebook::new(machine.num_states());
   rulebook.add_rules(chain_rules);
   let num_steps = 85;
-  Tape::simulate_from_start(machine, num_steps, true);
+  Tape::simulate_from_start(machine, num_steps * 3, true);
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
   // println!("using rules");
@@ -396,17 +396,22 @@ fn scan_from_machine(
 }
 
 fn main() {
-  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  let num_lr_steps = 1500;
-  let num_rule_steps = 100;
-  scan_from_machine(
-    &first_machine,
-    num_lr_steps,
-    num_rule_steps,
-    // Some("size3_holdouts_2_may.txt"),
-    // Some("size4_holdouts_31_may_29e2280.txt"),
-    None,
-  );
+  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // let num_lr_steps = 1500;
+  // let num_rule_steps = 200;
+  // scan_from_machine(
+  //   &first_machine,
+  //   num_lr_steps,
+  //   num_rule_steps,
+  //   // Some("size3_holdouts_2_may.txt"),
+  //   // Some("size4_holdouts_31_may_29e2280.txt"),
+  //   None,
+  // );
+
+  //give up 5jun23
+  run_machine(&SmallBinMachine::from_compact_format(
+    "1RB0RB_1LC1RB_1RD1LC_1RH1RA",
+  ));
 
   // run_machine(&get_machine("4state_halter"));
   // let decideable_by_macro = decideable_by_macro();
