@@ -113,6 +113,45 @@ fn collate<S: TapeSymbol>(
   }
 }
 
+fn collate2<S: TapeSymbol>(
+  (f_sym, f_num): (S, u32),
+  (s_sym, s_num): (S, u32),
+) -> ((S, AffineVar), (S, AffineVar), bool) {
+  // bool is was there a var used
+  assert_eq!(f_sym, s_sym);
+  match f_num.cmp(&s_num) {
+    Less => (
+      (f_sym, AffineVar { n: 0, a: 1, var: Var(0) }),
+      (
+        s_sym,
+        AffineVar {
+          n: s_num.checked_sub(f_num).expect("we used cmp"),
+          a: 1,
+          var: Var(0),
+        },
+      ),
+      true,
+    ),
+    Equal => (
+      (f_sym, AffineVar::constant(f_num)),
+      (s_sym, AffineVar::constant(s_num)),
+      false,
+    ),
+    Greater => (
+      (
+        f_sym,
+        AffineVar {
+          n: f_num.checked_sub(s_num).expect("we used cmp"),
+          a: 1,
+          var: Var(0),
+        },
+      ),
+      (s_sym, AffineVar { n: 0, a: 1, var: Var(0) }),
+      true,
+    ),
+  }
+}
+
 fn get_n_rle<S: TapeSymbol>(slice: &[(S, u32)], n: u32) -> Vec<(S, u32)> {
   //gets the last n things from an RLE encoded slice
   let mut num_take = 0;
@@ -168,6 +207,60 @@ fn cut_exptape<S: TapeSymbol>(
   }
 }
 
+fn conforms_to_linear(m: u32, b: i32, (x, y): (u32, u32)) -> bool {
+  return i32::try_from(y).unwrap() == i32::try_from(m * x).unwrap() + b;
+}
+
+fn i32f(x: u32) -> i32 {
+  x.try_into().unwrap()
+}
+
+fn u32f(x: i32) -> u32 {
+  x.try_into().unwrap()
+}
+
+fn detect_linear_relation(pairs: &[(u32, u32)]) -> Option<(AffineVar, AffineVar)> {
+  // pairs has to be at least length 2, or we panic
+  // if y = mx + b then m = y_2 - y_1 / (x_2 - x_1) and b = y_1 - mx_1
+  let (x_1, y_1) = pairs[0];
+  let (x_2, y_2) = pairs[1];
+  let rise = i32f(y_2) - i32f(y_1);
+  let run = i32f(x_2) - i32f(x_1);
+  //todo run == 0
+  if rise % run != 0 {
+    return None;
+  }
+  let m = rise / run;
+  let m = if m < 0 {
+    return None;
+  } else if m == 0 {
+    // maybe revisit?
+    return None;
+  } else {
+    u32f(m)
+  };
+
+  //todo m == 0
+  let b: i32 = i32::try_from(y_1).unwrap() - i32::try_from(m * x_1).unwrap();
+  if !pairs.iter().all(|&pair| conforms_to_linear(m, b, pair)) {
+    return None;
+  }
+  if b >= 0 {
+    Some((
+      AffineVar { n: 0, a: 1, var: Var(0) },
+      AffineVar { n: b.try_into().unwrap(), a: m, var: Var(0) },
+    ))
+  } else {
+    let neg_b: u32 = (-b).try_into().unwrap();
+    let c = neg_b.div_ceil(m); // c >= -b/m => mc + b >= 0
+    let k = m * c - neg_b; // positive by previous
+    Some((
+      AffineVar { n: c, a: 1, var: Var(0) },
+      AffineVar { n: k, a: m, var: Var(0) },
+    ))
+  }
+}
+
 fn make_side<S: TapeSymbol>(
   start: &Vec<(S, u32)>,
   end: &Vec<(S, u32)>,
@@ -198,8 +291,10 @@ fn make_side<S: TapeSymbol>(
 }
 
 pub fn detect_rule<P: Phase, S: TapeSymbol>(
-  history: &Vec<(u32, P, ExpTape<S, u32>)>,
-  rs: ReadShift,
+  // history: &Vec<(u32, P, ExpTape<S, u32>)>,
+  // rs: ReadShift,
+  (phase_in, et_in): (P, ExpTape<S, u32>),
+  (phase_out, et_out): (P, ExpTape<S, u32>),
   verbose: bool,
 ) -> Vec<Rule<P, S>> {
   /* we're detecting an additive rule, so any numbers that don't change, we guess don't change
@@ -208,21 +303,21 @@ pub fn detect_rule<P: Phase, S: TapeSymbol>(
   1) make vectors of the change amount
   2) zip those vectors with the signatures and turn them into configs
   */
-  let ReadShift { l, r, s } = ReadShift::normalize(rs);
+  // let ReadShift { l, r, s } = ReadShift::normalize(rs);
 
-  assert!(l <= 0, "{:?}", rs);
-  assert!(r >= 0, "{:?}", rs);
-  let second_last = &history[history.len() - 2];
-  let et_in = cut_exptape(&second_last.2, l, r);
+  // assert!(l <= 0, "{:?}", rs);
+  // assert!(r >= 0, "{:?}", rs);
+  // let second_last = &history[history.len() - 2];
+  // let et_in = cut_exptape(&second_last.2, l, r);
 
-  let last = &history[history.len() - 1];
-  if verbose {
-    println!(
-      "detecting rule from step {} to step {}",
-      second_last.0, last.0
-    );
-  }
-  let et_out = cut_exptape(&last.2, l - s, r - s);
+  // let last = &history[history.len() - 1];
+  // if verbose {
+  //   println!(
+  //     "detecting rule from step {} to step {}",
+  //     second_last.0, last.0
+  //   );
+  // }
+  // let et_out = cut_exptape(&last.2, l - s, r - s);
 
   if verbose {
     println!("detecting rule from\n{}\nto\n{}", &et_in, &et_out);
@@ -247,14 +342,36 @@ pub fn detect_rule<P: Phase, S: TapeSymbol>(
   // }
   let rule = Rule {
     start: Config {
-      state: second_last.1,
+      state: phase_in,
       left: start_left,
       head: start_head,
       right: start_right,
     },
-    end: Config::new_from_avars(last.1, end_left, end_head, end_right),
+    end: Config::new_from_avars(phase_out, end_left, end_head, end_right),
   };
   vec![rule]
+}
+
+pub fn make_example_from_history<P: Phase, S: TapeSymbol>(
+  history: &[(u32, P, ExpTape<S, u32>)],
+  readshifts: &[ReadShift],
+  start_ind: usize,
+  end_ind: usize,
+) -> ((P, ExpTape<S, u32>), (P, ExpTape<S, u32>)) {
+  let start_step = history[start_ind].0 as usize;
+  let end_step = history[end_ind].0 as usize;
+  let readshift_range = &readshifts[start_step..end_step];
+  let rs @ ReadShift { l, r, s } = ReadShift::normalize(ReadShift::combine_many(readshift_range));
+
+  assert!(l <= 0, "{:?}", rs);
+  assert!(r >= 0, "{:?}", rs);
+  let start = &history[start_ind];
+  let et_in = cut_exptape(&start.2, l, r);
+
+  let end = &history[end_ind];
+  let et_out = cut_exptape(&end.2, l - s, r - s);
+
+  ((start.1, et_in), (end.1, et_out))
 }
 
 pub fn detect_rules<P: Phase, S: TapeSymbol>(
@@ -262,25 +379,22 @@ pub fn detect_rules<P: Phase, S: TapeSymbol>(
   state: P,
   exptape: &ExpTape<S, u32>,
   signatures: &mut DefaultHashMap<(P, Signature<S>), Vec<(u32, P, ExpTape<S, u32>)>>,
-  readshifts: &Vec<ReadShift>,
+  readshifts: &[ReadShift],
   verbose: bool,
 ) -> Vec<Rule<P, S>> {
   let cur_sig_vec = &mut signatures[(state, exptape.signature())];
   cur_sig_vec.push((step, state, exptape.clone()));
   if cur_sig_vec.len() > 1 {
-    let steps = cur_sig_vec.iter().map(|(s, _, _)| s).collect_vec();
-    let second_last_step = *steps[steps.len() - 2] as usize;
-    let last_step = *steps[steps.len() - 1] as usize;
-    let readshift_range = &readshifts[second_last_step..last_step];
-    let readshift = ReadShift::combine_many(readshift_range);
-    if verbose {
-      println!("detection rs: {:?}", readshift);
-    }
-    let rules = detect_rule(cur_sig_vec, readshift, false);
+    let start_ind = cur_sig_vec.len() - 2;
+    let end_ind = cur_sig_vec.len() - 1;
+
+    let (config_in, config_out) =
+      make_example_from_history(cur_sig_vec, readshifts, start_ind, end_ind);
+    let rules = detect_rule(config_in, config_out, false);
     if rules.len() > 0 && verbose {
       println!(
         "using steps: {:?} detected rule:\n{}\n",
-        steps,
+        cur_sig_vec.iter().map(|(s, _, _)| s).collect_vec(),
         rules.first().unwrap()
       );
     }
@@ -445,7 +559,7 @@ pub fn aggregate_and_display_macro_proving_res<const N: usize>(
 mod test {
 
   use crate::{
-    parse::{parse_exact, parse_tape_side},
+    parse::{parse_avar, parse_exact, parse_tape_side},
     turing_examples::undecided_size_3,
   };
 
@@ -545,5 +659,38 @@ mod test {
 
     let ans1 = parse_exact(parse_tape_side("(F, 3) (T, 3) (F, 5) (T, 1) (F, 6) (T, 2)"));
     assert_eq!(get_n_rle(&tape_half, 20), ans1);
+  }
+
+  fn detect_linear_relation_driver(pairs: &[(u32, u32)], ans: Option<(&str, &str)>) {
+    let ans = ans.map(|(l, r)| (parse_exact(parse_avar(l)), parse_exact(parse_avar(r))));
+    assert_eq!(detect_linear_relation(pairs), ans);
+  }
+  #[test]
+  fn detect_linear_relation_test() {
+    // x + 2
+    let pairs = [(3, 5), (4, 6)];
+    detect_linear_relation_driver(&pairs, Some(("0 + 1*x_0", "2 + 1*x_0")));
+
+    let wrong_pairs = [(3, 5), (4, 6), (5, 7), (6, 9)];
+    detect_linear_relation_driver(&wrong_pairs, None);
+
+    // 3x + 5
+    let pairs = [(2, 11), (8, 29)];
+    detect_linear_relation_driver(&pairs, Some(("0 + 1*x_0", "5 + 3*x_0")));
+
+    // x - 7
+    let pairs = [(11, 4), (8, 1)];
+    detect_linear_relation_driver(&pairs, Some(("7 + 1*x_0", "0 + 1*x_0")));
+
+    // 3x - 5
+    let pairs = [(2, 1), (5, 10), (4, 7)];
+    detect_linear_relation_driver(&pairs, Some(("2 + 1*x_0", "1 + 3*x_0")));
+
+    // run = 0
+    let pairs = [(3, 7), (3, 7)];
+
+    // m = 0
+    let pairs = [(4, 7), (5, 7)];
+    detect_linear_relation_driver(&pairs, None);
   }
 }

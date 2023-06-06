@@ -231,7 +231,26 @@ fn prove_with_rules(
     .collect_vec()
 }
 
-const macro_sizes: [usize; 2] = [2, 3];
+fn prove_macro_size<const N: usize>(
+  machines: Vec<SmallBinMachine>,
+  num_steps: u32,
+  results: &mut Vec<(SmallBinMachine, State, u32, usize)>,
+  _verbose: bool,
+) -> Vec<SmallBinMachine> {
+  let mut out = vec![];
+  for machine in machines {
+    let macro_machine: MacroMachine<State, Bit, N> = MacroMachine::new(machine.clone());
+    let mut rulebook = Rulebook::chain_rulebook(&macro_machine);
+    let (new_state, steps) =
+      simulate_proving_rules(&macro_machine, num_steps, &mut rulebook, false);
+    if new_state == MacroState::INFINITE || new_state.halted() {
+      results.push((machine, new_state.get_state(), steps, N));
+    } else {
+      out.push(machine);
+    }
+  }
+  out
+}
 
 fn prove_with_macros(
   machines: Vec<SmallBinMachine>,
@@ -239,6 +258,7 @@ fn prove_with_macros(
   verbose: bool,
 ) -> Vec<SmallBinMachine> {
   // machine, final state, num steps, macro size used
+  let mut rem_todo = vec![];
   let mut results: Vec<(SmallBinMachine, State, u32, usize)> = vec![];
   for machine in machines {
     // println!("working on machine {}", machine.to_compact_format());
@@ -256,33 +276,47 @@ fn prove_with_macros(
     if new_state == State::INFINITE || new_state == HALT {
       results.push((machine, new_state, steps, 1));
     } else {
-      let macro_machine: MacroMachine<State, Bit, 2> = MacroMachine::new(machine.clone());
-      let mut rulebook = Rulebook::chain_rulebook(&macro_machine);
-      let (new_state, steps) =
-        simulate_proving_rules(&macro_machine, num_steps, &mut rulebook, false);
-      if new_state == MacroState::INFINITE || new_state.halted() {
-        results.push((machine, new_state.get_state(), steps, 2));
-      } else {
-        let macro_machine: MacroMachine<State, Bit, 3> = MacroMachine::new(machine.clone());
-        let mut rulebook = Rulebook::chain_rulebook(&macro_machine);
-        let (new_state, steps) =
-          simulate_proving_rules(&macro_machine, num_steps, &mut rulebook, false);
-
-        results.push((machine, new_state.get_state(), steps, 3));
-      }
+      rem_todo.push(machine);
     }
+
+    //   let macro_machine: MacroMachine<State, Bit, 2> = MacroMachine::new(machine.clone());
+    //   let mut rulebook = Rulebook::chain_rulebook(&macro_machine);
+    //   let (new_state, steps) =
+    //     simulate_proving_rules(&macro_machine, num_steps, &mut rulebook, false);
+    //   if new_state == MacroState::INFINITE || new_state.halted() {
+    //     results.push((machine, new_state.get_state(), steps, 2));
+    //   } else {
+    //     let macro_machine: MacroMachine<State, Bit, 3> = MacroMachine::new(machine.clone());
+    //     let mut rulebook = Rulebook::chain_rulebook(&macro_machine);
+    //     let (new_state, steps) =
+    //       simulate_proving_rules(&macro_machine, num_steps, &mut rulebook, false);
+
+    //     results.push((machine, new_state.get_state(), steps, 3));
+    //   }
   }
-  aggregate_and_display_macro_proving_res::<3>(&results);
-  results
-    .into_iter()
-    .filter_map(|(m, s, _steps, _macro_size)| {
-      if s != State::INFINITE && s != HALT {
-        Some(m)
-      } else {
-        None
-      }
-    })
-    .collect_vec()
+  let rem_todo = prove_macro_size::<2>(rem_todo, num_steps, &mut results, verbose);
+  println!("macro size 2 done");
+  let rem_todo = prove_macro_size::<3>(rem_todo, num_steps, &mut results, verbose);
+  println!("macro size 3 done");
+  let rem_todo = prove_macro_size::<4>(rem_todo, num_steps, &mut results, verbose);
+  println!("macro size 4 done");
+  // let rem_todo = prove_macro_size::<5>(rem_todo, num_steps, &mut results, verbose);
+  // println!("macro size 5 done");
+  // let rem_todo = prove_macro_size::<6>(rem_todo, num_steps, &mut results, verbose);
+  // println!("macro size 6 done");
+  // let rem_todo = prove_macro_size::<7>(rem_todo, num_steps, &mut results, verbose);
+  // println!("macro size 7 done");
+  // let rem_todo = prove_macro_size::<8>(rem_todo, num_steps, &mut results, verbose);
+  // println!("macro size 8 done");
+  // let rem_todo = prove_macro_size::<9>(rem_todo, num_steps, &mut results, verbose);
+  // println!("macro size 9 done");
+  // let rem_todo = prove_macro_size::<10>(rem_todo, num_steps, &mut results, verbose);
+  // println!("macro size 10 done");
+  for m in rem_todo.iter() {
+    results.push((m.clone(), State::START, 0, 0));
+  }
+  aggregate_and_display_macro_proving_res::<10>(&results);
+  rem_todo
 }
 
 fn get_which_proven(machines: &Vec<SmallBinMachine>, num_steps: u32, verbose: bool) -> Vec<usize> {
@@ -396,22 +430,22 @@ fn scan_from_machine(
 }
 
 fn main() {
-  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  // let num_lr_steps = 1500;
-  // let num_rule_steps = 200;
-  // scan_from_machine(
-  //   &first_machine,
-  //   num_lr_steps,
-  //   num_rule_steps,
-  //   // Some("size3_holdouts_2_may.txt"),
-  //   // Some("size4_holdouts_31_may_29e2280.txt"),
-  //   None,
-  // );
+  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  let num_lr_steps = 1500;
+  let num_rule_steps = 200;
+  scan_from_machine(
+    &first_machine,
+    num_lr_steps,
+    num_rule_steps,
+    // Some("size3_holdouts_2_may.txt"),
+    // Some("size4_holdouts_31_may_29e2280.txt"),
+    None,
+  );
 
   //give up 5jun23
-  run_machine(&SmallBinMachine::from_compact_format(
-    "1RB0RB_1LC1RB_1RD1LC_1RH1RA",
-  ));
+  // run_machine(&SmallBinMachine::from_compact_format(
+  //   "1RB0RB_1LC1RB_1RD1LC_1RH1RA",
+  // ));
 
   // run_machine(&get_machine("4state_halter"));
   // let decideable_by_macro = decideable_by_macro();

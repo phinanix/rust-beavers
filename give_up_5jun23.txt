@@ -118,3 +118,134 @@ warning! gave up on machine macro size 2 of 1RB1LB_1LA0RC_1RB0LD_1LC1RH due to s
 step: 337 phase: C at L tape: (TF, 12582907) |>TT<|
 warning! gave up on machine macro size 2 of 1RB0LC_0LA1RA_1LA0RD_1RC1RH due to simulating to
 step: 311 phase: D at L tape: (TF, 16777213) |>FF<|
+--------------------------------------
+warning! gave up on machine 1RB0RC_1RC1RH_1LD0RD_0LA1RD due to simulating to
+step: 379 phase: D tape: (T, 12582902) (F, 1) |>F<| (T, 2)
+warning! gave up on machine 1RB1RH_1RC0RB_0LC0RD_1LD1LB due to simulating to
+step: 169 phase: D tape: (T, 1) |>F<| (T, 16777213)
+warning! gave up on machine 1RB0RD_1RC1RH_0LA1RA_1LC1RD due to simulating to
+step: 274 phase: A tape: (T, 14348901) (F, 1) (T, 2) |>T<|
+warning! gave up on machine 1RB1LA_1LC1RB_1RH1LD_1RB0LA due to simulating to
+step: 342 phase: B tape: (T, 3) |>F<| (T, 16777208)
+warning! gave up on machine 1RB1LA_1LC1RB_1RH1LD_0RB0LA due to simulating to
+step: 358 phase: B tape: (T, 2) |>T<| (F, 1) (T, 16777210)
+warning! gave up on machine 1RB1LA_1LC1RB_1RH1LD_1RA0LA due to simulating to
+step: 394 phase: A tape: |>F<| (T, 2) (F, 1) (T, 12582902)
+warning! gave up on machine 1RB1LA_1LC1RB_1RH1LD_1LA0LA due to simulating to
+step: 352 phase: A tape: |>F<| (T, 2) (F, 1) (T, 12582902)
+warning! gave up on machine 1RB1LA_1LC1RB_1RH1LD_0RA0LA due to simulating to
+step: 386 phase: B tape: (T, 3) |>F<| (T, 16777208)
+warning! gave up on machine 1RB1RH_1LC0LB_0RC0LD_1RD1RB due to simulating to
+step: 168 phase: D tape: (T, 16777213) |>F<| (T, 1)
+warning! gave up on machine 1RB1RA_1LC0RA_1RH0LD_1RD1RB due to simulating to
+step: 308 phase: B tape: (T, 14348898) (F, 1) (T, 3) |>F<|
+warning! gave up on machine 1RB1RH_1LC0RC_0LD1RC_1RA0RB due to simulating to
+step: 387 phase: A tape: (T, 10485751) |>F<| (T, 2)
+warning! gave up on machine 1RB0RB_1LC1RB_1RD1LC_1RH1RA due to simulating to
+step: 372 phase: C tape: (T, 16777206) |>F<| (T, 3)
+warning! gave up on machine 1RB1RH_1LC0LA_0LD0LC_1RD0RB due to simulating to
+step: 116 phase: D tape: (T, 19131875) |>T<|
+warning! gave up on machine 1RB0LA_1LC1RH_0LD0LC_1RD0RA due to simulating to
+step: 146 phase: D tape: (T, 21523359) |>T<|
+warning! gave up on machine 1RB0LD_1LC1RB_1RH1LA_1RB1LD due to simulating to
+step: 342 phase: B tape: (T, 3) |>F<| (T, 16777208)
+warning! gave up on machine 1RB1RH_0RC0RB_1LD0LA_1LD1LB due to simulating to
+step: 147 phase: D tape: (T, 1) |>F<| (T, 16777213)
+warning! gave up on machine 1RB1LA_0RC1LC_1LD0LA_1LB1RH due to simulating to
+step: 276 phase: D tape: (T, 3) |>F<| (T, 19131871)
+warning! gave up on machine 1RB0LB_0RC1LB_1LD0LA_1LA1RH due to simulating to
+step: 398 phase: D tape: (T, 2) |>F<| (T, 16777207)
+warning! gave up on machine 1RB1RH_0RC0RB_1LC0LD_1LA0RD due to simulating to
+step: 144 phase: C tape: |>T<| (T, 16740390)
+warning! gave up on machine 1RB1RD_0RC0RB_1LC0LA_1LB1RH due to simulating to
+step: 167 phase: C tape: (T, 1) |>F<| (T, 16777213)
+warning! gave up on machine 1RB1RD_0RC0RB_1LC0LA_0RB1RH due to simulating to
+step: 113 phase: C tape: |>T<| (T, 14348906)
+warning! gave up on machine 1RB1RD_0RC1LB_1LC0LA_0LB1RH due to simulating to
+step: 334 phase: B tape: (T, 2) |>F<| (F, 1) (T, 16777210)
+warning! gave up on machine 1RB0RD_0RC0RB_1LC0LA_0RB1RH due to simulating to
+step: 167 phase: C tape: (T, 1) |>F<| (T, 16777213)
+warning! gave up on machine 1RB0RD_0RC0RB_1LC0LA_1LA1RH due to simulating to
+step: 114 phase: C tape: |>T<| (T, 14348906)
+warning! gave up on machine 1RB1LA_0RC1LD_1LC0LA_1RH0RC due to simulating to
+step: 379 phase: B tape: (T, 2) |>F<| (F, 1) (T, 16777210)
+warning! gave up on machine 1RB1LA_0RC0LD_1LC0LA_1RH1RB due to simulating to
+step: 335 phase: B tape: (T, 2) |>F<| (F, 1) (T, 16777210)
+warning! gave up on machine 1RB1RH_0LC0LB_1RC0RD_1LB1LA due to simulating to
+step: 170 phase: C tape: (T, 16777213) |>F<| (T, 1)
+warning! gave up on machine 1RB1RH_0LC1RC_1RA0RD_1LB1RD due to simulating to
+step: 279 phase: A tape: (T, 19131871) |>F<| (T, 3)
+warning! gave up on machine macro size 2 of 1RB0LD_1RC1RA_1RD1RH_1LA0RC due to simulating to
+step: 358 phase: D at R tape: |>TT<| (FT, 16777209)
+warning! gave up on machine macro size 2 of 1RB1RH_1RC1RA_1LD0RB_1LB0LC due to simulating to
+step: 367 phase: C at R tape: (TF, 1) |>TT<| (FT, 12582905)
+warning! gave up on machine macro size 2 of 1RB1RH_1RC1RA_1LD0RB_0RB0LC due to simulating to
+step: 347 phase: C at R tape: |>TT<| (FT, 10485755)
+warning! gave up on machine macro size 2 of 1RB1RD_1RC1RH_1LD0RB_1RA0LC due to simulating to
+step: 358 phase: D at R tape: (FT, 1) |>TT<| (TF, 14680057)
+warning! gave up on machine macro size 2 of 1RB0LC_1RC0RA_1LA1LD_1LC1RH due to simulating to
+step: 370 phase: A at L tape: (TF, 16777209) |>TT<| (FT, 1)
+warning! gave up on machine macro size 2 of 1RB0LA_1LC1RH_0LD0LC_1RD0RA due to simulating to
+step: 319 phase: D at L tape: (TT, 10761679) |>FT<|
+warning! gave up on machine macro size 2 of 1RB0LD_1LC0RA_1LD1LB_1LA1RH due to simulating to
+step: 348 phase: A at L tape: (TF, 10485753) |>TT<|
+warning! gave up on machine macro size 2 of 1RB0LD_1LC0RA_0LD1LB_1LA1RH due to simulating to
+step: 280 phase: D at R tape: |>FF<| (FT, 16777211)
+warning! gave up on machine macro size 2 of 1RB0LD_1LC0RA_1RC1LB_1LA1RH due to simulating to
+step: 373 phase: D at R tape: |>FF<| (FT, 12582907) (TF, 1)
+warning! gave up on machine macro size 2 of 1RB0LD_1LC0RA_1RB1LB_1LA1RH due to simulating to
+step: 337 phase: A at L tape: (TF, 12582907) |>TT<|
+warning! gave up on machine macro size 2 of 1RB0LD_1LC0RA_0RB1LB_1LA1RH due to simulating to
+step: 310 phase: D at R tape: |>FF<| (FT, 16777213)
+warning! gave up on machine macro size 2 of 1RB0LD_1LC0RA_0RA1LB_1LA1RH due to simulating to
+step: 351 phase: D at R tape: |>FF<| (FT, 12582907) (TF, 1)
+warning! gave up on machine macro size 2 of 1RB1RH_1LC0RA_1RD0LB_1LD1RC due to simulating to
+step: 376 phase: A at L tape: (FT, 1) (TF, 16777211) |>FF<|
+warning! gave up on machine macro size 2 of 1RB1RH_1LC0RA_1RD0LB_1LC1RC due to simulating to
+step: 345 phase: B at R tape: |>TT<| (FT, 16777211)
+warning! gave up on machine macro size 2 of 1RB1RH_1LC0RA_1RD0LB_0LC1RC due to simulating to
+step: 304 phase: A at L tape: (TF, 12582909) |>FF<|
+warning! gave up on machine macro size 2 of 1RB1RH_1LC0RA_1RD0LB_0LB1RC due to simulating to
+step: 354 phase: A at L tape: (FT, 1) (TF, 16777211) |>FF<|
+warning! gave up on machine macro size 2 of 1RB1RH_1LC0RA_1RD0LB_1RA1RC due to simulating to
+step: 351 phase: B at R tape: |>TT<| (FT, 12582905)
+warning! gave up on machine macro size 2 of 1RB1RH_1LC0RA_1RD0LB_0RA1RC due to simulating to
+step: 270 phase: A at L tape: (TF, 10485755) |>FF<|
+warning! gave up on machine macro size 2 of 1RB0RC_1LC1LD_1RA0LB_1LB1RH due to simulating to
+step: 366 phase: A at L tape: (FT, 12582905) |>TT<| (TF, 2)
+warning! gave up on machine macro size 2 of 1RB1RD_1LC0RA_1LA0LB_1RA1RH due to simulating to
+step: 362 phase: C at R tape: (FT, 2) |>TT<| (TF, 10485753)
+warning! gave up on machine macro size 2 of 1RB1RD_1LC0RA_0RA0LB_1RA1RH due to simulating to
+step: 356 phase: B at R tape: |>TT<| (FT, 16777211)
+warning! gave up on machine macro size 2 of 1RB1RH_0RC1LD_1RD0RA_0LB1RC due to simulating to
+step: 374 phase: D at R tape: |>TT<| (TF, 39146833)
+warning! gave up on machine macro size 2 of 1RB0LD_0RC1RA_1RD1RH_1LA0RC due to simulating to
+step: 273 phase: C at L tape: (TF, 12582907) |>FF<|
+warning! gave up on machine macro size 2 of 1RB1RH_0RC0RB_1LC0LD_1LA0RD due to simulating to
+step: 339 phase: C at R tape: |>TF<| (TT, 25110586)
+warning! gave up on machine macro size 2 of 1RB0RD_0RC0RB_1LC0LA_0RB1RH due to simulating to
+step: 382 phase: C at R tape: (FT, 1) |>TT<| (TT, 16777213)
+warning! gave up on machine macro size 2 of 1RB0LC_0LC0RA_1LA1LD_1LC1RH due to simulating to
+step: 348 phase: A at L tape: (TF, 12582907) |>TT<|
+warning! gave up on machine macro size 2 of 1RB0LC_0LC1RA_1LA0RD_1RC1RH due to simulating to
+step: 362 phase: C at L tape: (FT, 16777213) |>FF<|
+warning! gave up on machine macro size 2 of 1RB0RD_0LC1RA_0RA1LB_1RC1RH due to simulating to
+step: 352 phase: B at R tape: |>TT<| (TF, 22369617)
+warning! gave up on machine macro size 2 of 1RB0LC_1LB1RA_1LA0RD_1RC1RH due to simulating to
+step: 384 phase: C at L tape: (FT, 16777213) |>FF<|
+warning! gave up on machine macro size 2 of 1RB0LC_1LA1RA_1LA0RD_1RC1RH due to simulating to
+step: 345 phase: C at R tape: |>TT<| (FT, 16777211)
+warning! gave up on machine macro size 2 of 1RB1LB_1LA0RC_1RB0LD_1LC1RH due to simulating to
+step: 337 phase: C at L tape: (TF, 12582907) |>TT<|
+warning! gave up on machine macro size 2 of 1RB0LC_0LA1RA_1LA0RD_1RC1RH due to simulating to
+step: 311 phase: D at L tape: (TF, 16777213) |>FF<|
+macro size 2 done
+macro size 3 done
+warning! gave up on machine macro size 4 of 1RB0LD_1LC0RA_1LD1LB_1LA1RH due to simulating to
+step: 382 phase: D at R tape: |>FFFF<| (FTFT, 10485757)
+warning! gave up on machine macro size 4 of 1RB0LD_1LC0RA_1RB1LB_1LA1RH due to simulating to
+step: 390 phase: D at R tape: |>FFFF<| (FTFT, 12582909) (TTFF, 1)
+warning! gave up on machine macro size 4 of 1RB1RH_1LC0RA_1RD0LB_1RA1RC due to simulating to
+step: 391 phase: A at L tape: (TFTF, 12582909) |>FFFF<|
+warning! gave up on machine macro size 4 of 1RB1LB_1LA0RC_1RB0LD_1LC1RH due to simulating to
+step: 390 phase: D at R tape: |>FFFF<| (FTFT, 12582909) (TTFF, 1)
