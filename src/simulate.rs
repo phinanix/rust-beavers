@@ -114,42 +114,42 @@ fn collate<S: TapeSymbol>(
 }
 
 fn collate2<S: TapeSymbol>(
-  (f_sym, f_num): (S, u32),
-  (s_sym, s_num): (S, u32),
-) -> ((S, AffineVar), (S, AffineVar), bool) {
-  // bool is was there a var used
-  assert_eq!(f_sym, s_sym);
-  match f_num.cmp(&s_num) {
-    Less => (
-      (f_sym, AffineVar { n: 0, a: 1, var: Var(0) }),
-      (
-        s_sym,
-        AffineVar {
-          n: s_num.checked_sub(f_num).expect("we used cmp"),
-          a: 1,
-          var: Var(0),
-        },
-      ),
-      true,
-    ),
-    Equal => (
-      (f_sym, AffineVar::constant(f_num)),
-      (s_sym, AffineVar::constant(s_num)),
-      false,
-    ),
-    Greater => (
-      (
-        f_sym,
-        AffineVar {
-          n: f_num.checked_sub(s_num).expect("we used cmp"),
-          a: 1,
-          var: Var(0),
-        },
-      ),
-      (s_sym, AffineVar { n: 0, a: 1, var: Var(0) }),
-      true,
-    ),
-  }
+  pairs: &[((S, u32), (S, u32))],
+) -> Option<((S, AffineVar), (S, AffineVar), bool)> {
+  todo!()
+  // // bool is was there a var used
+  // assert_eq!(f_sym, s_sym);
+  // match f_num.cmp(&s_num) {
+  //   Less => (
+  //     (f_sym, AffineVar { n: 0, a: 1, var: Var(0) }),
+  //     (
+  //       s_sym,
+  //       AffineVar {
+  //         n: s_num.checked_sub(f_num).expect("we used cmp"),
+  //         a: 1,
+  //         var: Var(0),
+  //       },
+  //     ),
+  //     true,
+  //   ),
+  //   Equal => (
+  //     (f_sym, AffineVar::constant(f_num)),
+  //     (s_sym, AffineVar::constant(s_num)),
+  //     false,
+  //   ),
+  //   Greater => (
+  //     (
+  //       f_sym,
+  //       AffineVar {
+  //         n: f_num.checked_sub(s_num).expect("we used cmp"),
+  //         a: 1,
+  //         var: Var(0),
+  //       },
+  //     ),
+  //     (s_sym, AffineVar { n: 0, a: 1, var: Var(0) }),
+  //     true,
+  //   ),
+  // }
 }
 
 fn get_n_rle<S: TapeSymbol>(slice: &[(S, u32)], n: u32) -> Vec<(S, u32)> {
@@ -262,8 +262,8 @@ fn detect_linear_relation(pairs: &[(u32, u32)]) -> Option<(AffineVar, AffineVar)
 }
 
 fn make_side<S: TapeSymbol>(
-  start: &Vec<(S, u32)>,
-  end: &Vec<(S, u32)>,
+  start: &[(S, u32)],
+  end: &[(S, u32)],
 ) -> (Vec<(S, AffineVar)>, Vec<(S, AffineVar)>, bool) {
   let (start_idx, end_idx) = match start.len().cmp(&end.len()) {
     Less => (0, end.len() - start.len()),
@@ -290,35 +290,60 @@ fn make_side<S: TapeSymbol>(
   (start_out, end_out, var_used)
 }
 
+fn make_side2<S: TapeSymbol>(
+  pairs: &[(&[(S, u32)], &[(S, u32)])],
+) -> Option<(Vec<(S, AffineVar)>, Vec<(S, AffineVar)>)> {
+  let first_in_len = pairs[0].0.len();
+  let first_out_len = pairs[0].1.len();
+  // check everyone is the same length
+  if !pairs
+    .iter()
+    .all(|(in_slice, out_slice)| (in_slice.len(), out_slice.len()) == (first_in_len, first_out_len))
+  {
+    return None;
+  }
+
+  let (start_idx, end_idx) = match first_in_len.cmp(&first_out_len) {
+    Less => (0, first_out_len - first_in_len),
+    Equal => (0, 0),
+    Greater => (first_in_len - first_out_len, 0),
+  };
+  // check everyone has the same "tail"
+  let start_tail = &pairs[0].0[0..start_idx];
+  let end_tail = &pairs[0].1[0..end_idx];
+  if !pairs.iter().all(|&(in_slice, out_slice)| {
+    (&in_slice[0..start_idx], &out_slice[0..end_idx]) == (start_tail, end_tail)
+  }) {
+    return None;
+  }
+
+  let mut start_out: Vec<(S, AffineVar)> = start_tail
+    .into_iter()
+    .map(|&(s, n)| (s, n.into()))
+    .collect_vec();
+  let mut end_out: Vec<(S, AffineVar)> = end_tail
+    .into_iter()
+    .map(|&(s, n)| (s, n.into()))
+    .collect_vec();
+
+  for (in_ind, out_ind) in zip_eq(start_idx..first_in_len, end_idx..first_out_len) {
+    let sym_num_pairs = pairs
+      .iter()
+      .map(|(in_slice, out_slice)| (in_slice[in_ind], out_slice[out_ind]))
+      .collect_vec();
+    let (s_ans, e_ans, _was_var) = collate2(&sym_num_pairs)?;
+    start_out.push(s_ans);
+    end_out.push(e_ans);
+  }
+
+  Some((start_out, end_out))
+}
+
 pub fn detect_rule<P: Phase, S: TapeSymbol>(
-  // history: &Vec<(u32, P, ExpTape<S, u32>)>,
-  // rs: ReadShift,
   (phase_in, et_in): (P, ExpTape<S, u32>),
   (phase_out, et_out): (P, ExpTape<S, u32>),
   verbose: bool,
 ) -> Vec<Rule<P, S>> {
-  /* we're detecting an additive rule, so any numbers that don't change, we guess don't change
-  and any numbers that do change, we guess change by that constant each time
-  so we need to
-  1) make vectors of the change amount
-  2) zip those vectors with the signatures and turn them into configs
-  */
-  // let ReadShift { l, r, s } = ReadShift::normalize(rs);
-
-  // assert!(l <= 0, "{:?}", rs);
-  // assert!(r >= 0, "{:?}", rs);
-  // let second_last = &history[history.len() - 2];
-  // let et_in = cut_exptape(&second_last.2, l, r);
-
-  // let last = &history[history.len() - 1];
-  // if verbose {
-  //   println!(
-  //     "detecting rule from step {} to step {}",
-  //     second_last.0, last.0
-  //   );
-  // }
-  // let et_out = cut_exptape(&last.2, l - s, r - s);
-
   if verbose {
     println!("detecting rule from\n{}\nto\n{}", &et_in, &et_out);
   }
@@ -335,6 +360,8 @@ pub fn detect_rule<P: Phase, S: TapeSymbol>(
     right: start_right_in,
     tape_end_inf: _,
   } = et_in;
+  assert_eq!(start_head, end_head);
+
   let (start_left, end_left, _var_used_left) = make_side(&start_left_in, &end_left_in);
   let (start_right, end_right, _var_used_right) = make_side(&start_right_in, &end_right_in);
   // if !var_used_left && !var_used_right {
@@ -350,6 +377,48 @@ pub fn detect_rule<P: Phase, S: TapeSymbol>(
     end: Config::new_from_avars(phase_out, end_left, end_head, end_right),
   };
   vec![rule]
+}
+
+fn detect_rule2<P: Phase, S: TapeSymbol>(
+  config_pairs: &[((P, ExpTape<S, u32>), (P, ExpTape<S, u32>))],
+) -> Option<Rule<P, S>> {
+  // all phases everywhere the same
+  let first_phase_pair = (config_pairs[0].0 .0, config_pairs[0].1 .0);
+  assert_eq!(first_phase_pair.0, first_phase_pair.1);
+  assert!(config_pairs
+    .iter()
+    .all(|((p1, _), (p2, _))| (*p1, *p2) == first_phase_pair));
+
+  // all heads everywhere the same
+  let first_head_pair = (config_pairs[0].0 .1.head, config_pairs[0].1 .1.head);
+  assert_eq!(first_head_pair.0, first_head_pair.1);
+  assert!(config_pairs
+    .iter()
+    .all(|((_, et_in), (_, et_out))| (et_in.head, et_out.head) == first_head_pair));
+
+  // make sides
+  let lefts = config_pairs
+    .iter()
+    .map(|((_, et_in), (_, et_out))| (et_in.left.as_slice(), et_out.left.as_slice()))
+    .collect_vec();
+  let (left_in, left_out) = make_side2(&lefts)?;
+
+  let rights = config_pairs
+    .iter()
+    .map(|((_, et_in), (_, et_out))| (et_in.right.as_slice(), et_out.right.as_slice()))
+    .collect_vec();
+  let (right_in, right_out) = make_side2(&rights)?;
+
+  // construct rule
+  Some(Rule {
+    start: Config {
+      state: first_phase_pair.0,
+      left: left_in,
+      head: first_head_pair.0,
+      right: right_in,
+    },
+    end: Config::new_from_avars(first_phase_pair.0, left_out, first_head_pair.0, right_out),
+  })
 }
 
 pub fn make_example_from_history<P: Phase, S: TapeSymbol>(
@@ -374,6 +443,24 @@ pub fn make_example_from_history<P: Phase, S: TapeSymbol>(
   ((start.1, et_in), (end.1, et_out))
 }
 
+pub fn last_n_config_pairs<P: Phase, S: TapeSymbol>(
+  history: &[(u32, P, ExpTape<S, u32>)],
+  readshifts: &[ReadShift],
+  n: usize,
+) -> Vec<((P, ExpTape<S, u32>), (P, ExpTape<S, u32>))> {
+  let mut out = vec![];
+  let hist_len = history.len();
+  for i in 0..n {
+    out.push(make_example_from_history(
+      history,
+      readshifts,
+      hist_len - (1 + i),
+      hist_len - (2 + i),
+    ));
+  }
+  out
+}
+
 pub fn detect_rules<P: Phase, S: TapeSymbol>(
   step: u32,
   state: P,
@@ -384,6 +471,11 @@ pub fn detect_rules<P: Phase, S: TapeSymbol>(
 ) -> Vec<Rule<P, S>> {
   let cur_sig_vec = &mut signatures[(state, exptape.signature())];
   cur_sig_vec.push((step, state, exptape.clone()));
+  if cur_sig_vec.len() > 2 {
+    let config_pairs = last_n_config_pairs(cur_sig_vec, readshifts, 2);
+    let mb_rule = detect_rule2(&config_pairs);
+  }
+
   if cur_sig_vec.len() > 1 {
     let start_ind = cur_sig_vec.len() - 2;
     let end_ind = cur_sig_vec.len() - 1;
@@ -400,6 +492,7 @@ pub fn detect_rules<P: Phase, S: TapeSymbol>(
     }
     return rules;
   }
+
   return vec![];
 }
 
