@@ -7,7 +7,11 @@ use crate::{
     RuleProof::DirectSimulation, Rulebook, TapeCount, Var,
   },
   tape::{ExpTape, Signature, StepResult::*},
-  turing::{Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT},
+  turing::{
+    Dir,
+    Dir::{L, R},
+    Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT,
+  },
 };
 use defaultmap::{defaulthashmap, DefaultHashMap};
 use either::Either::{self, Left, Right};
@@ -611,6 +615,40 @@ pub fn simulate_proving_rules<P: Phase, S: TapeSymbol>(
   return (state, num_steps);
 }
 
+/*
+  returns: the tape history, which is a
+  Vec<(u32, P, ExpTape<S, u32>)> which is (steps, phase, tape)
+
+*/
+// pub fn simulate_detecting_records<P: Phase, S: TapeSymbol>(
+//   machine: &impl Turing<P, S>,
+//   num_steps: u32,
+//   rulebook: &Rulebook<P, S>,
+//   verbose: bool
+// ) ->
+
+/*
+ parameters: &[ReadShift], the list of readshifts
+ returns: Vec<usize>, the indices of the steps at which a greater
+ leftward or rightward excursion than had been made before, was made
+*/
+
+pub fn find_records(readshifts: &[ReadShift]) -> Vec<(usize, i32, Dir)> {
+  let mut cur_rs = ReadShift { l: 0, r: 0, s: 0 };
+  let mut out = vec![];
+  for (i, &new_rs) in readshifts.into_iter().enumerate() {
+    let prev_rs = cur_rs;
+    cur_rs = ReadShift::normalize(ReadShift::combine(cur_rs, new_rs));
+    if cur_rs.l < prev_rs.l {
+      out.push((i, cur_rs.l, Dir::L));
+    }
+    if cur_rs.r > prev_rs.r {
+      out.push((i, cur_rs.r, Dir::R));
+    }
+  }
+  out
+}
+
 pub fn aggregate_and_display_proving_res(results: &Vec<(SmallBinMachine, State, u32)>) {
   let mut halt_count = 0;
   let mut inf_count = 0;
@@ -653,6 +691,7 @@ mod test {
 
   use crate::{
     parse::{parse_avar, parse_exact, parse_tape_side},
+    rules::{RS_LEFT, RS_RIGHT},
     turing_examples::undecided_size_3,
   };
 
@@ -785,5 +824,41 @@ mod test {
     // m = 0
     let pairs = [(4, 7), (5, 7)];
     detect_linear_relation_driver(&pairs, None);
+  }
+
+  #[test]
+  fn test_find_records() {
+    // L then R then R then R should give
+    // [(0, -1, L), (2, 1, R), (3, 2, R)]
+    let inp = vec![RS_LEFT, RS_RIGHT, RS_RIGHT, RS_RIGHT];
+    let ans = vec![(0, -1, L), (2, 1, R), (3, 2, R)];
+    let out = find_records(&inp);
+    assert_eq!(ans, out);
+
+    /*
+    inp
+    (0, 5, 2)
+    (0, 1, 1)
+    (-5, 0, -5)
+    (0, 1, 1)
+    (-1, 0, -1)
+    output
+    [(0, 5, R),
+     ---
+     (2, -2, L)
+     ---
+     ---
+    ]
+     */
+    let inp = [
+      ReadShift { l: 0, r: 5, s: 2 },
+      ReadShift { l: 0, r: 1, s: 1 },
+      ReadShift { l: -5, r: 0, s: -5 },
+      ReadShift { l: 0, r: 1, s: 1 },
+      ReadShift { l: -1, r: 0, s: -1 },
+    ];
+    let ans = vec![(0, 5, R), (2, -2, L)];
+    let out = find_records(&inp);
+    assert_eq!(ans, out);
   }
 }

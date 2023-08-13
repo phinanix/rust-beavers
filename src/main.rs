@@ -76,6 +76,14 @@ some rules are "necessary", most obviously anything made by chaining - in that w
 other rules are not, so maybe we just drop them?
  */
 
+/*
+todo 21 aug 23
+* record records and history as we simulate
+* implement heuristics based on records
+* implement bouncer detector
+* implement counter detector
+ */
+
 fn machines_to_str(machines: Vec<SmallBinMachine>) -> String {
   machines
     .into_iter()
