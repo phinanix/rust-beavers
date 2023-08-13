@@ -825,40 +825,4 @@ mod test {
     let pairs = [(4, 7), (5, 7)];
     detect_linear_relation_driver(&pairs, None);
   }
-
-  #[test]
-  fn test_find_records() {
-    // L then R then R then R should give
-    // [(0, -1, L), (2, 1, R), (3, 2, R)]
-    let inp = vec![RS_LEFT, RS_RIGHT, RS_RIGHT, RS_RIGHT];
-    let ans = vec![(0, -1, L), (2, 1, R), (3, 2, R)];
-    let out = find_records(&inp);
-    assert_eq!(ans, out);
-
-    /*
-    inp
-    (0, 5, 2)
-    (0, 1, 1)
-    (-5, 0, -5)
-    (0, 1, 1)
-    (-1, 0, -1)
-    output
-    [(0, 5, R),
-     ---
-     (2, -2, L)
-     ---
-     ---
-    ]
-     */
-    let inp = [
-      ReadShift { l: 0, r: 5, s: 2 },
-      ReadShift { l: 0, r: 1, s: 1 },
-      ReadShift { l: -5, r: 0, s: -5 },
-      ReadShift { l: 0, r: 1, s: 1 },
-      ReadShift { l: -1, r: 0, s: -1 },
-    ];
-    let ans = vec![(0, 5, R), (2, -2, L)];
-    let out = find_records(&inp);
-    assert_eq!(ans, out);
-  }
 }

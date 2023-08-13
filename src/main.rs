@@ -25,6 +25,7 @@ use tape::tnf_simulate;
 use turing::{Bit, SmallBinMachine, Turing};
 use turing_examples::decideable_by_macro;
 
+mod brady;
 mod chain;
 mod linrecur;
 mod macro_machines;
