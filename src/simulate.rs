@@ -615,40 +615,6 @@ pub fn simulate_proving_rules<P: Phase, S: TapeSymbol>(
   return (state, num_steps);
 }
 
-/*
-  returns: the tape history, which is a
-  Vec<(u32, P, ExpTape<S, u32>)> which is (steps, phase, tape)
-
-*/
-// pub fn simulate_detecting_records<P: Phase, S: TapeSymbol>(
-//   machine: &impl Turing<P, S>,
-//   num_steps: u32,
-//   rulebook: &Rulebook<P, S>,
-//   verbose: bool
-// ) ->
-
-/*
- parameters: &[ReadShift], the list of readshifts
- returns: Vec<usize>, the indices of the steps at which a greater
- leftward or rightward excursion than had been made before, was made
-*/
-
-pub fn find_records(readshifts: &[ReadShift]) -> Vec<(usize, i32, Dir)> {
-  let mut cur_rs = ReadShift { l: 0, r: 0, s: 0 };
-  let mut out = vec![];
-  for (i, &new_rs) in readshifts.into_iter().enumerate() {
-    let prev_rs = cur_rs;
-    cur_rs = ReadShift::normalize(ReadShift::combine(cur_rs, new_rs));
-    if cur_rs.l < prev_rs.l {
-      out.push((i, cur_rs.l, Dir::L));
-    }
-    if cur_rs.r > prev_rs.r {
-      out.push((i, cur_rs.r, Dir::R));
-    }
-  }
-  out
-}
-
 pub fn aggregate_and_display_proving_res(results: &Vec<(SmallBinMachine, State, u32)>) {
   let mut halt_count = 0;
   let mut inf_count = 0;

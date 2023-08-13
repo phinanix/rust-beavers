@@ -6,6 +6,24 @@ use crate::{
   },
 };
 
+/*
+  returns: the tape history, which is a
+  Vec<(u32, P, ExpTape<S, u32>)> which is (steps, phase, tape)
+
+*/
+// pub fn simulate_detecting_records<P: Phase, S: TapeSymbol>(
+//   machine: &impl Turing<P, S>,
+//   num_steps: u32,
+//   rulebook: &Rulebook<P, S>,
+//   verbose: bool
+// ) ->
+
+/*
+ parameters: &[ReadShift], the list of readshifts
+ returns: Vec<usize>, the indices of the steps at which a greater
+ leftward or rightward excursion than had been made before, was made
+*/
+
 pub fn find_records(readshifts: &[ReadShift]) -> Vec<(usize, i32, Dir)> {
   let mut cur_rs = ReadShift { l: 0, r: 0, s: 0 };
   let mut out = vec![];
