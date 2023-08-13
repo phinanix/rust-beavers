@@ -1,22 +1,12 @@
 use crate::{
   rules::ReadShift,
+  tape::ExpTape,
   turing::{
     Dir,
     Dir::{L, R},
+    Phase, TapeSymbol, Turing,
   },
 };
-
-/*
-  returns: the tape history, which is a
-  Vec<(u32, P, ExpTape<S, u32>)> which is (steps, phase, tape)
-
-*/
-// pub fn simulate_detecting_records<P: Phase, S: TapeSymbol>(
-//   machine: &impl Turing<P, S>,
-//   num_steps: u32,
-//   rulebook: &Rulebook<P, S>,
-//   verbose: bool
-// ) ->
 
 /*
  parameters: &[ReadShift], the list of readshifts
@@ -38,6 +28,19 @@ pub fn find_records(readshifts: &[ReadShift]) -> Vec<(usize, i32, Dir)> {
     }
   }
   out
+}
+/*
+  returns: the tape history, which is a
+  Vec<(u32, P, ExpTape<S, u32>)> which is (steps, phase, tape)
+  and the records which is a
+  Vec<(usize, i32, Dir)> which is (timestamp of record, record distance, record direction)
+*/
+pub fn get_records_for_machine<P: Phase, S: TapeSymbol>(
+  machine: &impl Turing<P, S>,
+  num_steps: u32,
+  verbose: bool,
+) -> (Vec<(u32, P, ExpTape<S, u32>)>, Vec<(usize, i32, Dir)>) {
+  todo!()
 }
 
 mod test {
