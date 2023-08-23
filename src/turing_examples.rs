@@ -461,6 +461,12 @@ pub fn undecided_size_4_random_100() -> Vec<&'static str> {
   ]
 }
 
+pub fn bouncers() -> Vec<&'static str> {
+  let indices = vec![0, 1, 3, 4, 5, 6, 9, 10, 11, 13];
+  let str_vec = undecided_size_4_random_100();
+  indices.into_iter().map(|i| str_vec[i]).collect()
+}
+
 pub fn decided_by_chain_update_31may() -> Vec<&'static str> {
   vec![
     "1RB1LD_1LB0LC_0LD1RH_1RD0RA",

@@ -1,5 +1,11 @@
+use either::{
+  Either,
+  Either::{Left, Right},
+};
+
 use crate::{
-  rules::ReadShift,
+  rules::{ReadShift, Rulebook},
+  simulate::{one_rule_step, RuleStepResult::*},
   tape::ExpTape,
   turing::{
     Dir,
@@ -10,8 +16,8 @@ use crate::{
 
 /*
  parameters: &[ReadShift], the list of readshifts
- returns: Vec<usize>, the indices of the steps at which a greater
- leftward or rightward excursion than had been made before, was made
+ returns:   Vec<(usize, i32, Dir)> which is
+ (timestamp of record, record distance, record direction)
 */
 
 pub fn find_records(readshifts: &[ReadShift]) -> Vec<(usize, i32, Dir)> {
@@ -30,17 +36,51 @@ pub fn find_records(readshifts: &[ReadShift]) -> Vec<(usize, i32, Dir)> {
   out
 }
 /*
-  returns: the tape history, which is a
+  returns:
+  Left: the step at which the machine was infinite
+  or
+  Right:
+   the tape history, which is a
   Vec<(u32, P, ExpTape<S, u32>)> which is (steps, phase, tape)
-  and the records which is a
-  Vec<(usize, i32, Dir)> which is (timestamp of record, record distance, record direction)
+  and the Vec<ReadShift>
+
 */
 pub fn get_records_for_machine<P: Phase, S: TapeSymbol>(
   machine: &impl Turing<P, S>,
   num_steps: u32,
   verbose: bool,
-) -> (Vec<(u32, P, ExpTape<S, u32>)>, Vec<(usize, i32, Dir)>) {
-  todo!()
+) -> Either<u32, (Vec<(u32, P, ExpTape<S, u32>)>, Vec<ReadShift>)> {
+  let rulebook = Rulebook::new(machine.num_states());
+
+  let mut exptape = ExpTape::new(true);
+  let mut state = P::START;
+  let mut history: Vec<(u32, P, ExpTape<S, u32>)> = vec![];
+  let mut readshifts = vec![];
+
+  for step in 1..num_steps + 1 {
+    let (new_state, cg_or_rs) =
+      match one_rule_step(machine, &mut exptape, state, &rulebook, step, verbose) {
+        VarInfinite(_var) => return Left(step),
+        RSRInfinite => return Left(step),
+        RFellOffTape(_, _) => panic!("fell off tape unexpectedly"),
+        RSuccess(state, _hm, cg_or_rs) => (state, cg_or_rs),
+      };
+    state = new_state;
+
+    let readshift = cg_or_rs.either(|rs| rs, |cg| ReadShift::rs_from_cg(cg));
+    if verbose {
+      // println!("rs: {:?}", readshift);
+    }
+    readshifts.push(readshift);
+
+    history.push((step, state, exptape.clone()));
+
+    if state.halted() {
+      break;
+    }
+    // println!("step: {} phase: {} tape: {}", step, state, exptape);
+  }
+  return Right((history, readshifts));
 }
 
 mod test {

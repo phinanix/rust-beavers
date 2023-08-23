@@ -23,7 +23,7 @@ use rand_chacha::ChaCha8Rng;
 use simulate::aggregate_and_display_macro_proving_res;
 use tape::tnf_simulate;
 use turing::{Bit, SmallBinMachine, Turing};
-use turing_examples::decideable_by_macro;
+use turing_examples::{decideable_by_macro, undecided_size_4_random_100};
 
 mod brady;
 mod chain;
@@ -439,17 +439,17 @@ fn scan_from_machine(
 }
 
 fn main() {
-  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  let num_lr_steps = 1500;
-  let num_rule_steps = 200;
-  scan_from_machine(
-    &first_machine,
-    num_lr_steps,
-    num_rule_steps,
-    // Some("size3_holdouts_2_may.txt"),
-    // Some("size4_holdouts_31_may_29e2280.txt"),
-    None,
-  );
+  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // let num_lr_steps = 1500;
+  // let num_rule_steps = 200;
+  // scan_from_machine(
+  //   &first_machine,
+  //   num_lr_steps,
+  //   num_rule_steps,
+  //   // Some("size3_holdouts_2_may.txt"),
+  //   // Some("size4_holdouts_31_may_29e2280.txt"),
+  //   None,
+  // );
 
   //give up 5jun23
   // run_machine(&SmallBinMachine::from_compact_format(
@@ -461,6 +461,11 @@ fn main() {
   // run_machine_macro::<2>(&SmallBinMachine::from_compact_format(
   //   decideable_by_macro[2],
   // ));
+  let undecided_size_4_random_100 = undecided_size_4_random_100();
+
+  run_machine(&SmallBinMachine::from_compact_format(
+    undecided_size_4_random_100[13],
+  ));
 }
 
 /*

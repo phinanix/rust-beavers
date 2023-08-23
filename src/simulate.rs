@@ -458,8 +458,8 @@ pub fn last_n_config_pairs<P: Phase, S: TapeSymbol>(
     out.push(make_example_from_history(
       history,
       readshifts,
-      hist_len - (1 + i),
-      hist_len - (2 + i),
+      hist_len.checked_sub(2 + i).unwrap(),
+      hist_len.checked_sub(1 + i).unwrap(),
     ));
   }
   out
