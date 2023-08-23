@@ -39,6 +39,13 @@ impl<S: TapeSymbol> Tape<S> {
       right: vec![],
     }
   }
+  pub fn to_list(&self) -> Vec<S> {
+    let mut out = vec![];
+    out.extend(self.left.iter());
+    out.push(self.head);
+    out.extend(self.right.iter().rev());
+    out
+  }
 
   pub fn left_length(&self) -> usize {
     self.left.len()
@@ -183,6 +190,14 @@ impl Tape<Bit> {
       right: right.into_iter().map(|b| Bit(b)).collect(),
     }
   }
+}
+
+pub fn disp_list_bit(bits: &[Bit]) -> String {
+  let mut out = String::new();
+  for b in bits {
+    out.push_str(&b.to_string())
+  }
+  out
 }
 
 impl<S: TapeSymbol> Display for Tape<S> {
@@ -442,7 +457,7 @@ impl<'a, S: TapeSymbol + 'a> ExpTape<S, u32> {
     out
   }
 
-  fn to_tape(ExpTape { left, head, right, tape_end_inf }: &ExpTape<S, u32>) -> Tape<S> {
+  pub fn to_tape(ExpTape { left, head, right, tape_end_inf }: &ExpTape<S, u32>) -> Tape<S> {
     assert!(tape_end_inf);
     Tape {
       left: Self::splat(&mut left.iter()),

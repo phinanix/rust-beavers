@@ -6,15 +6,17 @@
 use std::{collections::HashSet, fs};
 
 use crate::{
+  brady::{difference_of, split_and_filter_records, Record},
   linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
   macro_machines::MacroMachine,
   rules::{detect_chain_rules, Rulebook},
   simulate::{aggregate_and_display_proving_res, simulate_proving_rules},
-  tape::Tape,
-  turing::{Phase, State, HALT},
+  tape::{disp_list_bit, ExpTape, Tape},
+  turing::{Dir, Phase, State, HALT},
   turing_examples::get_machine,
 };
-use either::Either::Right;
+use brady::{find_records, get_rs_hist_for_machine};
+use either::Either::{Left, Right};
 use itertools::Itertools;
 use macro_machines::MacroState;
 use rand::prelude::SliceRandom;
@@ -23,7 +25,7 @@ use rand_chacha::ChaCha8Rng;
 use simulate::aggregate_and_display_macro_proving_res;
 use tape::tnf_simulate;
 use turing::{Bit, SmallBinMachine, Turing};
-use turing_examples::{decideable_by_macro, undecided_size_4_random_100};
+use turing_examples::{bouncers, decideable_by_macro, undecided_size_4_random_100};
 
 mod brady;
 mod chain;
@@ -155,6 +157,132 @@ fn run_machine(machine: &SmallBinMachine) {
   // simulate_using_rules::<Bit, u32>(machine, num_steps, &rulebook, true);
   println!("\n\nproving rules");
   simulate_proving_rules(machine, num_steps, &mut rulebook, true);
+}
+
+fn disp_records(machine: &SmallBinMachine) {
+  println!(
+    "\nrunning records of machine: {}",
+    machine.to_compact_format()
+  );
+
+  let num_steps = 200;
+  Tape::simulate_from_start(machine, num_steps, true);
+
+  let (hist, rs) = match get_rs_hist_for_machine(machine, 200, false) {
+    Left(i) => {
+      println!("infinite at {i} steps");
+      return;
+    }
+    Right((hist, rs)) => (hist, rs),
+  };
+  let records = find_records(&rs);
+  println!("found {} records", records.len());
+  // println!("\nleft");
+  // for record in records.iter() {
+  //   if record.2 == Dir::L {
+  //     println!("{record}");
+  //   }
+  // }
+  // println!("\nright");
+  // for record in records.iter() {
+  //   if record.2 == Dir::R {
+  //     println!("{record}");
+  //   }
+  // }
+  let (left_records, right_records) = split_and_filter_records(records);
+  println!("\nfiltered left");
+
+  process_records(left_records);
+  println!("\nfiltered right");
+  process_records(right_records.clone());
+
+  /* goal: extract |Z| in X Z^n Y
+    strategy: look at the filtered right records, take the difference of their tape extents
+    hope the last 3 agree
+  */
+  let mut tape_extents = vec![];
+  for Record(r_step, _, _) in right_records.iter() {
+    let (step, phase, tape) = &hist[*r_step];
+    let tape_extent = tape.len();
+    tape_extents.push(tape_extent);
+    println!(
+      "rstep: {} step: {} phase: {} tape: {} tape extent: {} ",
+      r_step, step, phase, tape, tape_extent
+    );
+  }
+  let tape_diffs = difference_of(&tape_extents);
+  println!("tape extents: {:?}", tape_extents);
+  println!("tape diffs  : {:?}", tape_diffs);
+  let mb_len_z = match &tape_diffs[..] {
+    [.., d, e, f] => {
+      if d == e && e == f {
+        Some(*d as usize)
+      } else {
+        None
+      }
+    }
+    _ => None,
+  };
+  println!("mb len z: {:?}", mb_len_z);
+  let len_z: usize = match mb_len_z {
+    None => {
+      println!("couldn't find a len for z");
+      return;
+    }
+    Some(len_z) => len_z,
+  };
+  let last_record = right_records.last().unwrap();
+  let (_, last_phase, last_tape) = &hist[last_record.0];
+  let last_tape_len = last_tape.len() as usize;
+  let rem_last_tape_len = last_tape_len - 4 * len_z;
+  let len_x = rem_last_tape_len.div_floor(2);
+  let len_y = rem_last_tape_len.div_ceil(2);
+  assert_eq!(len_x + len_y + 4 * len_z, last_tape_len);
+  let last_tape_list: Vec<Bit> = ExpTape::to_tape(last_tape).to_list();
+  let x = &last_tape_list[0..len_x];
+  let y = &last_tape_list[(last_tape_list.len() - len_y)..];
+  let z4 = &last_tape_list[len_x..len_x + 4 * len_z];
+
+  assert_eq!(z4.len(), (len_z * 4) as usize);
+  let mut zs = vec![];
+  for i in 0..=3 {
+    zs.push(&z4[i * len_z..(i + 1) * len_z]);
+  }
+  let z = match &zs[..] {
+    [a, b, c, d] => {
+      if a == b && b == c && c == d {
+        a
+      } else {
+        println!("failed to extract z from z4: {:?} and zs: {:?}", z4, zs);
+        return;
+      }
+    }
+    _ => panic!("zs was not length 4"),
+  };
+  println!(
+    "extracted x y z from tape:\n{}\ntapelist:\n{}\nx: {} y: {} z: {}",
+    last_tape,
+    disp_list_bit(&last_tape_list),
+    disp_list_bit(x),
+    disp_list_bit(y),
+    disp_list_bit(z),
+  );
+}
+
+fn process_records(records: Vec<Record>) {
+  if records.len() < 3 {
+    println!("records was short: {:?}", records);
+    return;
+  }
+  // for record in records.iter() {
+  //   println!("{record}");
+  // }
+  let steps = records.iter().map(|Record(s, _, _)| *s).collect_vec();
+  let d1 = difference_of(&steps);
+  let d2 = difference_of(&d1);
+  println!("steps: {:?}", steps);
+  println!("d1   : {:?}", d1);
+  println!("d2   : {:?}", d2);
 }
 
 fn run_machine_macro<const N: usize>(machine: &SmallBinMachine) {
@@ -461,11 +589,11 @@ fn main() {
   // run_machine_macro::<2>(&SmallBinMachine::from_compact_format(
   //   decideable_by_macro[2],
   // ));
-  let undecided_size_4_random_100 = undecided_size_4_random_100();
-
-  run_machine(&SmallBinMachine::from_compact_format(
-    undecided_size_4_random_100[13],
-  ));
+  let bouncers = bouncers();
+  for i in 0..10 {
+    let machine = SmallBinMachine::from_compact_format(bouncers[i]);
+    disp_records(&machine);
+  }
 }
 
 /*
