@@ -3,30 +3,52 @@
 #![feature(int_roundings)]
 // #![feature(return_position_impl_trait_in_trait)]
 
+
 use std::{collections::HashSet, fs};
 
-use crate::{
-  brady::{difference_of, split_and_filter_records, Record},
-  linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
-  macro_machines::MacroMachine,
-  rules::{detect_chain_rules, Rulebook},
-  simulate::{aggregate_and_display_proving_res, simulate_proving_rules},
-  tape::{disp_list_bit, ExpTape, Tape},
-  turing::{Dir, Phase, State, HALT},
-  turing_examples::get_machine,
-};
-use brady::{find_records, get_rs_hist_for_machine};
 use either::Either::{Left, Right};
 use itertools::Itertools;
-use macro_machines::MacroState;
 use rand::prelude::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
-use simulate::aggregate_and_display_macro_proving_res;
-use tape::tnf_simulate;
-use turing::{Bit, SmallBinMachine, Turing};
-use turing_examples::{bouncers, decideable_by_macro, undecided_size_4_random_100};
 
+use crate::{
+  beep::{search_for_translated_cyclers_beep, scan_from_machine_beep},
+  brady::{difference_of, split_and_filter_records, Record, find_records, get_rs_hist_for_machine},
+  linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
+  macro_machines::{MacroMachine, MacroState},
+  rules::{detect_chain_rules, Rulebook},
+  simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules},
+  tape::{disp_list_bit,tnf_simulate, ExpTape, Tape},
+  turing::{Bit, SmallBinMachine, Turing, Dir, Phase, State, HALT},
+  turing_examples::{bouncers, decideable_by_macro, undecided_size_4_random_100, get_machine},
+};
+
+// use std::{collections::HashSet, fs};
+
+// use crate::{
+//   brady::{difference_of, split_and_filter_records, Record},
+//   linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
+//   macro_machines::MacroMachine,
+//   rules::{detect_chain_rules, Rulebook},
+//   simulate::{aggregate_and_display_proving_res, simulate_proving_rules},
+//   tape::{disp_list_bit, ExpTape, Tape},
+//   turing::{Dir, Phase, State, HALT},
+//   turing_examples::get_machine,
+// };
+// use brady::{find_records, get_rs_hist_for_machine};
+// use either::Either::{Left, Right};
+// use itertools::Itertools;
+// use macro_machines::MacroState;
+// use rand::prelude::SliceRandom;
+// use rand::SeedableRng;
+// use rand_chacha::ChaCha8Rng;
+// use simulate::aggregate_and_display_macro_proving_res;
+// use tape::tnf_simulate;
+// use turing::{Bit, SmallBinMachine, Turing};
+// use turing_examples::{bouncers, decideable_by_macro, undecided_size_4_random_100};
+
+mod beep;
 mod brady;
 mod chain;
 mod linrecur;
@@ -113,7 +135,8 @@ fn search_for_translated_cyclers(
   first_machine: &SmallBinMachine,
   num_steps: u32,
 ) -> Vec<(SmallBinMachine, LRResult)> {
-  let machines = tnf_simulate(first_machine.clone(), 130);
+  // note that 130 is plenty here
+  let machines = tnf_simulate(first_machine.clone(), 130, false);
   dbg!(machines.len());
   let mut lr_results = vec![];
   for m in machines {
@@ -571,6 +594,7 @@ fn main() {
   let num_lr_steps = 1500;
   let num_rule_steps = 200;
   scan_from_machine(
+  // scan_from_machine_beep(
     &first_machine,
     num_lr_steps,
     num_rule_steps,

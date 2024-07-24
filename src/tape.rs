@@ -78,9 +78,11 @@ impl<S: TapeSymbol> Tape<S> {
   fn move_right(&mut self) {
     // if the left side is empty and the bit we're moving off is empty, then we can just drop the
     // symbol on the ground since we're adding an empty to the infinite empty stack
-    if !(self.left.is_empty() && self.head == TapeSymbol::empty()) {
+    // if !(self.left.is_empty() && self.head == TapeSymbol::empty()) {
       self.left.push(self.head);
-    }
+    // } else {
+      // println!("\n DROP\nDROP\nDROP\n")
+    // }
     self.head = match self.right.pop() {
       Some(s) => s,
       None => TapeSymbol::empty(),
@@ -88,9 +90,9 @@ impl<S: TapeSymbol> Tape<S> {
   }
 
   fn move_left(&mut self) {
-    if !(self.right.is_empty() && self.head == TapeSymbol::empty()) {
+    // if !(self.right.is_empty() && self.head == TapeSymbol::empty()) {
       self.right.push(self.head);
-    }
+    // }
     self.head = match self.left.pop() {
       Some(s) => s,
       None => TapeSymbol::empty(),
@@ -535,7 +537,7 @@ impl ExpTape<Bit, u32> {
   }
 }
 
-pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<SmallBinMachine> {
+pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32, allow_no_halt: bool) -> Vec<SmallBinMachine> {
   let mut out = vec![];
 
   struct TnfState {
@@ -557,7 +559,7 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32) -> Vec<Small
       (Left(edge), simulated_steps) => {
         let new_state = edge.0;
         let new_step_total = simulated_steps + num_steps;
-        let new_machines = machine.branch_on_edge(edge);
+        let new_machines = machine.branch_on_edge(edge, allow_no_halt);
         for machine in new_machines {
           stack.push(TnfState {
             machine,

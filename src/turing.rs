@@ -339,16 +339,15 @@ impl SmallBinMachine {
     out
   }
 
-  pub fn branch_on_edge(&self, edge: Edge<State, Bit>) -> Vec<Self> {
+  pub fn branch_on_edge(&self, edge: Edge<State, Bit>, allow_no_halt: bool) -> Vec<Self> {
     let edge_index = self.edge_index(edge);
     assert_eq!(self.table[edge_index], None);
-    if self.num_undefined_trans() == 1 {
+
+    if self.num_undefined_trans() == 1 && !allow_no_halt {
       let mut cloned = self.clone();
       cloned.table[edge_index] = Some(HALT_TRANS);
       return vec![cloned];
     }
-
-    // let mut out = vec![];
 
     let mut to_print = false;
     let max_state_index = match self.first_undefined_state() {
@@ -591,7 +590,7 @@ mod test {
   fn branch_test() {
     let machine_str = "1RB0RB_1LA---";
     let machine = SmallBinMachine::from_compact_format(machine_str);
-    let branched_machines = machine.branch_on_edge(Edge(State(2), Bit(true)));
+    let branched_machines = machine.branch_on_edge(Edge(State(2), Bit(true)), false);
     assert_eq!(
       branched_machines,
       vec![SmallBinMachine::from_compact_format("1RB0RB_1LA1RH")]
@@ -599,7 +598,7 @@ mod test {
 
     let machine_str = "1LA---_------";
     let machine = SmallBinMachine::from_compact_format(machine_str);
-    let mut branched_machines = machine.branch_on_edge(Edge(State(1), Bit(true)));
+    let mut branched_machines = machine.branch_on_edge(Edge(State(1), Bit(true)), false);
     let mut branched_machines_str: Vec<String> = branched_machines
       .iter()
       .map(|m| SmallBinMachine::to_compact_format(&m))

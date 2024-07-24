@@ -19,6 +19,9 @@ where
   Tape<S>: std::fmt::Display,
 {
   let to_print = false;
+  if to_print {
+    println!("machine {}", machine.to_compact_format());
+  }
   let mut tape: Tape<S> = Tape::new();
   let mut state = P::START;
   let mut cur_displacement = 0;
@@ -31,6 +34,9 @@ where
   let mut displacement_to_check = cur_displacement;
   let mut leftmost = cur_displacement;
   let mut rightmost = cur_displacement;
+
+  let mut rlen_hist = vec![tape.right_length()];
+
   while steps_taken < num_steps {
     state = match tape.step_dir(state, machine) {
       Left(_unknown_edge) => unreachable!("machine is defined"),
@@ -46,10 +52,16 @@ where
         new_state
       }
     };
+    let rlen= tape.right_length();
+
 
     if to_print {
-      println!("steps: {} state: {:?} tape: {}", steps_taken, state, &tape);
+      println!("steps: {} state: {:?} tape: {} rlen: {}", steps_taken, state, &tape, rlen);
     }
+    
+    // assert!(*rlen_hist.last().unwrap() <= rlen, "{:?} {}", rlen_hist, rlen);
+    // rlen_hist.push(rlen);
+
     // cycle check
     if state == state_to_check && tape == tape_to_check {
       let start_step = num_at_which_we_check;
@@ -81,15 +93,24 @@ where
         .abs_diff(cur_displacement)
         .try_into()
         .unwrap();
-      let index_left: i32 = (tape.left_length() as i32).min(end_left);
-      let index_right: i32 = (tape.right_length() as i32).min(end_right);
+      assert_eq!(start_left, end_left);
+      assert_eq!(start_right, end_right);
+      // println!("hi");
+      
+      let l_len = tape.left_length() as i32;
+      let r_len = tape.right_length() as i32;
+      let index_left: i32 = l_len.min(end_left);
+      let index_right: i32 = r_len.min(end_right);
+      
       if to_print {
         dbg!(
           shift,
           cur_displacement,
           displacement_to_check,
           leftmost,
-          rightmost
+          rightmost,
+          l_len,
+          r_len,
         );
         dbg!(
           start_left,
@@ -100,7 +121,24 @@ where
           index_right
         );
       }
+      assert!(rightmost >= displacement_to_check);
+      assert!(leftmost <= displacement_to_check);
+
+      // assert!(r_len <= (rightmost - cur_displacement) || r_len > (rightmost - displacement_to_check));
+
+      // the short version is we need either r_len == rightmost - curdisp
+      // or l_len == leftmost - curdisp
+      // because that corresponds to the thing where we have written all the bits we are reading to determine 
+      // that the lr rule actually applies
       if index_left <= start_left + shift && index_right <= start_right - shift {
+        if shift > 0 {
+          assert!(r_len == (rightmost - cur_displacement));
+          // assert!(r_len <= (rightmost - displacement_to_check));
+        } else if shift < 0 {
+          assert!(l_len <= -1 * (leftmost - cur_displacement));
+        } else {
+          // panic!();
+        }
         let start_tape_slice =
           tape_to_check.get_displaced_slice(leftmost, rightmost, displacement_to_check);
         let cur_tape_slice =
@@ -110,11 +148,38 @@ where
           println!("tape: {} tape_to_check: {}", tape, tape_to_check);
         }
         if start_tape_slice == cur_tape_slice {
+          // if steps_taken - num_at_which_we_check > 3 {panic!("steps {} old steps {} ", steps_taken, num_at_which_we_check)};
           return LR {
             start_step: steps_taken,
             period: steps_taken - num_at_which_we_check,
           };
         }
+      } else {
+        assert!(r_len > (rightmost - cur_displacement) || l_len > -1 * (leftmost - cur_displacement));
+        if shift > 0 {
+          assert!(r_len > (rightmost - cur_displacement));
+        } else if shift < 0 {
+          assert!(l_len > -1 * (leftmost - cur_displacement));
+        }
+        // println!();
+        // dbg!(
+        //   shift,
+        //   cur_displacement,
+        //   displacement_to_check,
+        //   leftmost,
+        //   rightmost,
+        //   l_len,
+        //   r_len,
+        // );
+        // dbg!(
+        //   start_left,
+        //   start_right,
+        //   // end_left,
+        //   // end_right,
+        //   index_left,
+        //   index_right
+        // );
+        // println!("fail");
       }
       if to_print {
         println!()
