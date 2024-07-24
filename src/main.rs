@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
-#![feature(return_position_impl_trait_in_trait)]
 #![feature(int_roundings)]
+// #![feature(return_position_impl_trait_in_trait)]
 
 use std::{collections::HashSet, fs};
 
@@ -166,7 +166,7 @@ fn disp_records(machine: &SmallBinMachine) {
   );
 
   let num_steps = 200;
-  Tape::simulate_from_start(machine, num_steps, true);
+  // Tape::simulate_from_start(machine, num_steps, true);
 
   let (hist, rs) = match get_rs_hist_for_machine(machine, 200, false) {
     Left(i) => {
@@ -567,17 +567,17 @@ fn scan_from_machine(
 }
 
 fn main() {
-  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  // let num_lr_steps = 1500;
-  // let num_rule_steps = 200;
-  // scan_from_machine(
-  //   &first_machine,
-  //   num_lr_steps,
-  //   num_rule_steps,
-  //   // Some("size3_holdouts_2_may.txt"),
-  //   // Some("size4_holdouts_31_may_29e2280.txt"),
-  //   None,
-  // );
+  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  let num_lr_steps = 1500;
+  let num_rule_steps = 200;
+  scan_from_machine(
+    &first_machine,
+    num_lr_steps,
+    num_rule_steps,
+    // Some("size3_holdouts_2_may.txt"),
+    // Some("size4_holdouts_31_may_29e2280.txt"),
+    None,
+  );
 
   //give up 5jun23
   // run_machine(&SmallBinMachine::from_compact_format(
@@ -589,11 +589,13 @@ fn main() {
   // run_machine_macro::<2>(&SmallBinMachine::from_compact_format(
   //   decideable_by_macro[2],
   // ));
-  let bouncers = bouncers();
-  for i in 0..10 {
-    let machine = SmallBinMachine::from_compact_format(bouncers[i]);
-    disp_records(&machine);
-  }
+
+
+  // let bouncers = bouncers();
+  // for i in 0..10 {
+  //   let machine = SmallBinMachine::from_compact_format(bouncers[i]);
+  //   disp_records(&machine);
+  // }
 }
 
 /*

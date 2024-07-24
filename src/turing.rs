@@ -353,8 +353,13 @@ impl SmallBinMachine {
     let mut to_print = false;
     let max_state_index = match self.first_undefined_state() {
       Some(undef_state) => {
+        // first undefined state is 0-indexed, but State (the type) is 1-indexed, 
+        // so this conversion converts from 0-indexing to 1-indexing
         let ans = undef_state + 1;
+        // if the transition we're defining is in a state which has no transitions 
+        // defined yet ------, then we are allowed to go to the *next higher* state
         if ans == edge.0 .0 && ans < self.num_states {
+          // panic!("{:?} {}", edge, self.to_compact_format());
           ans + 1
         } else {
           ans
