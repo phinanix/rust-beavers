@@ -8,20 +8,14 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 use crate::{
-  brady::{difference_of, find_records, get_rs_hist_for_machine, split_and_filter_records, Record},
-  linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
-  macro_machines::{MacroMachine, MacroState},
-  rules::{detect_chain_rules, Rulebook},
-  simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules},
-  tape::{disp_list_bit,tnf_simulate, ExpTape, Tape},
-  turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT},
-  turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100},
+  brady::{difference_of, find_records, get_rs_hist_for_machine, split_and_filter_records, Record}, dump_machines_to_file, linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult}, macro_machines::{MacroMachine, MacroState}, rules::{detect_chain_rules, Rulebook}, simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules}, tape::{disp_list_bit,tnf_simulate, ExpTape, Tape}, turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT}, turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100}
 };
 
 // by convention, the first step at which a state is never used again is the 
 // QH state. eg if a machine never uses a state, it quasihalts at step 0
 // if a machine only uses state A at the very start and then immediately 
 // transitions to B, it quasihalts at step 1
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum LRResultBeep {
   QHHalt { qh_step: u32, halt_step: u32},
   QHCycle { qh_step: u32, start_step: u32, period: u32 },
@@ -42,6 +36,7 @@ impl LastUsed {
   pub fn state_used(&mut self, state: u8, cur_step: u32) {
     assert_eq!(self.step, cur_step);
     self.last_used[state as usize] = cur_step.try_into().unwrap();
+    self.step += 1;
   }
 
   fn state_slice(&self) -> &[i32] {
@@ -56,9 +51,10 @@ impl LastUsed {
 
   pub fn all_used_after(&self, step: u32) -> bool {
     self.state_slice().iter().all(|&step_used| {
-      let su : u32 = step_used.try_into().unwrap();
-      assert_ne!(su, step); 
-      su > step
+      // dbg!(step_used);
+      let compare_step : i32 = step.try_into().unwrap();
+      assert_ne!(step_used, compare_step); 
+      step_used > compare_step
     })
   }
 }
@@ -110,7 +106,7 @@ repeat_steps is the number of steps slow and fast were apart when the recurrence
 repeat_by_steps is the number of steps slow had taken when the recurrence was 
   detected
 */
-fn detect_quasihalt_of_lr_or_cycler(
+pub fn detect_quasihalt_of_lr_or_cycler(
   machine: &SmallBinMachine, repeat_steps: u32, repeat_by_steps: u32
 ) -> LRResultBeep {
 
@@ -119,6 +115,7 @@ fn detect_quasihalt_of_lr_or_cycler(
   let mut fast_state = State::START;
   let mut fast_steps = 0;
   let mut fast_cur_displacement = 0;
+  let mut fast_disp_history = vec![fast_cur_displacement];
   let mut fast_last_used = LastUsed::new(machine.num_states());
   fast_last_used.state_used(State::START.as_byte(), 0);
 
@@ -134,6 +131,7 @@ fn detect_quasihalt_of_lr_or_cycler(
         fast_last_used.state_used(new_state.as_byte(), fast_steps);
         //unwrap justified because we didn't halt
         fast_cur_displacement += mb_dir.unwrap().to_displacement();
+        fast_disp_history.push(fast_cur_displacement);        
         // leftmost = leftmost.min(cur_displacement);
         // rightmost = rightmost.max(cur_displacement);
         new_state
@@ -148,21 +146,13 @@ fn detect_quasihalt_of_lr_or_cycler(
   let mut slow_cur_displacement = 0;
   let mut slow_last_used = LastUsed::new(machine.num_states());
   slow_last_used.state_used(State::START.as_byte(), 0);
-  
-  // let mut num_at_which_we_check = 0;
-  // let mut next_power_of_two = 1;
-  // let mut tape_to_check = tape.clone();
-  // let mut state_to_check = state.clone();
-  // let mut displacement_to_check = cur_displacement;
 
-  // let mut leftmost = todo!();
-  // let mut rightmost = todo!();
-
-  for _slow_step in 0..repeat_by_steps {
+  for _slow_step in 0..=repeat_by_steps {
   
-    // if to_print {
-    //   println!("steps: {} state: {:?} tape: {}", steps_taken, state, &tape);
-    // }
+    if to_print {
+      println!("slow steps: {} state: {:?} tape: {}", slow_steps, slow_state, &slow_tape);
+      println!("fast steps: {} state: {:?} tape: {}", fast_steps, fast_state, &fast_tape);
+    }
 
     // cycle check
     if fast_state == slow_state && fast_tape == slow_tape {
@@ -186,9 +176,12 @@ fn detect_quasihalt_of_lr_or_cycler(
     */
     if fast_state == slow_state {
       let shift = fast_cur_displacement - slow_cur_displacement;
-      // todo: we need to calculate left 
-      let leftmost: i32 = 0;
-      let rightmost: i32 = 0;
+      // todo: we need to calculate leftmost and rightmost
+      let disp_hist_slice = &fast_disp_history[(slow_steps as usize)..=(fast_steps as usize)];
+      let leftmost: i32 = *disp_hist_slice.iter().min().unwrap();
+      let rightmost: i32 = *disp_hist_slice.iter().max().unwrap();;
+
+
       // todo: this is duplicating some work with all the indexing stuff
       let start_left: i32 = leftmost
         .abs_diff(slow_cur_displacement)
@@ -207,8 +200,14 @@ fn detect_quasihalt_of_lr_or_cycler(
         .abs_diff(fast_cur_displacement)
         .try_into()
         .unwrap();
+
+      let l_len = fast_tape.left_length() as i32;
+      let r_len = fast_tape.right_length() as i32;
+
       let index_left: i32 = (fast_tape.left_length() as i32).min(end_left);
       let index_right: i32 = (fast_tape.right_length() as i32).min(end_right);
+
+
       if to_print {
         dbg!(
           shift,
@@ -227,6 +226,13 @@ fn detect_quasihalt_of_lr_or_cycler(
         );
       }
       if index_left <= start_left + shift && index_right <= start_right - shift {
+        if shift > 0 {
+          assert!(r_len == (rightmost - fast_cur_displacement));
+          // assert!(r_len <= (rightmost - displacement_to_check));
+        } else if shift < 0 {
+          assert!(l_len == -1 * (leftmost - fast_cur_displacement));
+        }
+
         let start_tape_slice =
           slow_tape.get_displaced_slice(leftmost, rightmost, slow_cur_displacement);
         let cur_tape_slice =
@@ -252,17 +258,6 @@ fn detect_quasihalt_of_lr_or_cycler(
         println!()
       }
     }
-  
-    // update power of two
-    // if steps_taken == next_power_of_two {
-    //   num_at_which_we_check = next_power_of_two;
-    //   next_power_of_two *= 2;
-    //   tape_to_check = tape.clone();
-    //   state_to_check = state.clone();
-    //   displacement_to_check = cur_displacement;
-    //   leftmost = cur_displacement;
-    //   rightmost = cur_displacement;
-    // }
 
     // update slow stuff
     slow_state = match slow_tape.step_dir(slow_state, machine) {
@@ -294,6 +289,7 @@ fn detect_quasihalt_of_lr_or_cycler(
         fast_last_used.state_used(new_state.as_byte(), fast_steps);
         //unwrap justified because we didn't halt
         fast_cur_displacement += mb_dir.unwrap().to_displacement();
+        fast_disp_history.push(fast_cur_displacement);        
         // leftmost = leftmost.min(cur_displacement);
         // rightmost = rightmost.max(cur_displacement);
         new_state
@@ -302,163 +298,80 @@ fn detect_quasihalt_of_lr_or_cycler(
 
   }
 
-  todo!()
+  panic!("we should have detected an lr or a cycle but we didn't {} {:?} {} {}", 
+      machine.to_compact_format(), lr_simulate(machine, 1500), repeat_steps, repeat_by_steps)
 }
 
-pub fn lr_simulate_beep<P: Phase, S: TapeSymbol>(
-  machine: &impl Turing<P, S>, num_steps: u32
+pub fn lr_simulate_beep(
+  machine: &SmallBinMachine, num_steps: u32
 ) -> LRResultBeep
-  where Tape<S>: std::fmt::Display,
 {
-  let to_print = false;
-  let mut tape: Tape<S> = Tape::new();
-  let mut state = P::START;
-  let mut cur_displacement = 0;
-  let mut steps_taken = 0;
+  let lr_res = lr_simulate(machine, num_steps);
+  let (start_step, period) = match lr_res {
+    LRResult::Inconclusive { steps_simulated } => return Inconclusive { steps_simulated },
+    LRResult::Halt { num_steps } => {
+      let qh_time = detect_quasihalt_of_halter(machine, num_steps);
+      return QHHalt { qh_step: qh_time, halt_step: num_steps }
+    },
+    LRResult::Cycle { start_step, period } => (start_step, period),
+    LRResult::LR { start_step, period } => (start_step, period),
+  };
+  detect_quasihalt_of_lr_or_cycler(machine, period, start_step)
   
-  let mut num_at_which_we_check = 0;
-  let mut next_power_of_two = 1;
-  let mut tape_to_check = tape.clone();
-  let mut state_to_check = state.clone();
-  let mut displacement_to_check = cur_displacement;
-  let mut leftmost = cur_displacement;
-  let mut rightmost = cur_displacement;
-  while steps_taken < num_steps {
-    state = match tape.step_dir(state, machine) {
-      Left(_unknown_edge) => unreachable!("machine is defined"),
-      Right((new_state, mb_dir, steps)) => {
-        steps_taken += steps;
-        if new_state.halted() {
-          todo!();
-          // return Halt { num_steps: steps_taken };
-        }
-        //unwrap justified because we didn't halt
-        cur_displacement += mb_dir.unwrap().to_displacement();
-        leftmost = leftmost.min(cur_displacement);
-        rightmost = rightmost.max(cur_displacement);
-        new_state
-      }
-    };
-  
-    if to_print {
-      println!("steps: {} state: {:?} tape: {}", steps_taken, state, &tape);
-    }
-    // cycle check
-    if state == state_to_check && tape == tape_to_check {
-      let start_step = num_at_which_we_check;
-      todo!();
-      // return Cycle {
-      //   start_step,
-      //   period: steps_taken - num_at_which_we_check,
-      // };
-    }
-  
-    // LR check
-    /* list of conditions:
-    - states match
-    - tape matches within (l, r)
-    - (l, r) \subset [(l+shift, r+shift) union dead tape]
-    */
-    if state == state_to_check {
-      let shift = cur_displacement - displacement_to_check;
-      // todo: this is duplicating some work with all the indexing stuff
-      let start_left: i32 = leftmost.abs_diff(displacement_to_check).try_into().unwrap();
-      let start_right: i32 = rightmost
-        .abs_diff(displacement_to_check)
-        .try_into()
-        .unwrap();
-      let end_left: i32 = (leftmost + shift)
-        .abs_diff(cur_displacement)
-        .try_into()
-        .unwrap();
-      let end_right: i32 = (rightmost + shift)
-        .abs_diff(cur_displacement)
-        .try_into()
-        .unwrap();
-      let index_left: i32 = (tape.left_length() as i32).min(end_left);
-      let index_right: i32 = (tape.right_length() as i32).min(end_right);
-      if to_print {
-        dbg!(
-          shift,
-          cur_displacement,
-          displacement_to_check,
-          leftmost,
-          rightmost
-        );
-        dbg!(
-          start_left,
-          start_right,
-          end_left,
-          end_right,
-          index_left,
-          index_right
-        );
-      }
-      if index_left <= start_left + shift && index_right <= start_right - shift {
-        let start_tape_slice =
-          tape_to_check.get_displaced_slice(leftmost, rightmost, displacement_to_check);
-        let cur_tape_slice =
-          tape.get_displaced_slice(leftmost + shift, rightmost + shift, cur_displacement);
-        if to_print {
-          // dbg!(start_tape_slice, cur_tape_slice);
-          println!("tape: {} tape_to_check: {}", tape, tape_to_check);
-        }
-        if start_tape_slice == cur_tape_slice {
-          todo!();
-          // return LR {
-          //   start_step: steps_taken,
-          //   period: steps_taken - num_at_which_we_check,
-          // };
-        }
-      }
-      if to_print {
-        println!()
-      }
-    }
-  
-    // update power of two
-    if steps_taken == next_power_of_two {
-      num_at_which_we_check = next_power_of_two;
-      next_power_of_two *= 2;
-      tape_to_check = tape.clone();
-      state_to_check = state.clone();
-      displacement_to_check = cur_displacement;
-      leftmost = cur_displacement;
-      rightmost = cur_displacement;
-    }
-  }
-  Inconclusive { steps_simulated: num_steps }
 }
   
+pub fn aggregate_and_display_lr_res_beep(results: Vec<LRResultBeep>) {
+  let mut halt_count = 0;
+  let mut qh_cycle_count = 0;
+  let mut nqh_cycle_count = 0;
+  let mut qh_lr_count = 0;
+  let mut nqh_lr_count = 0;
+  let mut inconclusive_count = 0;
+  for result in results {
+    match result {
+      QHHalt { .. } => halt_count += 1,
+      QHCycle { .. } => qh_cycle_count += 1,
+      NonQHCycle { .. } => nqh_cycle_count += 1,
+      QHLR { .. } => qh_lr_count += 1,
+      NonQHLR { .. } => nqh_lr_count += 1,
+      Inconclusive { steps_simulated: _steps_simulated } => inconclusive_count += 1,
+    }
+  }
+  println!(
+    "halted: {} quasihalted (cycled): {} quashalted (lr): {}\nnon-qh (cycled): {} non-qh (lr): {} inconclusive: {}",
+    halt_count, qh_cycle_count, qh_lr_count,
+    nqh_cycle_count, nqh_lr_count, inconclusive_count
+  );
+}
 
 pub fn search_for_translated_cyclers_beep(
     first_machine: &SmallBinMachine,
     num_steps: u32,
-  ) -> Vec<(SmallBinMachine, LRResult)> {
+  ) -> Vec<(SmallBinMachine, LRResultBeep)> {
     let machines = tnf_simulate(first_machine.clone(), 130, true);
     dbg!(machines.len());
     let mut lr_results = vec![];
     for m in machines {
       // let m_str = SmallBinMachine::to_compact_format(&m);
-      let lr_res = lr_simulate(&m, num_steps);
-      let (final_state, normal_num_steps, _tape) = Tape::simulate_from_start(&m, num_steps, false);
+      let lr_res = lr_simulate_beep(&m, num_steps);
       lr_results.push((m, lr_res));
-  
-      // println!("m: {}, res: {:?}", m_str, lr_res);
-      match lr_res {
-        LRResult::Halt { num_steps: lr_num_steps } => {
-          assert_eq!((final_state, normal_num_steps), (Right(HALT), lr_num_steps))
-        }
-        _ => (),
-      }
-      match final_state {
-        Right(HALT) => assert_eq!(lr_res, LRResult::Halt { num_steps: normal_num_steps }),
-        _ => (),
-      }
     }
-    aggregate_and_display_lr_res(lr_results.iter().map(|(_m, res)| *res).collect());
+    aggregate_and_display_lr_res_beep(lr_results.iter().map(|(_m, res)| *res).collect());
     lr_results
 }
+
+fn get_undecided_beep(res: Vec<(SmallBinMachine, LRResultBeep)>) -> Vec<SmallBinMachine> {
+  let verbose = true;
+  res
+    .into_iter()
+    .filter_map(|(m, r)| match r {
+      LRResultBeep::Inconclusive { steps_simulated: _ } => Some(m),
+      _ => None,
+    })
+    .collect_vec()
+}
+
+
   
 pub fn scan_from_machine_beep(
     machine: &SmallBinMachine,
@@ -466,27 +379,17 @@ pub fn scan_from_machine_beep(
     num_rule_steps: u32,
     mb_undecided_file: Option<&str>,
 ) {
-let lr_results = search_for_translated_cyclers_beep(machine, num_lr_steps);
-// let undecided_machines = get_undecided(lr_results);
-// let undecided_len = undecided_machines.len();
-// let undecided_with_halt = undecided_machines
-//     .into_iter()
-//     .filter(|m| m.has_halt_trans())
-//     .collect_vec();
-// let remaining_undecided_len = undecided_with_halt.len();
-// let no_halt_trans_count = undecided_len - remaining_undecided_len;
-// println!(
-//     "there were {} undecided machines, after determinization.",
-//     undecided_len
-// );
-// println!(
-//     "{} had no halt trans, leaving {} to be decided",
-//     no_halt_trans_count, remaining_undecided_len,
-// );
-// let final_undecided = prove_with_macros(undecided_with_halt, num_rule_steps, false);
-// if let Some(filename) = mb_undecided_file {
-//     dump_machines_to_file(final_undecided.clone(), filename).expect("file should be openable");
-// }
+  let lr_results = search_for_translated_cyclers_beep(machine, num_lr_steps);
+  let undecided_machines = get_undecided_beep(lr_results);
+  let undecided_len = undecided_machines.len();
+  println!(
+      "there were {} undecided machines",
+      undecided_len
+  );
+  let final_undecided = undecided_machines;
+  if let Some(filename) = mb_undecided_file {
+      dump_machines_to_file(final_undecided.clone(), filename).expect("file should be openable");
+  }
 // let num_undecided_to_display = 10;
 // let seed = 123456789012345;
 // let mut rng: ChaCha8Rng = SeedableRng::seed_from_u64(seed);

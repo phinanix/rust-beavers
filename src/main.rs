@@ -6,6 +6,7 @@
 
 use std::{collections::HashSet, fs};
 
+use beep::detect_quasihalt_of_lr_or_cycler;
 use either::Either::{Left, Right};
 use itertools::Itertools;
 use rand::prelude::SliceRandom;
@@ -136,7 +137,7 @@ fn search_for_translated_cyclers(
   num_steps: u32,
 ) -> Vec<(SmallBinMachine, LRResult)> {
   // note that 130 is plenty here
-  let machines = tnf_simulate(first_machine.clone(), 130, false);
+  let machines = tnf_simulate(first_machine.clone(), 140, true);
   dbg!(machines.len());
   let mut lr_results = vec![];
   for m in machines {
@@ -163,23 +164,23 @@ fn search_for_translated_cyclers(
 
 fn run_machine(machine: &SmallBinMachine) {
   println!("\nrunning machine: {}", machine.to_compact_format());
-  let chain_rules = detect_chain_rules(machine);
-  println!("{} chain rules:", chain_rules.len());
-  for (i, chain_rule) in chain_rules.iter().enumerate() {
-    println!("{}: {}", i, chain_rule);
-  }
-  println!();
+  // let chain_rules = detect_chain_rules(machine);
+  // println!("{} chain rules:", chain_rules.len());
+  // for (i, chain_rule) in chain_rules.iter().enumerate() {
+    // println!("{}: {}", i, chain_rule);
+  // }
+  // println!();
 
-  let mut rulebook = Rulebook::new(machine.num_states());
-  rulebook.add_rules(chain_rules);
-  let num_steps = 85;
+  // let mut rulebook = Rulebook::new(machine.num_states());
+  // rulebook.add_rules(chain_rules);
+  let num_steps = 4;
   Tape::simulate_from_start(machine, num_steps * 3, true);
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
   // println!("using rules");
   // simulate_using_rules::<Bit, u32>(machine, num_steps, &rulebook, true);
-  println!("\n\nproving rules");
-  simulate_proving_rules(machine, num_steps, &mut rulebook, true);
+  // println!("\n\nproving rules");
+  // simulate_proving_rules(machine, num_steps, &mut rulebook, true);
 }
 
 fn disp_records(machine: &SmallBinMachine) {
@@ -595,18 +596,27 @@ fn scan_from_machine(
 
 fn main() {
   let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  let num_lr_steps = 1500;
+  let num_lr_steps = 1_000_000;
   let num_rule_steps = 200;
-  scan_from_machine(
-  // scan_from_machine_beep(
+  dbg!(num_lr_steps, num_rule_steps);
+  // scan_from_machine(
+  scan_from_machine_beep(
     &first_machine,
     num_lr_steps,
     num_rule_steps,
     // Some("size3_holdouts_2_may.txt"),
     // Some("size4_holdouts_31_may_29e2280.txt"),
-    // Some("size4_wrong_LR_rem_24_july_24"),
-    None,
+    Some("size4_qh_holdouts_24_july_24"),
+    // None,
   );
+
+  // let m = SmallBinMachine::from_compact_format("1RB---_1RC---_1RD1LD_1LD1RC");
+  // run_machine(&m);
+  // detect_quasihalt_of_lr_or_cycler(&m, 2, 4);
+
+  //LR "not defined" crash 24jul24
+  // run_machine(&SmallBinMachine::from_compact_format("1RB1LC_1RC0LA_1RD0RE_1RE---_1LE1LB"));
+  // run_machine(&SmallBinMachine::from_compact_format("1RB0LD_1RC0RB_1RD0LA_1RE1LA_1LD---"));
 
   //give up 5jun23
   // run_machine(&SmallBinMachine::from_compact_format(

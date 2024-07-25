@@ -9,6 +9,9 @@ undecided @ LR   750: 150_167  diff
           @ LR 12000: 149_758   20
           @ LR 24000: 149_742   16
 
+          @ LR   384_000: 149_723 19
+          @ LR 1_000_000: 149_720 3
+
 undecided @ LR   750: 150_167  diff ratio
           @ LR  1061: 149_988  179  
           @ LR  1500: 149_912   76  2.36
@@ -20,5 +23,26 @@ undecided @ LR   750: 150_167  diff ratio
           @ LR 12000: 149_758    7  1.86
           @ LR 16971: 149_751    7  1
           @ LR 24000: 149_742    9  .78
+
+
+qh first results: 
+[src/beep.rs:359:5] machines.len() = 2943669
+halted: 183983 quasihalted (cycled): 192528 quashalted (lr): 762015
+non-qh (cycled): 151072 non-qh (lr): 1504159 inconclusive: 149912
+
+[src/main.rs:141:3] machines.len() = 2943669
+halted: 183983 cycled: 343600 lr: 2266174 inconclusive: 149912
+
+halts match
+
+cycs match
+qh cyc + nqh cyc = 192528 + 151072 = 343600
+cyc = 343600
+
+lrs 
+qh lr + nqh lr = 762015 + 1504159 = 2266174
+lr = 2266174
+
+inconclusives match
 
         

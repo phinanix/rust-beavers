@@ -78,11 +78,13 @@ impl<S: TapeSymbol> Tape<S> {
   fn move_right(&mut self) {
     // if the left side is empty and the bit we're moving off is empty, then we can just drop the
     // symbol on the ground since we're adding an empty to the infinite empty stack
-    if !(self.left.is_empty() && self.head == TapeSymbol::empty()) {
+
+    // temporarily disabling that feature because it made LR detection wrong :0
+    // if !(self.left.is_empty() && self.head == TapeSymbol::empty()) {
       self.left.push(self.head);
-    } else {
+    // } else {
       // println!("\n DROP\nDROP\nDROP\n")
-    }
+    // }
     self.head = match self.right.pop() {
       Some(s) => s,
       None => TapeSymbol::empty(),
@@ -90,9 +92,9 @@ impl<S: TapeSymbol> Tape<S> {
   }
 
   fn move_left(&mut self) {
-    if !(self.right.is_empty() && self.head == TapeSymbol::empty()) {
+    // if !(self.right.is_empty() && self.head == TapeSymbol::empty()) {
       self.right.push(self.head);
-    }
+    // }
     self.head = match self.left.pop() {
       Some(s) => s,
       None => TapeSymbol::empty(),
@@ -554,6 +556,9 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32, allow_no_hal
     num_steps: 0,
   }];
   while let Some(TnfState { machine, state, mut tape, num_steps }) = stack.pop() {
+    if out.len() % 1_000_000 == 0 {
+      println!("machines {}", out.len());
+    }
     match tape.simulate(&machine, state, total_steps - num_steps, false) {
       (Right(_state), _simulated_steps) => out.push(machine),
       (Left(edge), simulated_steps) => {
