@@ -529,22 +529,26 @@ fn scan_from_machine(
     "{} had no halt trans, leaving {} to be decided",
     no_halt_trans_count, remaining_undecided_len,
   );
-  let final_undecided = prove_with_macros(undecided_with_halt, num_rule_steps, false);
+  // let final_undecided = prove_with_macros(undecided_with_halt, num_rule_steps, false);
+  let final_undecided = undecided_with_halt;
+  
   if let Some(filename) = mb_undecided_file {
     dump_machines_to_file(final_undecided.clone(), filename).expect("file should be openable");
   }
-  let num_undecided_to_display = 10;
-  let seed = 123456789012345;
-  let mut rng: ChaCha8Rng = SeedableRng::seed_from_u64(seed);
-  let random_undecideds = final_undecided
-    .choose_multiple(&mut rng, num_undecided_to_display)
-    .cloned()
-    .collect_vec();
 
-  println!(
-    "some undecided machines:\n{}",
-    machines_to_str(random_undecideds)
-  );
+  // let num_undecided_to_display = 10;
+  // let seed = 123456789012345;
+  // let mut rng: ChaCha8Rng = SeedableRng::seed_from_u64(seed);
+  // let random_undecideds = final_undecided
+  //   .choose_multiple(&mut rng, num_undecided_to_display)
+  //   .cloned()
+  //   .collect_vec();
+
+  // println!(
+  //   "some undecided machines:\n{}",
+  //   machines_to_str(random_undecideds)
+  // );
+  
   // println!(
   //   "final_undecided:\n{}",
   //   final_undecided
@@ -600,6 +604,7 @@ fn main() {
     num_rule_steps,
     // Some("size3_holdouts_2_may.txt"),
     // Some("size4_holdouts_31_may_29e2280.txt"),
+    // Some("size4_wrong_LR_rem_24_july_24"),
     None,
   );
 

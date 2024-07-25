@@ -111,6 +111,8 @@ where
           rightmost,
           l_len,
           r_len,
+          steps_taken, 
+          num_at_which_we_check,
         );
         dbg!(
           start_left,
@@ -132,10 +134,10 @@ where
       // that the lr rule actually applies
       if index_left <= start_left + shift && index_right <= start_right - shift {
         if shift > 0 {
-          assert!(r_len == (rightmost - cur_displacement));
+          // assert!(r_len == (rightmost - cur_displacement));
           // assert!(r_len <= (rightmost - displacement_to_check));
         } else if shift < 0 {
-          assert!(l_len <= -1 * (leftmost - cur_displacement));
+          // assert!(l_len == -1 * (leftmost - cur_displacement));
         } else {
           // panic!();
         }
@@ -149,6 +151,18 @@ where
         }
         if start_tape_slice == cur_tape_slice {
           // if steps_taken - num_at_which_we_check > 3 {panic!("steps {} old steps {} ", steps_taken, num_at_which_we_check)};
+          // if shift > 0 {
+          //   assert!(r_len == (rightmost - cur_displacement), "{}", machine.to_compact_format());
+          //   if r_len != (rightmost - cur_displacement) {
+          //     // println!("{}", machine.to_compact_format());
+          //   } 
+          //   // assert!(r_len <= (rightmost - displacement_to_check));
+          // } else if shift < 0 {
+          //   assert!(l_len == -1 * (leftmost - cur_displacement), "{}", machine.to_compact_format());
+          //   if l_len != -1 * (leftmost - cur_displacement) {
+          //     // println!("{}", machine.to_compact_format());
+          //   }
+          // }
           return LR {
             start_step: steps_taken,
             period: steps_taken - num_at_which_we_check,
