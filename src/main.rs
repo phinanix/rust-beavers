@@ -137,7 +137,7 @@ fn search_for_translated_cyclers(
   num_steps: u32,
 ) -> Vec<(SmallBinMachine, LRResult)> {
   // note that 130 is plenty here
-  let machines = tnf_simulate(first_machine.clone(), 140, true);
+  let machines = tnf_simulate(first_machine.clone(), 140, false);
   dbg!(machines.len());
   let mut lr_results = vec![];
   for m in machines {
@@ -595,8 +595,8 @@ fn scan_from_machine(
 }
 
 fn main() {
-  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  let num_lr_steps = 1_000_000;
+  let first_machine = SmallBinMachine::start_machine(3, Bit(true));
+  let num_lr_steps = 1_500;
   let num_rule_steps = 200;
   dbg!(num_lr_steps, num_rule_steps);
   // scan_from_machine(
@@ -606,8 +606,8 @@ fn main() {
     num_rule_steps,
     // Some("size3_holdouts_2_may.txt"),
     // Some("size4_holdouts_31_may_29e2280.txt"),
-    Some("size4_qh_holdouts_24_july_24"),
-    // None,
+    // Some("size4_qh_holdouts_24_july_24"),
+    None,
   );
 
   // let m = SmallBinMachine::from_compact_format("1RB---_1RC---_1RD1LD_1LD1RC");
