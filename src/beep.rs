@@ -8,7 +8,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 use crate::{
-  brady::{difference_of, find_records, get_rs_hist_for_machine, split_and_filter_records, Record}, dump_machines_to_file, linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult}, machines_to_str, macro_machines::{MacroMachine, MacroState}, rules::{detect_chain_rules, Rulebook}, run_machine, simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules}, tape::{disp_list_bit,tnf_simulate, ExpTape, Tape}, turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT}, turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100}
+  brady::{difference_of, find_records, get_rs_hist_for_machine, split_and_filter_records, Record}, dump_machines_to_file, linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult}, load_machines_from_file, machines_to_str, macro_machines::{MacroMachine, MacroState}, rules::{detect_chain_rules, Rulebook}, run_machine, simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules}, tape::{disp_list_bit,tnf_simulate, ExpTape, Tape}, turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT}, turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100}
 };
 
 // by convention, the first step at which a state is never used again is the 
@@ -349,14 +349,14 @@ pub fn search_for_translated_cyclers_beep(
     num_steps: u32,
   ) -> Vec<(SmallBinMachine, LRResultBeep)> {
     let machines = tnf_simulate(first_machine.clone(), 130, true);
-    dbg!(machines.len());
+    // dbg!(machines.len());
     let mut lr_results = vec![];
     for m in machines {
       // let m_str = SmallBinMachine::to_compact_format(&m);
       let lr_res = lr_simulate_beep(&m, num_steps);
       lr_results.push((m, lr_res));
     }
-    aggregate_and_display_lr_res_beep(lr_results.iter().map(|(_m, res)| *res).collect());
+    // aggregate_and_display_lr_res_beep(lr_results.iter().map(|(_m, res)| *res).collect());
     lr_results
 }
 
@@ -373,13 +373,20 @@ fn get_undecided_beep(res: Vec<(SmallBinMachine, LRResultBeep)>) -> Vec<SmallBin
 
 
   
-pub fn scan_from_machine_beep(
-    machine: &SmallBinMachine,
+pub fn scan_from_machines_beep(
+    machines: &[SmallBinMachine],
     num_lr_steps: u32,
     _num_rule_steps: u32,
     mb_undecided_file: Option<&str>,
 ) {
-  let lr_results = search_for_translated_cyclers_beep(machine, num_lr_steps);
+  let mut lr_results = vec![];
+  for machine in machines { 
+    lr_results.extend(search_for_translated_cyclers_beep(machine, num_lr_steps));
+  }
+  aggregate_and_display_lr_res_beep(lr_results.iter().map(|(_m, res)| *res).collect());
+
+
+  // let lr_results = search_for_translated_cyclers_beep(machine, num_lr_steps);
   let undecided_machines = get_undecided_beep(lr_results);
   let undecided_len = undecided_machines.len();
   println!(
@@ -444,4 +451,24 @@ loop {
   println!("selected machine: {}", machine.to_compact_format());
   run_machine(machine);
 }
+}
+
+
+pub fn scan_from_machine_beep(
+  machine: &SmallBinMachine,
+  num_lr_steps: u32,
+  num_rule_steps: u32,
+  mb_undecided_file: Option<&str>,
+) {
+  scan_from_machines_beep(&vec![machine.clone()][..], num_lr_steps, num_rule_steps, mb_undecided_file);
+}
+
+pub fn scan_from_filename_beep(
+  filename: &str, 
+  num_lr_steps: u32,
+  num_rule_steps: u32,
+  mb_undecided_file: Option<&str>,
+) {
+  let machines = load_machines_from_file(filename);
+  scan_from_machines_beep(&machines, num_lr_steps, num_rule_steps, mb_undecided_file);
 }

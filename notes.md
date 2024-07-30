@@ -64,7 +64,8 @@ bouncer
 8 bouncer 1 counter 1 cubic bouncer
 
 goals: 
-- run from list of saved machines
+✓ run from list of saved machines
+
 - look at some random machines from list of size 3 and size 4
 - write "spec" / alg for bouncer decider
 - implement bouncer decider

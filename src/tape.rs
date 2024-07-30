@@ -556,8 +556,8 @@ pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32, allow_no_hal
     num_steps: 0,
   }];
   while let Some(TnfState { machine, state, mut tape, num_steps }) = stack.pop() {
-    if out.len() % 1_000_000 == 0 {
-      println!("machines {}", out.len());
+    if out.len() > 0 && out.len() % 1_000_000 == 0 {
+      println!("tnf machines {}", out.len());
     }
     match tape.simulate(&machine, state, total_steps - num_steps, false) {
       (Right(_state), _simulated_steps) => out.push(machine),

@@ -4,12 +4,12 @@
 // #![feature(return_position_impl_trait_in_trait)]
 
 
-use std::{collections::HashSet, fs};
+use std::{collections::HashSet, fs, io};
 
-use beep::detect_quasihalt_of_lr_or_cycler;
+use beep::{detect_quasihalt_of_lr_or_cycler, scan_from_filename_beep};
 use either::Either::{Left, Right};
 use itertools::Itertools;
-use rand::prelude::SliceRandom;
+use rand::{prelude::SliceRandom, Rng};
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
@@ -25,29 +25,6 @@ use crate::{
   turing_examples::{bouncers, decideable_by_macro, undecided_size_4_random_100, get_machine},
 };
 
-// use std::{collections::HashSet, fs};
-
-// use crate::{
-//   brady::{difference_of, split_and_filter_records, Record},
-//   linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
-//   macro_machines::MacroMachine,
-//   rules::{detect_chain_rules, Rulebook},
-//   simulate::{aggregate_and_display_proving_res, simulate_proving_rules},
-//   tape::{disp_list_bit, ExpTape, Tape},
-//   turing::{Dir, Phase, State, HALT},
-//   turing_examples::get_machine,
-// };
-// use brady::{find_records, get_rs_hist_for_machine};
-// use either::Either::{Left, Right};
-// use itertools::Itertools;
-// use macro_machines::MacroState;
-// use rand::prelude::SliceRandom;
-// use rand::SeedableRng;
-// use rand_chacha::ChaCha8Rng;
-// use simulate::aggregate_and_display_macro_proving_res;
-// use tape::tnf_simulate;
-// use turing::{Bit, SmallBinMachine, Turing};
-// use turing_examples::{bouncers, decideable_by_macro, undecided_size_4_random_100};
 
 mod beep;
 mod brady;
@@ -117,6 +94,13 @@ fn machines_to_str(machines: Vec<SmallBinMachine>) -> String {
     .join("\n")
 }
 
+fn machines_to_idx_str(machines: Vec<SmallBinMachine>) -> String {
+  machines
+    .into_iter().enumerate()
+    .map(|(idx, m)| format!("{} {}", idx, m.to_compact_format()))
+    .join("\n")
+}
+
 fn strs_to_machine(m_strs: Vec<&str>) -> Vec<SmallBinMachine> {
   m_strs
     .into_iter()
@@ -132,13 +116,21 @@ fn dump_machines_to_file(machines: Vec<SmallBinMachine>, filename: &str) -> std:
   Ok(())
 }
 
+fn load_machines_from_file(filename: &str) -> Vec<SmallBinMachine> {
+  let message = match fs::read_to_string(filename) {
+    Ok(message) => message,
+    Err(err) => panic!("tried to read file {} but got {}", filename, err),
+  };
+  message.lines().map(|m_str| SmallBinMachine::from_compact_format(m_str)).collect_vec()  
+}
+
 fn search_for_translated_cyclers(
   first_machine: &SmallBinMachine,
   num_steps: u32,
 ) -> Vec<(SmallBinMachine, LRResult)> {
   // note that 130 is plenty here
   let machines = tnf_simulate(first_machine.clone(), 140, false);
-  dbg!(machines.len());
+  // dbg!(machines.len());
   let mut lr_results = vec![];
   for m in machines {
     // let m_str = SmallBinMachine::to_compact_format(&m);
@@ -157,8 +149,7 @@ fn search_for_translated_cyclers(
       Right(HALT) => assert_eq!(lr_res, LRResult::Halt { num_steps: normal_num_steps }),
       _ => (),
     }
-  }
-  aggregate_and_display_lr_res(lr_results.iter().map(|(_m, res)| *res).collect());
+  }  
   lr_results
 }
 
@@ -174,6 +165,31 @@ fn run_machine(machine: &SmallBinMachine) {
   // let mut rulebook = Rulebook::new(machine.num_states());
   // rulebook.add_rules(chain_rules);
   let num_steps = 100;
+  Tape::simulate_from_start(machine, num_steps * 3, true);
+  // println!("vanilla");
+  // ExpTape::simulate_from_start(machine, num_steps);
+  // println!("using rules");
+  // simulate_using_rules::<Bit, u32>(machine, num_steps, &rulebook, true);
+  // println!("\n\nproving rules");
+  // simulate_proving_rules(machine, num_steps, &mut rulebook, true);
+}
+
+fn run_machine_interactive(machine: &SmallBinMachine) {
+  println!("\nrunning machine: {}", machine.to_compact_format());
+  let mut input_text = String::new();
+    io::stdin()
+    .read_line(&mut input_text)
+    .expect("failed to read from stdin");
+  // let chain_rules = detect_chain_rules(machine);
+  // println!("{} chain rules:", chain_rules.len());
+  // for (i, chain_rule) in chain_rules.iter().enumerate() {
+    // println!("{}: {}", i, chain_rule);
+  // }
+  // println!();
+
+  // let mut rulebook = Rulebook::new(machine.num_states());
+  // rulebook.add_rules(chain_rules);
+  let num_steps = 300;
   Tape::simulate_from_start(machine, num_steps * 3, true);
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
@@ -507,13 +523,18 @@ fn list_which_proven(machines: &Vec<SmallBinMachine>, num_steps: u32, verbose: b
   }
 }
 
-fn scan_from_machine(
-  machine: &SmallBinMachine,
+fn scan_from_machines(
+  machines: &[SmallBinMachine],
   num_lr_steps: u32,
   _num_rule_steps: u32,
   mb_undecided_file: Option<&str>,
 ) {
-  let lr_results = search_for_translated_cyclers(machine, num_lr_steps);
+  let mut lr_results = vec![];
+  for machine in machines { 
+    lr_results.extend(search_for_translated_cyclers(machine, num_lr_steps));
+  }
+  aggregate_and_display_lr_res(lr_results.iter().map(|(_m, res)| *res).collect());
+
   let undecided_machines = get_undecided(lr_results);
   let undecided_len = undecided_machines.len();
   let undecided_with_halt = undecided_machines
@@ -594,21 +615,78 @@ fn scan_from_machine(
   // }
 }
 
+
+fn scan_from_machine(
+  machine: &SmallBinMachine,
+  num_lr_steps: u32,
+  num_rule_steps: u32,
+  mb_undecided_file: Option<&str>,
+) {
+  scan_from_machines(&vec![machine.clone()][..], num_lr_steps, num_rule_steps, mb_undecided_file);
+}
+
+fn scan_from_filename(
+  filename: &str, 
+  num_lr_steps: u32,
+  num_rule_steps: u32,
+  mb_undecided_file: Option<&str>,
+) {
+  let machines = load_machines_from_file(filename);
+  scan_from_machines(&machines, num_lr_steps, num_rule_steps, mb_undecided_file);
+}
+
+fn run_random_machines_from_file(
+  filename: &str, 
+  num_machines: usize, 
+) {
+  let machines = load_machines_from_file(filename);
+  let seed = 123456789012345;
+  let mut rng: ChaCha8Rng = SeedableRng::seed_from_u64(seed);
+  let mut random_machines = vec![];
+  for _ in 0..num_machines {
+    let idx = rng.gen_range(0..machines.len());
+    random_machines.push(machines[idx].clone());
+  }
+  // let random_machines = machines
+  //   .choose_multiple(&mut rng, num_machines)
+  //   .cloned()
+  //   .collect_vec();
+
+  println!("all machines:\n{}\n\n{}", machines_to_str(random_machines.clone()), machines_to_idx_str(random_machines.clone()));
+  for (idx, machine) in random_machines.iter().enumerate() {
+    println!("\nidx {}", idx);
+    run_machine_interactive(&machine)
+  }
+}
+
 fn main() {
-  let first_machine = SmallBinMachine::start_machine(3, Bit(true));
-  let num_lr_steps = 10_500;
+  let num_lr_steps = 1_000;
   let num_rule_steps = 200;
   dbg!(num_lr_steps, num_rule_steps);
-  // scan_from_machine(
-  scan_from_machine_beep(
-    &first_machine,
-    num_lr_steps,
-    num_rule_steps,
-    // Some("size3_holdouts_2_may.txt"),
-    // Some("size4_holdouts_31_may_29e2280.txt"),
-    // Some("size4_qh_holdouts_24_july_24"),
-    None,
-  );
+
+  // let first_machine = SmallBinMachine::start_machine(3, Bit(true));
+  // // scan_from_machine(
+  // scan_from_machine_beep(
+  //   &first_machine,
+  //   num_lr_steps,
+  //   num_rule_steps,
+  //   // Some("size3_holdouts_2_may.txt"),
+  //   // Some("size4_holdouts_31_may_29e2280.txt"),
+  //   // Some("size3_qh_holdouts_30_july_24"),
+  //   None,
+  // );
+
+  // scan_from_filename_beep(
+  //   "size4_qh_holdouts_24_july_24", 
+  //   num_lr_steps, 
+  //   num_rule_steps, 
+  //   None,
+  // );
+
+  run_random_machines_from_file(
+    "size4_qh_holdouts_24_july_24", 
+    // "size3_qh_holdouts_30_july_24",
+    25);
 
   // let m = SmallBinMachine::from_compact_format("1RB---_1RC---_1RD1LD_1LD1RC");
   // run_machine(&m);
@@ -628,7 +706,6 @@ fn main() {
   // run_machine_macro::<2>(&SmallBinMachine::from_compact_format(
   //   decideable_by_macro[2],
   // ));
-
 
   // let bouncers = bouncers();
   // for i in 0..10 {
