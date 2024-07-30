@@ -35,7 +35,7 @@ where
   let mut leftmost = cur_displacement;
   let mut rightmost = cur_displacement;
 
-  let mut rlen_hist = vec![tape.right_length()];
+  // let mut rlen_hist = vec![tape.right_length()];
 
   while steps_taken < num_steps {
     state = match tape.step_dir(state, machine) {

@@ -46,3 +46,25 @@ lr = 2266174
 inconclusives match
 
 size4_qh_holdouts_24_july_24 is all machines that don't qh or nqh within 1M steps
+
+30 July 24
+random.org machines from 672 size 3
+bouncer
+counter
+bouncer
+bouncer
+"cubic bouncer" / double bouncer
+
+bouncer
+bouncer
+bouncer
+bouncer
+bouncer
+
+8 bouncer 1 counter 1 cubic bouncer
+
+goals: 
+- run from list of saved machines
+- look at some random machines from list of size 3 and size 4
+- write "spec" / alg for bouncer decider
+- implement bouncer decider

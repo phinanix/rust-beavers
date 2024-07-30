@@ -173,7 +173,7 @@ fn run_machine(machine: &SmallBinMachine) {
 
   // let mut rulebook = Rulebook::new(machine.num_states());
   // rulebook.add_rules(chain_rules);
-  let num_steps = 4;
+  let num_steps = 100;
   Tape::simulate_from_start(machine, num_steps * 3, true);
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
@@ -190,7 +190,7 @@ fn disp_records(machine: &SmallBinMachine) {
   );
 
   let num_steps = 200;
-  // Tape::simulate_from_start(machine, num_steps, true);
+  Tape::simulate_from_start(machine, num_steps, true);
 
   let (hist, rs) = match get_rs_hist_for_machine(machine, 200, false) {
     Left(i) => {
@@ -256,7 +256,7 @@ fn disp_records(machine: &SmallBinMachine) {
     Some(len_z) => len_z,
   };
   let last_record = right_records.last().unwrap();
-  let (_, last_phase, last_tape) = &hist[last_record.0];
+  let (_, _last_phase, last_tape) = &hist[last_record.0];
   let last_tape_len = last_tape.len() as usize;
   let rem_last_tape_len = last_tape_len - 4 * len_z;
   let len_x = rem_last_tape_len.div_floor(2);
@@ -510,7 +510,7 @@ fn list_which_proven(machines: &Vec<SmallBinMachine>, num_steps: u32, verbose: b
 fn scan_from_machine(
   machine: &SmallBinMachine,
   num_lr_steps: u32,
-  num_rule_steps: u32,
+  _num_rule_steps: u32,
   mb_undecided_file: Option<&str>,
 ) {
   let lr_results = search_for_translated_cyclers(machine, num_lr_steps);
@@ -596,7 +596,7 @@ fn scan_from_machine(
 
 fn main() {
   let first_machine = SmallBinMachine::start_machine(3, Bit(true));
-  let num_lr_steps = 1_500;
+  let num_lr_steps = 10_500;
   let num_rule_steps = 200;
   dbg!(num_lr_steps, num_rule_steps);
   // scan_from_machine(

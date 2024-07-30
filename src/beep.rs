@@ -1,5 +1,5 @@
 
-use std::{collections::HashSet, fs};
+use std::{collections::HashSet, fs, io, process::exit};
 
 use either::Either::{Left, Right};
 use itertools::Itertools;
@@ -8,7 +8,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 use crate::{
-  brady::{difference_of, find_records, get_rs_hist_for_machine, split_and_filter_records, Record}, dump_machines_to_file, linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult}, macro_machines::{MacroMachine, MacroState}, rules::{detect_chain_rules, Rulebook}, simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules}, tape::{disp_list_bit,tnf_simulate, ExpTape, Tape}, turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT}, turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100}
+  brady::{difference_of, find_records, get_rs_hist_for_machine, split_and_filter_records, Record}, dump_machines_to_file, linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult}, machines_to_str, macro_machines::{MacroMachine, MacroState}, rules::{detect_chain_rules, Rulebook}, run_machine, simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules}, tape::{disp_list_bit,tnf_simulate, ExpTape, Tape}, turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT}, turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100}
 };
 
 // by convention, the first step at which a state is never used again is the 
@@ -179,7 +179,7 @@ pub fn detect_quasihalt_of_lr_or_cycler(
       // todo: we need to calculate leftmost and rightmost
       let disp_hist_slice = &fast_disp_history[(slow_steps as usize)..=(fast_steps as usize)];
       let leftmost: i32 = *disp_hist_slice.iter().min().unwrap();
-      let rightmost: i32 = *disp_hist_slice.iter().max().unwrap();;
+      let rightmost: i32 = *disp_hist_slice.iter().max().unwrap();
 
 
       // todo: this is duplicating some work with all the indexing stuff
@@ -361,7 +361,7 @@ pub fn search_for_translated_cyclers_beep(
 }
 
 fn get_undecided_beep(res: Vec<(SmallBinMachine, LRResultBeep)>) -> Vec<SmallBinMachine> {
-  let verbose = true;
+  // let verbose = true;
   res
     .into_iter()
     .filter_map(|(m, r)| match r {
@@ -376,7 +376,7 @@ fn get_undecided_beep(res: Vec<(SmallBinMachine, LRResultBeep)>) -> Vec<SmallBin
 pub fn scan_from_machine_beep(
     machine: &SmallBinMachine,
     num_lr_steps: u32,
-    num_rule_steps: u32,
+    _num_rule_steps: u32,
     mb_undecided_file: Option<&str>,
 ) {
   let lr_results = search_for_translated_cyclers_beep(machine, num_lr_steps);
@@ -390,18 +390,18 @@ pub fn scan_from_machine_beep(
   if let Some(filename) = mb_undecided_file {
       dump_machines_to_file(final_undecided.clone(), filename).expect("file should be openable");
   }
-// let num_undecided_to_display = 10;
-// let seed = 123456789012345;
-// let mut rng: ChaCha8Rng = SeedableRng::seed_from_u64(seed);
-// let random_undecideds = final_undecided
-//     .choose_multiple(&mut rng, num_undecided_to_display)
-//     .cloned()
-//     .collect_vec();
+let num_undecided_to_display = 10;
+let seed = 123456789012345;
+let mut rng: ChaCha8Rng = SeedableRng::seed_from_u64(seed);
+let random_undecideds = final_undecided
+    .choose_multiple(&mut rng, num_undecided_to_display)
+    .cloned()
+    .collect_vec();
 
-// println!(
-//     "some undecided machines:\n{}",
-//     machines_to_str(random_undecideds)
-// );
+println!(
+    "some undecided machines:\n{}",
+    machines_to_str(random_undecideds)
+);
 // println!(
 //   "final_undecided:\n{}",
 //   final_undecided
@@ -425,23 +425,23 @@ pub fn scan_from_machine_beep(
 //     .join("\n")
 // );
 
-// loop {
-//   println!("Enter the index of a machine you would like to run:");
-//   let mut input_text = String::new();
-//   io::stdin()
-//     .read_line(&mut input_text)
-//     .expect("failed to read from stdin");
+loop {
+  println!("Enter the index of a machine you would like to run [not of the previous list]:");
+  let mut input_text = String::new();
+  io::stdin()
+    .read_line(&mut input_text)
+    .expect("failed to read from stdin");
 
-//   let trimmed = input_text.trim();
-//   let i = match trimmed.parse::<usize>() {
-//     Ok(i) => i,
-//     Err(..) => {
-//       println!("this was not an integer: {}", trimmed);
-//       exit(1)
-//     }
-//   };
-//   let machine = &final_undecided[i];
-//   println!("selected machine: {}", machine.to_compact_format());
-//   run_machine(machine);
-// }
+  let trimmed = input_text.trim();
+  let i = match trimmed.parse::<usize>() {
+    Ok(i) => i,
+    Err(..) => {
+      println!("this was not an integer: {}", trimmed);
+      exit(1)
+    }
+  };
+  let machine = &final_undecided[i];
+  println!("selected machine: {}", machine.to_compact_format());
+  run_machine(machine);
+}
 }

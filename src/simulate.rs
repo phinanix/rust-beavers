@@ -45,8 +45,8 @@ pub fn one_rule_step<P: Phase, S: TapeSymbol, C: TapeCount>(
     None => match exptape.step_extra_info(state, machine) {
       UndefinedEdge(_edge) => unreachable!("machine is defined"),
       SRInfinite => return RSRInfinite,
-      FellOffTape(state, dir, step) => return RFellOffTape(state, dir),
-      Success(state, rs, step) => (state, HashMap::default(), Left(rs)),
+      FellOffTape(state, dir, _step) => return RFellOffTape(state, dir),
+      Success(state, rs, _step) => (state, HashMap::default(), Left(rs)),
     },
   };
   if verbose {
@@ -118,7 +118,7 @@ fn collate<S: TapeSymbol>(
 }
 
 fn collate2<S: TapeSymbol>(
-  pairs: &[((S, u32), (S, u32))],
+  _pairs: &[((S, u32), (S, u32))],
 ) -> Option<((S, AffineVar), (S, AffineVar), bool)> {
   todo!()
   // // bool is was there a var used
@@ -477,7 +477,7 @@ pub fn detect_rules<P: Phase, S: TapeSymbol>(
   cur_sig_vec.push((step, state, exptape.clone()));
   if cur_sig_vec.len() > 2 {
     let config_pairs = last_n_config_pairs(cur_sig_vec, readshifts, 2);
-    let mb_rule = detect_rule2(&config_pairs);
+    let _mb_rule = detect_rule2(&config_pairs);
   }
 
   if cur_sig_vec.len() > 1 {
@@ -785,7 +785,7 @@ mod test {
     detect_linear_relation_driver(&pairs, Some(("2 + 1*x_0", "1 + 3*x_0")));
 
     // run = 0
-    let pairs = [(3, 7), (3, 7)];
+    // let pairs = [(3, 7), (3, 7)];
 
     // m = 0
     let pairs = [(4, 7), (5, 7)];
