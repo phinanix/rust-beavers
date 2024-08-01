@@ -1,4 +1,4 @@
-use std::{fmt::Display, ops::Sub};
+use std::{fmt::{Debug, Display}, ops::Sub};
 
 use crate::{
   rules::{ReadShift, Rulebook},
@@ -127,7 +127,21 @@ pub fn split_and_filter_records(records: Vec<Record>) -> (Vec<Record>, Vec<Recor
   (left_records, right_records)
 }
 
-pub fn difference_of<T: CheckedSub + Copy>(xs: &[T]) -> Vec<T> {
+pub fn monotonic<T: Ord + Copy>(xs: &[T]) -> bool {
+  if xs.is_empty() {
+    panic!("too short to monotonic")
+  }
+  let mut prev = xs[0];
+  for x in &xs[1..] {
+    if *x < prev {
+      return false;
+    }
+    prev = *x;
+  }
+  return true;
+}
+
+pub fn difference_of<T: CheckedSub + Copy + Debug>(xs: &[T]) -> Vec<T> {
   if xs.len() < 2 {
     panic!("too short to take the difference")
   }

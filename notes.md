@@ -65,7 +65,7 @@ bouncer
 
 goals: 
 ✓ run from list of saved machines
+✓ look at some random machines from list of size 3 and size 4
 
-- look at some random machines from list of size 3 and size 4
 - write "spec" / alg for bouncer decider
 - implement bouncer decider

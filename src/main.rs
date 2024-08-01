@@ -7,6 +7,7 @@
 use std::{collections::HashSet, fs, io};
 
 use beep::{detect_quasihalt_of_lr_or_cycler, scan_from_filename_beep};
+use brady::monotonic;
 use either::Either::{Left, Right};
 use itertools::Itertools;
 use rand::{prelude::SliceRandom, Rng};
@@ -200,15 +201,39 @@ fn run_machine_interactive(machine: &SmallBinMachine) {
 }
 
 fn disp_records(machine: &SmallBinMachine) {
+  /*
+  goal: extract x, y, z st the machine satisfies x z^n >y => x z^(n+1) >y
+
+  full strat: 
+    run machine for N steps, tracking history and readshift
+    extract all "records", the times when the tape increases in size
+      split those into L and R
+      within that, take only times when the difference in stepcount from previous 
+       is larger than has been seen so far (since if a machine grows the tape by 2 
+       for example, there are 2 records immediately after one another)
+    look at the right records, and calculate their "tape extents" 
+      (the size of the live tape in each) and the diffs thereof
+    if the last 2 diffs are identical, guess that this is a valid size for z, 
+      otherwise give up
+    assume the last tape is x z^4 y where |x| = |y| (giving the bonus 1 to y
+      in the case of an odd number, not that it matters)
+    extract x z^4 y
+    from z^4 extract z if it is 4 of the same thing, otherwise give up
+    return x z y
+
+    the main improvement here to me is that if there is never a right side record, 
+    we should switch to using the left side records, but otherwise proceed identically    
+   */
   println!(
     "\nrunning records of machine: {}",
     machine.to_compact_format()
   );
 
-  let num_steps = 200;
-  Tape::simulate_from_start(machine, num_steps, true);
 
-  let (hist, rs) = match get_rs_hist_for_machine(machine, 200, false) {
+  let num_steps = 300;
+  // Tape::simulate_from_start(machine, num_steps, true);
+
+  let (hist, rs) = match get_rs_hist_for_machine(machine, num_steps, false) {
     Left(i) => {
       println!("infinite at {i} steps");
       return;
@@ -229,6 +254,9 @@ fn disp_records(machine: &SmallBinMachine) {
   //     println!("{record}");
   //   }
   // }
+  // println!("unfiltered records");
+  // process_records(records.clone());
+
   let (left_records, right_records) = split_and_filter_records(records);
   println!("\nfiltered left");
 
@@ -318,10 +346,18 @@ fn process_records(records: Vec<Record>) {
   //   println!("{record}");
   // }
   let steps = records.iter().map(|Record(s, _, _)| *s).collect_vec();
-  let d1 = difference_of(&steps);
-  let d2 = difference_of(&d1);
   println!("steps: {:?}", steps);
+  if !monotonic(&steps) {
+    println!("steps wasn't monotonic");
+    return;
+  }
+  let d1 = difference_of(&steps);
   println!("d1   : {:?}", d1);
+  if !monotonic(&d1) {
+    println!("d1 wasn't monotonic");
+    return;
+  }
+  let d2 = difference_of(&d1);
   println!("d2   : {:?}", d2);
 }
 
@@ -683,10 +719,10 @@ fn main() {
   //   None,
   // );
 
-  run_random_machines_from_file(
-    "size4_qh_holdouts_24_july_24", 
-    // "size3_qh_holdouts_30_july_24",
-    25);
+  // run_random_machines_from_file(
+  //   "size4_qh_holdouts_24_july_24", 
+  //   // "size3_qh_holdouts_30_july_24",
+  //   25);
 
   // let m = SmallBinMachine::from_compact_format("1RB---_1RC---_1RD1LD_1LD1RC");
   // run_machine(&m);
@@ -707,11 +743,11 @@ fn main() {
   //   decideable_by_macro[2],
   // ));
 
-  // let bouncers = bouncers();
-  // for i in 0..10 {
-  //   let machine = SmallBinMachine::from_compact_format(bouncers[i]);
-  //   disp_records(&machine);
-  // }
+  let bouncers = bouncers();
+  for i in 0..10 {
+    let machine = SmallBinMachine::from_compact_format(bouncers[i]);
+    disp_records(&machine);
+  }
 }
 
 /*
