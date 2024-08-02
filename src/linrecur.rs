@@ -243,7 +243,7 @@ mod test {
     let m_str = "1RB---_1RB---";
     let m = SmallBinMachine::from_compact_format(m_str);
     let lr_res = lr_simulate(&m, 5);
-    assert_eq!(lr_res, LR { start_step: 2, period: 1 });
+    assert_eq!(lr_res, LR { start_step: 1, period: 1 });
   }
 
   #[test]

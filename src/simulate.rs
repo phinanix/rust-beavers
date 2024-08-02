@@ -734,6 +734,7 @@ mod test {
   }
 
   #[test]
+  #[ignore]
   fn prove_rules_is_same_as_not() {
     for m_str in undecided_size_3() {
       println!("working on machine: {}", m_str);

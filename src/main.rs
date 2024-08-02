@@ -7,7 +7,7 @@
 use std::{collections::HashSet, fs, io};
 
 use beep::{detect_quasihalt_of_lr_or_cycler, scan_from_filename_beep};
-use brady::monotonic;
+use brady::{monotonic, prove_bouncer, split_records};
 use either::Either::{Left, Right};
 use itertools::Itertools;
 use rand::{prelude::SliceRandom, Rng};
@@ -200,7 +200,8 @@ fn run_machine_interactive(machine: &SmallBinMachine) {
   // simulate_proving_rules(machine, num_steps, &mut rulebook, true);
 }
 
-fn disp_records(machine: &SmallBinMachine) {
+// returns: x, y, z, state, for the config x z^4 y<
+fn disp_records(machine: &SmallBinMachine) -> Option<(Vec<Bit>, Vec<Bit>, Vec<Bit>, State)> {
   /*
   goal: extract x, y, z st the machine satisfies x z^n >y => x z^(n+1) >y
 
@@ -230,13 +231,13 @@ fn disp_records(machine: &SmallBinMachine) {
   );
 
 
-  let num_steps = 300;
-  // Tape::simulate_from_start(machine, num_steps, true);
+  let num_steps = 200;
+  Tape::simulate_from_start(machine, num_steps, true);
 
   let (hist, rs) = match get_rs_hist_for_machine(machine, num_steps, false) {
     Left(i) => {
       println!("infinite at {i} steps");
-      return;
+      return None;
     }
     Right((hist, rs)) => (hist, rs),
   };
@@ -254,8 +255,12 @@ fn disp_records(machine: &SmallBinMachine) {
   //     println!("{record}");
   //   }
   // }
-  // println!("unfiltered records");
-  // process_records(records.clone());
+
+  let (unfilt_left_records, unfilt_right_records) = split_records(records.clone());
+  println!("unfiltered left records");
+  process_records(unfilt_left_records.clone());
+  println!("unfiltered right records");
+  process_records(unfilt_right_records.clone());
 
   let (left_records, right_records) = split_and_filter_records(records);
   println!("\nfiltered left");
@@ -295,12 +300,12 @@ fn disp_records(machine: &SmallBinMachine) {
   let len_z: usize = match mb_len_z {
     None => {
       println!("couldn't find a len for z");
-      return;
+      return None;
     }
     Some(len_z) => len_z,
   };
   let last_record = right_records.last().unwrap();
-  let (_, _last_phase, last_tape) = &hist[last_record.0];
+  let (_, last_phase, last_tape) = &hist[last_record.0];
   let last_tape_len = last_tape.len() as usize;
   let rem_last_tape_len = last_tape_len - 4 * len_z;
   let len_x = rem_last_tape_len.div_floor(2);
@@ -322,19 +327,22 @@ fn disp_records(machine: &SmallBinMachine) {
         a
       } else {
         println!("failed to extract z from z4: {:?} and zs: {:?}", z4, zs);
-        return;
+        return None;
       }
     }
     _ => panic!("zs was not length 4"),
   };
   println!(
-    "extracted x y z from tape:\n{}\ntapelist:\n{}\nx: {} y: {} z: {}",
+    "extracted x y z from tape at step {}:\n{}\ntapelist:\n{}\nx: {} y: {} z: {}",
+    last_record.0,
     last_tape,
     disp_list_bit(&last_tape_list),
     disp_list_bit(x),
     disp_list_bit(y),
     disp_list_bit(z),
   );
+  return Some((x.to_vec(), y.to_vec(), z.to_vec(), *last_phase))
+
 }
 
 fn process_records(records: Vec<Record>) {
@@ -744,10 +752,19 @@ fn main() {
   // ));
 
   let bouncers = bouncers();
+  let mut proofs = vec![];
   for i in 0..10 {
+    dbg!(i);
     let machine = SmallBinMachine::from_compact_format(bouncers[i]);
-    disp_records(&machine);
+    let (x, y, z, state_0) = match disp_records(&machine) {
+      None => continue,
+      Some(ans) => ans,
+    };
+    let proof_res = prove_bouncer(&machine, state_0, &x, &y, &z);
+    proofs.push(proof_res);
+    println!("proof result: {:?}", proof_res);
   }
+  dbg!(proofs);
 }
 
 /*

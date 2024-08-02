@@ -21,9 +21,9 @@ use crate::{
 // the infinite stack of empty symbols is represented implicitly
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Tape<S> {
-  left: Vec<S>, //todo: VecDeque?
-  head: S,
-  right: Vec<S>,
+  pub left: Vec<S>, //todo: VecDeque?
+  pub head: S,
+  pub right: Vec<S>,
 }
 
 pub fn index_from_end<S>(vec: &Vec<S>, length: usize) -> &'_ [S] {
@@ -80,6 +80,7 @@ impl<S: TapeSymbol> Tape<S> {
     // symbol on the ground since we're adding an empty to the infinite empty stack
 
     // temporarily disabling that feature because it made LR detection wrong :0
+    // LR detection was actually right I think but leaving the feature disabled
     // if !(self.left.is_empty() && self.head == TapeSymbol::empty()) {
       self.left.push(self.head);
     // } else {
@@ -109,7 +110,7 @@ impl<S: TapeSymbol> Tape<S> {
   }
 
   // mutably updates self; returns new state
-  // return either new state the dir we went to get there and the  (Right)
+  // return either new state, the dir we went to get there, and the steps taken (Right)
   // or the Edge that the machine couldn't handle (Left)
   pub fn step_dir<P: Phase>(
     &mut self,
@@ -315,14 +316,14 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
     }
   }
 
-  pub fn push_rle(stack: &mut Vec<(S, C)>, item: S, tape_end_inf: bool) {
+  pub fn push_rle(stack: &mut Vec<(S, C)>, item: S, _tape_end_inf: bool) {
     match stack.last_mut() {
       // if the stack is empty and the symbol we're pushing is empty, then we can just drop the
       // symbol on the ground since we're adding an empty to the infinite empty stack
+      // temp disabling this feature, see Tape
       None => {
-        if item != TapeSymbol::empty() || !tape_end_inf {
-          stack.push((item, 1.into()));
-        }
+        // if item != TapeSymbol::empty() || !tape_end_inf {
+        stack.push((item, 1.into()));  
       }
       Some((s, count)) => {
         if item == *s {
@@ -595,7 +596,9 @@ pub fn push_exptape<S: Eq, C: AddAssign>(tape: &mut Vec<(S, C)>, item: (S, C)) {
 
 #[cfg(test)]
 mod test {
-  use super::*;
+  use itertools::Itertools;
+
+use super::*;
   use crate::{
     parse::parse_tape,
     rules::{RS_LEFT, RS_RIGHT},
@@ -705,6 +708,15 @@ mod test {
       (e_state, e_steps, ExpTape::to_tape(&e_tape)),
       (state, num_steps, tape)
     );
+  }
+
+  #[test]
+  fn tape_to_list() {
+    // you pop from the *end* of the vec because it's an array backed vec. 
+    let tape = Tape::from_bools(vec![false, true], true, vec![false, true]);
+    let list = tape.to_list();
+    let ans = vec![false, true, true, true, false].into_iter().map(|b| Bit(b)).collect_vec();
+    assert_eq!(list, ans);
   }
   //todo: simulate bb4 to further sanity check
 

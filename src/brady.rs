@@ -3,17 +3,16 @@ use std::{fmt::{Debug, Display}, ops::Sub};
 use crate::{
   rules::{ReadShift, Rulebook},
   simulate::{one_rule_step, RuleStepResult::*},
-  tape::ExpTape,
+  tape::{disp_list_bit, ExpTape, Tape},
   turing::{
-    Dir,
-    Dir::{L, R},
-    Phase, TapeSymbol, Turing,
+    Bit, Dir::{self, L, R}, Phase, SmallBinMachine, State, TapeSymbol, Turing
   },
 };
 use either::{
   Either,
   Either::{Left, Right},
 };
+use itertools::Itertools;
 use num::CheckedSub;
 
 /*
@@ -115,6 +114,12 @@ pub fn filter_records<'a>(mut records: impl Iterator<Item = &'a Record>) -> Vec<
   out
 }
 
+pub fn split_records(records: Vec<Record>) -> (Vec<Record>, Vec<Record>) {
+  let left_records = records.iter().filter(|Record(_, _, d)| *d == L).map(|x| *x).collect_vec();
+  let right_records = records.iter().filter(|Record(_, _, d)| *d == R).map(|x| *x).collect_vec();
+  (left_records, right_records)
+}
+
 /*
 returns the left records filtered and the right records filtered
  */
@@ -152,6 +157,367 @@ pub fn difference_of<T: CheckedSub + Copy + Debug>(xs: &[T]) -> Vec<T> {
     last_x = *x;
   }
   out
+}
+
+pub enum ChunkSimRes {
+  TimedOut,
+  TapeSizeExceeded,
+  FellLeft,
+  FellRight, 
+  GoalLeft, 
+  GoalRight,
+}
+use ChunkSimRes::*;
+
+pub fn simulate_on_chunk(
+  machine: &SmallBinMachine, 
+  mut state: State,
+  tape: &mut Tape<Bit>, 
+  left_blocked: bool, 
+  right_blocked: bool,
+  goal_left_len: Option<usize>, 
+  goal_right_len: Option<usize>,
+  max_steps: u32, 
+  max_tape: usize, 
+) -> (State, ChunkSimRes) // return tape instead of mutating?
+{
+  /*
+  we check two conditions: 
+   1) that neither side is longer than allowed. if there is a goal length, that's the limit, 
+      otherwise, the max_tape_size is the limit 
+   2) we check the shift left / right from start and ensure it's not larger than some fixed 
+      portion of the tape that is live if that side of the tape is "blocked" (this 
+      corresponds to running the machine on a tape that doesn't have 0* at the end) 
+   */
+  // let mut step = 0;
+  let print = false;
+  let mut disp = 0; 
+  let min_left_disp = if left_blocked 
+    {Some(-1 * i32::try_from(tape.left_length()).unwrap())} 
+    else {None};
+  let max_right_disp = if right_blocked 
+    {Some(i32::try_from(tape.right_length()).unwrap())} 
+    else {None};
+  let left_len_target = goal_left_len.unwrap_or(max_tape);
+  let right_len_target = goal_right_len.unwrap_or(max_tape);
+
+  if print {
+    println!(
+      "step: {} state: {} tape: {}",
+      0, state, &tape
+    );
+  }
+  for step in 1..=max_steps {
+    let (new_state, dir) = match tape.step_dir(state, machine) {
+      Left(edge) => 
+        panic!("machine was not fully defined {:?} {} {}", edge, tape, machine.to_compact_format()),
+      Right((new_state, dir, steps_taken)) => {
+        assert_eq!(steps_taken, 1);
+        (new_state, dir.unwrap())
+      },
+      
+    };
+    state = new_state;
+
+    disp += dir.to_displacement();
+    if print {
+      println!(
+        "step: {} state: {} tape: {}",
+        step, state, &tape
+      );
+    }
+
+    // check falling off
+    if min_left_disp.is_some_and(|min| disp < min) {
+      return (state, FellLeft);
+    }
+    if max_right_disp.is_some_and(|max| disp > max) {
+      return (state, FellRight);
+    }
+    
+    // check goal lengths
+    if tape.left_length() >= left_len_target {
+      assert_eq!(tape.left_length(), left_len_target);
+      if left_len_target == max_tape {
+        return (state, TapeSizeExceeded);
+      } else {
+        return (state, GoalLeft);
+      }
+    }
+    if tape.right_length() >= right_len_target {
+      assert_eq!(tape.right_length(), right_len_target);
+      if right_len_target == max_tape {
+        return (state, TapeSizeExceeded);
+      } else {
+        return (state, GoalRight);
+      }
+    }
+  }
+  return (state, TimedOut);
+}
+
+fn split_first_n<T>(n: usize, iter: &mut impl Iterator<Item = T>) -> (Vec<T>, Vec<T>) {
+  let mut first = vec![];
+  let mut second = vec![];
+  // let mut count = 0;
+  for _i in 0..n {
+    first.push(iter.next().unwrap());
+  }
+  second.extend(iter);
+  (first, second)
+}
+
+fn split_last_n<T, I : ExactSizeIterator<Item = T>>(
+  n: usize, iter: &mut I
+) -> (Vec<T>, Vec<T>) 
+{  
+  assert!(iter.len() > n);
+  let first_len = iter.len() - n;
+  split_first_n(first_len, iter)
+}
+
+pub fn prove_bouncer(machine: &SmallBinMachine, state_0: State, x: &[Bit], y: &[Bit], z: &[Bit])
+ -> Result<(), &'static str> 
+{
+  /*
+  here's the plan: we want to prove M is a bouncer, specifically that M satisfies
+  0* X Z^n Y < 0* 
+  becomes 
+  0* X Z^(n+1) Y < 0*
+  We are given X, Y, Z, so we just need to simulate M on small parts of the tape. 
+
+  0* X Z Z^n Z Y < 0*   sim Z Y < 0* -> < Z1 Y1 0*
+  now armed with Z1 and Y1 we're actually going to aim for a slightly different loop
+  0* X Z Z^n     < Z1 Y1 0*
+  becomes 
+  0* X Z Z^(n+1) < Z1 Y1 0*
+  via the following process: 
+  0* X Z Z^n < Z1 Y1 0*    sim Z < Z1 -> < Z1 Z2
+  0* X <  Z1 Z2^n Z2 Y1 0*  sim 0* X < Z1 -> 0* X1 Z3 >
+  0* X1 Z3 > Z2^n Z2 Y1 0*  sim Z3 > Z2 -> Z4 Z3 >
+  0* X1 Z4 Z4^n Z3 > Y1 0*  sim Z3 > Y1 0* -> A < B 0* where |B| = |Z1 Y1|
+  0* X1 Z4 Z4^n A  < B  0* (which we hope is equal to)
+  0* X Z Z^(n+1) < Z1 Y1 0*
+  we can ensure this with the following checks: 
+  check that B = Z1 Y1 
+  check X1 Z4 Z4^n A = X Z Z^(n+1)
+      by thm it sufficies to check n=0 n=1
+      check (X1 Z4)    A = X Z   Z
+      check (X1 Z4) Z4 A = X Z Z Z
+
+   */
+  /* 
+  capabilities needed: 
+  * simulate M on [specific tape] until it falls off the [L/R] with the other side 
+      [0* / blocked]
+  * simulate M on specific tape until it reaches a point where the live left side is
+      exactly N long. 
+  possible results of simulation: 
+      * you hit the desired condition, and the final tape is returned
+      * you hit a finite timeout and we give up
+      * you fall off the forbidden side of the tape and we give up
+      * (maybe) the tape grows too large and we give up
+   */
+  /*
+  note that x, y, and z are the the "left frame", which is to say they start with the 
+  thing farthest from the machine head and read towards the machine head. if 
+  you want to put something on the right half of the tape, as in Z < Z1, you have to flip it. 
+   */
+
+  let max_steps = 100;
+  let max_tape = 50;
+
+  // sim Z Y < 0* -> < Z1 Y1 0*
+  let mut tape_left = vec![];
+  tape_left.extend(z);
+  tape_left.extend(y);
+  let head = tape_left.pop().unwrap();
+  let mut tape : Tape<Bit> = Tape {left: tape_left, head, right: vec![]};
+  // dbg!(&tape);
+  let (state_1, res) = simulate_on_chunk(
+    machine, state_0, &mut tape, 
+    true, false, None, None, max_steps, max_tape);
+  match res {
+    TimedOut => return Err("timed out step 1"),
+    TapeSizeExceeded => return Err("taped out step 1"),
+    FellLeft => (), // we can continue
+    // unreachable: FellRight, GoalLeft, GoalRight
+    _ => unreachable!(),
+  }
+  assert_eq!(tape.head, Bit(false));
+  // note that these are reversed due to being on the right. z1 is closest to the head, 
+  //which means it's at the *end* of this vec
+  // dbg!(&tape);
+  let z1y1 = tape.right; 
+  println!("z1y1 {}", disp_list_bit(&z1y1));
+  if z1y1.len() < z.len() {
+    return Err("z1y1 too short");
+  }
+  //we force length of z1 == length of z 
+  // we reverse everything so now they're in the left frame 
+  let (z1, y1) = split_first_n(z.len(), &mut z1y1.into_iter().rev());
+  println!("z1 {} y1 {}", disp_list_bit(&z1), disp_list_bit(&y1));
+  
+  // sim Z < Z1 -> < Z1 Z2
+  let mut left = z.to_vec();
+  let head = left.pop().unwrap();
+  // rev since Z1 is on the right
+  let right = z1.iter().rev().cloned().collect_vec();
+  let mut tape = Tape {left, head, right};
+  let (state_2, res) = simulate_on_chunk(
+    machine, state_1, &mut tape, 
+    true, true, None, None, max_steps, max_tape);
+  match res {
+    TimedOut => return Err("timed out step 2"),
+    TapeSizeExceeded => return Err("taped out step 2"),
+    // the hoped for result
+    FellLeft => (),
+    // the machine went the wrong way
+    FellRight => return Err("fell off the wrong side step 2"),
+    GoalLeft => unreachable!(),
+    GoalRight => unreachable!(),
+  }
+  assert_eq!(tape.head, Bit(false));
+  // extract z1, z2
+  let mut mb_z1z2 = tape.right; 
+  // to put it in the left frame
+  mb_z1z2.reverse();
+  println!("mbz1z2 {}", disp_list_bit(&mb_z1z2));
+  println!("z1 {}", disp_list_bit(&z1));
+
+  assert_eq!(mb_z1z2.len(), z1.len()*2);
+  //todo: could rewrite this to use the split helper
+  if mb_z1z2[0..z1.len()] != z1 {
+    return Err("z1z2 didn't start with z1");
+  };
+  let z2 = mb_z1z2[z1.len()..2*z1.len()].to_vec();
+  
+  // sim 0* X < Z1 -> 0* X1 Z3 >
+  let mut left = x.to_vec();
+  let head = left.pop().unwrap();
+  // rev since it's right
+  let right = z1.iter().rev().cloned().collect_vec();
+  let mut tape = Tape {left, head, right};
+  let (state_3, res) = simulate_on_chunk(
+    machine, state_2, &mut tape, 
+    false, true, None, None, max_steps, max_tape);
+  match res {
+    TimedOut => return Err("timed out step 3"),
+    TapeSizeExceeded => return Err("taped out step 3"),
+    FellLeft => unreachable!(),
+    FellRight => (),
+    GoalLeft => unreachable!(),
+    GoalRight => unreachable!(),
+  }
+  // extract X1 Z3 
+  let x1z3 = tape.left;
+  if x1z3.len() < z.len() {
+    return Err("x1z3 too short")
+  }
+  let (x1, z3) = split_last_n(z.len(), &mut x1z3.into_iter());
+
+  // sim Z3 > Z2 -> Z4 Z3 >
+  let left = z3.clone(); 
+  let mut right = z2.iter().rev().cloned().collect_vec();
+  let head = right.pop().unwrap();
+  let mut tape = Tape {left, head, right};
+  let (state_4, res) = simulate_on_chunk(
+    machine, state_3, &mut tape, 
+    true, true, None, None, max_steps, max_tape);
+  match res {
+    TimedOut => return Err("timed out step 4"),
+    TapeSizeExceeded => return Err("taped out step 4"),
+    FellLeft => return Err("fell wrong way step 4"),
+    FellRight => (),
+    GoalLeft => unreachable!(),
+    GoalRight => unreachable!(),
+  }
+  // extract Z4 Z3 
+  let z4z3 = tape.left; 
+  assert_eq!(z4z3.len(), z.len()*2);
+  let (z4, mb_z3) = split_first_n(z.len(), &mut z4z3.into_iter());
+  if mb_z3 != z3 {
+    return Err("mb_z3 didn't match z3 in step 4")
+  }
+
+  // sim Z3 > Y1 0* -> A < B 0* where |B| = |Z1 Y1|
+  let left = z3.clone();
+  let mut right = y1.iter().rev().cloned().collect_vec();
+  let head = right.pop().unwrap();
+  let mut tape = Tape {left, head, right};
+  let goal_right_len = z1.len() + y1.len();
+  let (state_5, res) = simulate_on_chunk(
+    machine, state_4, &mut tape, 
+    true, false, None, Some(goal_right_len), max_steps, max_tape);
+  match res {
+    TimedOut => return Err("timed out step 5"),
+    TapeSizeExceeded => return Err("taped out step 5"),
+    FellLeft => return Err("fell left step 5"),
+    FellRight => unreachable!(),
+    GoalLeft => unreachable!(),
+    GoalRight => (),
+  }
+  let mut b = tape.right;
+  b.reverse();
+  let mut a = tape.left;
+  a.push(tape.head);
+
+  //check we are actually in a loop
+  // check that final state equals first state
+  if state_5 != state_1 {
+    return Err("state 5 differed from state 1")
+  }
+  // check that B = Z1 Y1   
+  assert_eq!(b.len(), z1.len()+y1.len());
+  let (mb_z1, mb_y1) = split_first_n(z1.len(), &mut b.into_iter()); 
+  if mb_z1 != z1 {
+    return Err("mb_z1 didn't match z1 step 6")
+  }
+  if mb_y1 != y1 {
+    return Err("mb_y1 didn't match y1 step 6")
+  }
+  println!("x1 {} z4 {} a {} x {} z {}", 
+    disp_list_bit(&x1),
+    disp_list_bit(&z4),
+    disp_list_bit(&a),
+    disp_list_bit(&x),
+    disp_list_bit(&z),
+  );
+  /*
+  check X1 Z4 Z4^n A = X Z Z^(n+1)
+      by thm it sufficies to check n=0 n=1
+      check (X1 Z4)    A = X Z   Z
+      check (X1 Z4) Z4 A = X Z Z Z
+ */
+  let mut x1z4a: Vec<Bit> = vec![];
+  x1z4a.extend(&x1);
+  x1z4a.extend(&z4);
+  x1z4a.extend(&a); 
+  let mut xzz = vec![];
+  xzz.extend(x);
+  xzz.extend(z);
+  xzz.extend(z);
+  assert_eq!(x1z4a.len(), xzz.len(), );
+  if x1z4a != xzz {
+    return Err("n=0 of loop case failed")
+  }
+
+  let mut x1z4z4a: Vec<Bit> = vec![];
+  x1z4z4a.extend(&x1);
+  x1z4z4a.extend(&z4);
+  x1z4z4a.extend(&z4);
+  x1z4z4a.extend(&a);
+  let mut xzzz = vec![];
+  xzzz.extend(x);
+  xzzz.extend(z);
+  xzzz.extend(z);
+  xzzz.extend(z);
+  assert_eq!(x1z4z4a.len(), xzzz.len());
+  if x1z4z4a != xzzz {
+    return Err("n=1 of loop case failed")
+  }
+
+  return Ok(());
 }
 
 mod test {
