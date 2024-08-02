@@ -184,7 +184,7 @@ fn display_record_steps(records: Vec<Record>) {
 }
 
 // returns: x, y, z, state, for the config x z^4 y<
-pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Option<(Vec<Bit>, Vec<Bit>, Vec<Bit>, State)> {
+pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Result<(Vec<Bit>, Vec<Bit>, Vec<Bit>, State), &'static str> {
   /*
   goal: extract x, y, z st the machine satisfies x z^n >y => x z^(n+1) >y
 
@@ -223,8 +223,9 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Option<(Vec<Bit>, Vec<Bit>
 
   let (hist, rs) = match get_rs_hist_for_machine(machine, num_steps, false) {
     Left(i) => {
+      // no need to block this one, it's very weird
       println!("infinite at {i} steps");
-      return None;
+      return Err("machine was infinite");
     }
     Right((hist, rs)) => (hist, rs),
   };
@@ -260,7 +261,9 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Option<(Vec<Bit>, Vec<Bit>
     println!("\nfiltered right");
     display_record_steps(right_records.clone());
   }
-
+  if right_records.len() < 2 {
+    return Err("too few right records");
+  }
   /* goal: extract |Z| in X Z^n Y
     strategy: look at the filtered right records, take the difference of their tape extents
     hope the last 3 agree
@@ -280,9 +283,7 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Option<(Vec<Bit>, Vec<Bit>
   if print {
     println!("tape extents: {:?}", tape_extents);
   }
-  if tape_extents.len() < 2 {
-    return None;
-  }
+
   let tape_diffs = difference_of(&tape_extents);
   if print {
     println!("tape diffs  : {:?}", tape_diffs);
@@ -305,7 +306,7 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Option<(Vec<Bit>, Vec<Bit>
       if print {
         println!("couldn't find a len for z");
       }
-      return None;
+      return Err("couldn't find a len for z");
     }
     Some(len_z) => len_z,
   };
@@ -334,7 +335,7 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Option<(Vec<Bit>, Vec<Bit>
         if print {
           println!("failed to extract z from z4: {:?} and zs: {:?}", z4, zs);
         }
-        return None;
+        return Err("failed to extract z from z4 and zs");
       }
     }
     _ => panic!("zs was not length 4"),
@@ -350,7 +351,7 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Option<(Vec<Bit>, Vec<Bit>
       disp_list_bit(z),
     );
   }
-  return Some((x.to_vec(), y.to_vec(), z.to_vec(), *last_phase))
+  return Ok((x.to_vec(), y.to_vec(), z.to_vec(), *last_phase))
 
 }
 
@@ -739,8 +740,8 @@ pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[B
 
 pub fn try_prove_bouncer(machine: &SmallBinMachine) -> Result<BouncerProof, &'static str> {
   let (x, y, z, state_0) = match find_bouncer_xyz(&machine) {
-    None => return Err("x y z not found"),
-    Some(ans) => ans,
+    Err(s) => return Err(s),
+    Ok(ans) => ans,
   };
   construct_bouncer_proof(&machine, state_0, &x, &y, &z)
 }
