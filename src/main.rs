@@ -9,7 +9,7 @@ use std::fmt::Display;
 use std::{collections::HashSet, fs, io};
 
 use beep::{detect_quasihalt_of_lr_or_cycler, scan_from_filename_beep};
-use brady::{construct_bouncer_proof, find_bouncer_xyz, monotonic, print_mb_proof, split_records, try_prove_bouncer};
+use brady::{construct_bouncer_proof, find_bouncer_xyz, monotonic, print_mb_proof, split_records, try_prove_bouncer, BouncerProof};
 use either::Either::{Left, Right};
 use itertools::Itertools;
 use rand::{prelude::SliceRandom, Rng};
@@ -545,6 +545,22 @@ fn run_random_machines_from_file(
   }
 }
 
+fn aggregate_and_display_bouncer_res(proofs: &[Result<BouncerProof, &str>]) {
+  let mut bounce_proof_count = 0;
+  let mut undecided_count = 0; 
+  for proof in proofs {
+    match proof {
+      Err(_s) => undecided_count+=1, 
+      Ok(_p) => bounce_proof_count+=1, 
+    }
+  }
+  assert_eq!(bounce_proof_count + undecided_count, proofs.len());
+  println!(
+    "analyzed {} machines. bouncers: {} undecided: {}", 
+    proofs.len(), bounce_proof_count, undecided_count
+  )
+}
+
 fn main() {
   let num_lr_steps = 1_000;
   let num_rule_steps = 200;
@@ -601,13 +617,14 @@ fn main() {
     let machine = SmallBinMachine::from_compact_format(machines[i]);
     println!("{}: {}", i, machine.to_compact_format());
     let proof_res = try_prove_bouncer(&machine);
-    println!("{}", print_mb_proof(&proof_res));
+    println!("{}\n\n", print_mb_proof(&proof_res));
     proofs.push(proof_res);
   }
   println!("proofs");
-  for mb_proof in proofs {
-    println!("{}", print_mb_proof(&mb_proof));
+  for mb_proof in &proofs {
+    println!("{}", print_mb_proof(mb_proof));
   }
+  aggregate_and_display_bouncer_res(&proofs);
 }
 
 /*
