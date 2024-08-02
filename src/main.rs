@@ -4,10 +4,12 @@
 // #![feature(return_position_impl_trait_in_trait)]
 
 
+
+use std::fmt::Display;
 use std::{collections::HashSet, fs, io};
 
 use beep::{detect_quasihalt_of_lr_or_cycler, scan_from_filename_beep};
-use brady::{monotonic, prove_bouncer, split_records};
+use brady::{construct_bouncer_proof, find_bouncer_xyz, monotonic, print_mb_proof, split_records, try_prove_bouncer};
 use either::Either::{Left, Right};
 use itertools::Itertools;
 use rand::{prelude::SliceRandom, Rng};
@@ -87,6 +89,15 @@ todo 21 aug 23
 * implement bouncer detector
 * implement counter detector
  */
+
+#[derive(Debug)]
+struct BL<'a>(&'a Vec<Bit>);
+
+impl<'a> Display for BL<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&disp_list_bit(&self.0))
+    }
+}
 
 fn machines_to_str(machines: Vec<SmallBinMachine>) -> String {
   machines
@@ -198,175 +209,6 @@ fn run_machine_interactive(machine: &SmallBinMachine) {
   // simulate_using_rules::<Bit, u32>(machine, num_steps, &rulebook, true);
   // println!("\n\nproving rules");
   // simulate_proving_rules(machine, num_steps, &mut rulebook, true);
-}
-
-// returns: x, y, z, state, for the config x z^4 y<
-fn disp_records(machine: &SmallBinMachine) -> Option<(Vec<Bit>, Vec<Bit>, Vec<Bit>, State)> {
-  /*
-  goal: extract x, y, z st the machine satisfies x z^n >y => x z^(n+1) >y
-
-  full strat: 
-    run machine for N steps, tracking history and readshift
-    extract all "records", the times when the tape increases in size
-      split those into L and R
-      within that, take only times when the difference in stepcount from previous 
-       is larger than has been seen so far (since if a machine grows the tape by 2 
-       for example, there are 2 records immediately after one another)
-    look at the right records, and calculate their "tape extents" 
-      (the size of the live tape in each) and the diffs thereof
-    if the last 2 diffs are identical, guess that this is a valid size for z, 
-      otherwise give up
-    assume the last tape is x z^4 y where |x| = |y| (giving the bonus 1 to y
-      in the case of an odd number, not that it matters)
-    extract x z^4 y
-    from z^4 extract z if it is 4 of the same thing, otherwise give up
-    return x z y
-
-    the main improvement here to me is that if there is never a right side record, 
-    we should switch to using the left side records, but otherwise proceed identically    
-   */
-  println!(
-    "\nrunning records of machine: {}",
-    machine.to_compact_format()
-  );
-
-
-  let num_steps = 200;
-  Tape::simulate_from_start(machine, num_steps, true);
-
-  let (hist, rs) = match get_rs_hist_for_machine(machine, num_steps, false) {
-    Left(i) => {
-      println!("infinite at {i} steps");
-      return None;
-    }
-    Right((hist, rs)) => (hist, rs),
-  };
-  let records = find_records(&rs);
-  println!("found {} records", records.len());
-  // println!("\nleft");
-  // for record in records.iter() {
-  //   if record.2 == Dir::L {
-  //     println!("{record}");
-  //   }
-  // }
-  // println!("\nright");
-  // for record in records.iter() {
-  //   if record.2 == Dir::R {
-  //     println!("{record}");
-  //   }
-  // }
-
-  let (unfilt_left_records, unfilt_right_records) = split_records(records.clone());
-  println!("unfiltered left records");
-  process_records(unfilt_left_records.clone());
-  println!("unfiltered right records");
-  process_records(unfilt_right_records.clone());
-
-  let (left_records, right_records) = split_and_filter_records(records);
-  println!("\nfiltered left");
-
-  process_records(left_records);
-  println!("\nfiltered right");
-  process_records(right_records.clone());
-
-  /* goal: extract |Z| in X Z^n Y
-    strategy: look at the filtered right records, take the difference of their tape extents
-    hope the last 3 agree
-  */
-  let mut tape_extents = vec![];
-  for Record(r_step, _, _) in right_records.iter() {
-    let (step, phase, tape) = &hist[*r_step];
-    let tape_extent = tape.len();
-    tape_extents.push(tape_extent);
-    println!(
-      "rstep: {} step: {} phase: {} tape: {} tape extent: {} ",
-      r_step, step, phase, tape, tape_extent
-    );
-  }
-  let tape_diffs = difference_of(&tape_extents);
-  println!("tape extents: {:?}", tape_extents);
-  println!("tape diffs  : {:?}", tape_diffs);
-  let mb_len_z = match &tape_diffs[..] {
-    [.., d, e, f] => {
-      if d == e && e == f {
-        Some(*d as usize)
-      } else {
-        None
-      }
-    }
-    _ => None,
-  };
-  println!("mb len z: {:?}", mb_len_z);
-  let len_z: usize = match mb_len_z {
-    None => {
-      println!("couldn't find a len for z");
-      return None;
-    }
-    Some(len_z) => len_z,
-  };
-  let last_record = right_records.last().unwrap();
-  let (_, last_phase, last_tape) = &hist[last_record.0];
-  let last_tape_len = last_tape.len() as usize;
-  let rem_last_tape_len = last_tape_len - 4 * len_z;
-  let len_x = rem_last_tape_len.div_floor(2);
-  let len_y = rem_last_tape_len.div_ceil(2);
-  assert_eq!(len_x + len_y + 4 * len_z, last_tape_len);
-  let last_tape_list: Vec<Bit> = ExpTape::to_tape(last_tape).to_list();
-  let x = &last_tape_list[0..len_x];
-  let y = &last_tape_list[(last_tape_list.len() - len_y)..];
-  let z4 = &last_tape_list[len_x..len_x + 4 * len_z];
-
-  assert_eq!(z4.len(), (len_z * 4) as usize);
-  let mut zs = vec![];
-  for i in 0..=3 {
-    zs.push(&z4[i * len_z..(i + 1) * len_z]);
-  }
-  let z = match &zs[..] {
-    [a, b, c, d] => {
-      if a == b && b == c && c == d {
-        a
-      } else {
-        println!("failed to extract z from z4: {:?} and zs: {:?}", z4, zs);
-        return None;
-      }
-    }
-    _ => panic!("zs was not length 4"),
-  };
-  println!(
-    "extracted x y z from tape at step {}:\n{}\ntapelist:\n{}\nx: {} y: {} z: {}",
-    last_record.0,
-    last_tape,
-    disp_list_bit(&last_tape_list),
-    disp_list_bit(x),
-    disp_list_bit(y),
-    disp_list_bit(z),
-  );
-  return Some((x.to_vec(), y.to_vec(), z.to_vec(), *last_phase))
-
-}
-
-fn process_records(records: Vec<Record>) {
-  if records.len() < 3 {
-    println!("records was short: {:?}", records);
-    return;
-  }
-  // for record in records.iter() {
-  //   println!("{record}");
-  // }
-  let steps = records.iter().map(|Record(s, _, _)| *s).collect_vec();
-  println!("steps: {:?}", steps);
-  if !monotonic(&steps) {
-    println!("steps wasn't monotonic");
-    return;
-  }
-  let d1 = difference_of(&steps);
-  println!("d1   : {:?}", d1);
-  if !monotonic(&d1) {
-    println!("d1 wasn't monotonic");
-    return;
-  }
-  let d2 = difference_of(&d1);
-  println!("d2   : {:?}", d2);
 }
 
 fn run_machine_macro<const N: usize>(machine: &SmallBinMachine) {
@@ -751,20 +593,21 @@ fn main() {
   //   decideable_by_macro[2],
   // ));
 
-  let bouncers = bouncers();
   let mut proofs = vec![];
-  for i in 0..10 {
-    dbg!(i);
-    let machine = SmallBinMachine::from_compact_format(bouncers[i]);
-    let (x, y, z, state_0) = match disp_records(&machine) {
-      None => continue,
-      Some(ans) => ans,
-    };
-    let proof_res = prove_bouncer(&machine, state_0, &x, &y, &z);
+  let random_undecided = undecided_size_4_random_100();
+  // let bouncers = bouncers();
+  let machines = random_undecided;
+  for i in 0..machines.len() {
+    let machine = SmallBinMachine::from_compact_format(machines[i]);
+    println!("{}: {}", i, machine.to_compact_format());
+    let proof_res = try_prove_bouncer(&machine);
+    println!("{}", print_mb_proof(&proof_res));
     proofs.push(proof_res);
-    println!("proof result: {:?}", proof_res);
   }
-  dbg!(proofs);
+  println!("proofs");
+  for mb_proof in proofs {
+    println!("{}", print_mb_proof(&mb_proof));
+  }
 }
 
 /*

@@ -1,12 +1,9 @@
 use std::{fmt::{Debug, Display}, ops::Sub};
 
 use crate::{
-  rules::{ReadShift, Rulebook},
-  simulate::{one_rule_step, RuleStepResult::*},
-  tape::{disp_list_bit, ExpTape, Tape},
-  turing::{
+  rules::{ReadShift, Rulebook}, simulate::{one_rule_step, RuleStepResult::*}, tape::{disp_list_bit, ExpTape, Tape}, turing::{
     Bit, Dir::{self, L, R}, Phase, SmallBinMachine, State, TapeSymbol, Turing
-  },
+  }, BL
 };
 use either::{
   Either,
@@ -102,7 +99,10 @@ tape expansions
 pub fn filter_records<'a>(mut records: impl Iterator<Item = &'a Record>) -> Vec<Record> {
   let mut out = vec![];
   let mut max_diff_so_far = 0;
-  let mut prev_record = *records.next().unwrap();
+  let mut prev_record = match records.next() {
+    None => return out, 
+    Some(r) => *r,
+  };
   for &record in records {
     let diff = record.0.checked_sub(prev_record.0).unwrap();
     if diff > max_diff_so_far {
@@ -157,6 +157,221 @@ pub fn difference_of<T: CheckedSub + Copy + Debug>(xs: &[T]) -> Vec<T> {
     last_x = *x;
   }
   out
+}
+
+fn display_record_steps(records: Vec<Record>) {
+  if records.len() < 3 {
+    println!("records was short: {:?}", records);
+    return;
+  }
+  // for record in records.iter() {
+  //   println!("{record}");
+  // }
+  let steps = records.iter().map(|Record(s, _, _)| *s).collect_vec();
+  println!("steps: {:?}", steps);
+  if !monotonic(&steps) {
+    println!("steps wasn't monotonic");
+    return;
+  }
+  let d1 = difference_of(&steps);
+  println!("d1   : {:?}", d1);
+  if !monotonic(&d1) {
+    println!("d1 wasn't monotonic");
+    return;
+  }
+  let d2 = difference_of(&d1);
+  println!("d2   : {:?}", d2);
+}
+
+// returns: x, y, z, state, for the config x z^4 y<
+pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Option<(Vec<Bit>, Vec<Bit>, Vec<Bit>, State)> {
+  /*
+  goal: extract x, y, z st the machine satisfies x z^n >y => x z^(n+1) >y
+
+  full strat: 
+    run machine for N steps, tracking history and readshift
+    extract all "records", the times when the tape increases in size
+      split those into L and R
+      within that, take only times when the difference in stepcount from previous 
+       is larger than has been seen so far (since if a machine grows the tape by 2 
+       for example, there are 2 records immediately after one another)
+    look at the right records, and calculate their "tape extents" 
+      (the size of the live tape in each) and the diffs thereof
+    if the last 2 diffs are identical, guess that this is a valid size for z, 
+      otherwise give up
+    assume the last tape is x z^4 y where |x| = |y| (giving the bonus 1 to y
+      in the case of an odd number, not that it matters)
+    extract x z^4 y
+    from z^4 extract z if it is 4 of the same thing, otherwise give up
+    return x z y
+
+    the main improvement here to me is that if there is never a right side record, 
+    we should switch to using the left side records, but otherwise proceed identically    
+   */
+  let print = true;
+  if print {
+    println!(
+      "\nrunning records of machine: {}",
+      machine.to_compact_format()
+    );
+  }
+
+  let num_steps = 200;
+  if print {
+    Tape::simulate_from_start(machine, num_steps, true);
+  }
+
+  let (hist, rs) = match get_rs_hist_for_machine(machine, num_steps, false) {
+    Left(i) => {
+      println!("infinite at {i} steps");
+      return None;
+    }
+    Right((hist, rs)) => (hist, rs),
+  };
+  let records = find_records(&rs);
+  if print {
+    println!("found {} records", records.len());
+  }
+  // println!("\nleft");
+  // for record in records.iter() {
+  //   if record.2 == Dir::L {
+  //     println!("{record}");
+  //   }
+  // }
+  // println!("\nright");
+  // for record in records.iter() {
+  //   if record.2 == Dir::R {
+  //     println!("{record}");
+  //   }
+  // }
+
+  if print {
+    let (unfilt_left_records, unfilt_right_records) = split_records(records.clone());
+    println!("unfiltered left records");
+    display_record_steps(unfilt_left_records.clone());
+    println!("unfiltered right records");
+    display_record_steps(unfilt_right_records.clone());
+  }
+
+  let (left_records, right_records) = split_and_filter_records(records);
+  if print {
+    println!("\nfiltered left");
+    display_record_steps(left_records);
+    println!("\nfiltered right");
+    display_record_steps(right_records.clone());
+  }
+
+  /* goal: extract |Z| in X Z^n Y
+    strategy: look at the filtered right records, take the difference of their tape extents
+    hope the last 3 agree
+  */
+  let mut tape_extents = vec![];
+  for Record(r_step, _, _) in right_records.iter() {
+    let (step, phase, tape) = &hist[*r_step];
+    let tape_extent = tape.len();
+    tape_extents.push(tape_extent);
+    if print {
+      println!(
+        "rstep: {} step: {} phase: {} tape: {} tape extent: {} ",
+        r_step, step, phase, tape, tape_extent
+      );
+    }
+  }
+  if print {
+    println!("tape extents: {:?}", tape_extents);
+  }
+  if tape_extents.len() < 2 {
+    return None;
+  }
+  let tape_diffs = difference_of(&tape_extents);
+  if print {
+    println!("tape diffs  : {:?}", tape_diffs);
+  }
+  let mb_len_z = match &tape_diffs[..] {
+    [.., d, e, f] => {
+      if d == e && e == f {
+        Some(*d as usize)
+      } else {
+        None
+      }
+    }
+    _ => None,
+  };
+  if print {
+    println!("mb len z: {:?}", mb_len_z);
+  }
+  let len_z: usize = match mb_len_z {
+    None => {
+      if print {
+        println!("couldn't find a len for z");
+      }
+      return None;
+    }
+    Some(len_z) => len_z,
+  };
+  let last_record = right_records.last().unwrap();
+  let (_, last_phase, last_tape) = &hist[last_record.0];
+  let last_tape_len = last_tape.len() as usize;
+  let rem_last_tape_len = last_tape_len - 4 * len_z;
+  let len_x = rem_last_tape_len.div_floor(2);
+  let len_y = rem_last_tape_len.div_ceil(2);
+  assert_eq!(len_x + len_y + 4 * len_z, last_tape_len);
+  let last_tape_list: Vec<Bit> = ExpTape::to_tape(last_tape).to_list();
+  let x = &last_tape_list[0..len_x];
+  let y = &last_tape_list[(last_tape_list.len() - len_y)..];
+  let z4 = &last_tape_list[len_x..len_x + 4 * len_z];
+
+  assert_eq!(z4.len(), (len_z * 4) as usize);
+  let mut zs = vec![];
+  for i in 0..=3 {
+    zs.push(&z4[i * len_z..(i + 1) * len_z]);
+  }
+  let z = match &zs[..] {
+    [a, b, c, d] => {
+      if a == b && b == c && c == d {
+        a
+      } else {
+        if print {
+          println!("failed to extract z from z4: {:?} and zs: {:?}", z4, zs);
+        }
+        return None;
+      }
+    }
+    _ => panic!("zs was not length 4"),
+  };
+  if print {
+    println!(
+      "extracted x y z from tape at step {}:\n{}\ntapelist:\n{}\nx: {} y: {} z: {}",
+      last_record.0,
+      last_tape,
+      disp_list_bit(&last_tape_list),
+      disp_list_bit(x),
+      disp_list_bit(y),
+      disp_list_bit(z),
+    );
+  }
+  return Some((x.to_vec(), y.to_vec(), z.to_vec(), *last_phase))
+
+}
+
+fn split_first_n<T>(n: usize, iter: &mut impl Iterator<Item = T>) -> (Vec<T>, Vec<T>) {
+  let mut first = vec![];
+  let mut second = vec![];
+  // let mut count = 0;
+  for _i in 0..n {
+    first.push(iter.next().unwrap());
+  }
+  second.extend(iter);
+  (first, second)
+}
+
+fn split_last_n<T, I : ExactSizeIterator<Item = T>>(
+  n: usize, iter: &mut I
+) -> (Vec<T>, Vec<T>) 
+{  
+  assert!(iter.len() > n);
+  let first_len = iter.len() - n;
+  split_first_n(first_len, iter)
 }
 
 pub enum ChunkSimRes {
@@ -256,28 +471,22 @@ pub fn simulate_on_chunk(
   return (state, TimedOut);
 }
 
-fn split_first_n<T>(n: usize, iter: &mut impl Iterator<Item = T>) -> (Vec<T>, Vec<T>) {
-  let mut first = vec![];
-  let mut second = vec![];
-  // let mut count = 0;
-  for _i in 0..n {
-    first.push(iter.next().unwrap());
-  }
-  second.extend(iter);
-  (first, second)
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+pub struct BouncerProof {
+  x: Vec<Bit>, 
+  y: Vec<Bit>, 
+  z: Vec<Bit>, 
+  state_0: State,
+}
+impl Display for BouncerProof {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("BouncerProof x: {} y: {} z: {} state_0: {} ", 
+            BL(&self.x), BL(&self.y), BL(&self.z), self.state_0))
+    }
 }
 
-fn split_last_n<T, I : ExactSizeIterator<Item = T>>(
-  n: usize, iter: &mut I
-) -> (Vec<T>, Vec<T>) 
-{  
-  assert!(iter.len() > n);
-  let first_len = iter.len() - n;
-  split_first_n(first_len, iter)
-}
-
-pub fn prove_bouncer(machine: &SmallBinMachine, state_0: State, x: &[Bit], y: &[Bit], z: &[Bit])
- -> Result<(), &'static str> 
+pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[Bit], y: &[Bit], z: &[Bit])
+ -> Result<BouncerProof, &'static str> 
 {
   /*
   here's the plan: we want to prove M is a bouncer, specifically that M satisfies
@@ -323,6 +532,7 @@ pub fn prove_bouncer(machine: &SmallBinMachine, state_0: State, x: &[Bit], y: &[
   thing farthest from the machine head and read towards the machine head. if 
   you want to put something on the right half of the tape, as in Z < Z1, you have to flip it. 
    */
+  let print = false;
 
   let max_steps = 100;
   let max_tape = 50;
@@ -333,7 +543,6 @@ pub fn prove_bouncer(machine: &SmallBinMachine, state_0: State, x: &[Bit], y: &[
   tape_left.extend(y);
   let head = tape_left.pop().unwrap();
   let mut tape : Tape<Bit> = Tape {left: tape_left, head, right: vec![]};
-  // dbg!(&tape);
   let (state_1, res) = simulate_on_chunk(
     machine, state_0, &mut tape, 
     true, false, None, None, max_steps, max_tape);
@@ -347,16 +556,19 @@ pub fn prove_bouncer(machine: &SmallBinMachine, state_0: State, x: &[Bit], y: &[
   assert_eq!(tape.head, Bit(false));
   // note that these are reversed due to being on the right. z1 is closest to the head, 
   //which means it's at the *end* of this vec
-  // dbg!(&tape);
   let z1y1 = tape.right; 
-  println!("z1y1 {}", disp_list_bit(&z1y1));
+  if print {
+    println!("z1y1 {}", BL(&z1y1));
+  }
   if z1y1.len() < z.len() {
     return Err("z1y1 too short");
   }
   //we force length of z1 == length of z 
   // we reverse everything so now they're in the left frame 
   let (z1, y1) = split_first_n(z.len(), &mut z1y1.into_iter().rev());
-  println!("z1 {} y1 {}", disp_list_bit(&z1), disp_list_bit(&y1));
+  if print {
+    println!("z1 {} y1 {}", disp_list_bit(&z1), disp_list_bit(&y1));
+  }
   
   // sim Z < Z1 -> < Z1 Z2
   let mut left = z.to_vec();
@@ -382,8 +594,10 @@ pub fn prove_bouncer(machine: &SmallBinMachine, state_0: State, x: &[Bit], y: &[
   let mut mb_z1z2 = tape.right; 
   // to put it in the left frame
   mb_z1z2.reverse();
-  println!("mbz1z2 {}", disp_list_bit(&mb_z1z2));
-  println!("z1 {}", disp_list_bit(&z1));
+  if print {
+    println!("mbz1z2 {}", disp_list_bit(&mb_z1z2));
+    println!("z1 {}", disp_list_bit(&z1));
+  }
 
   assert_eq!(mb_z1z2.len(), z1.len()*2);
   //todo: could rewrite this to use the split helper
@@ -476,13 +690,15 @@ pub fn prove_bouncer(machine: &SmallBinMachine, state_0: State, x: &[Bit], y: &[
   if mb_y1 != y1 {
     return Err("mb_y1 didn't match y1 step 6")
   }
-  println!("x1 {} z4 {} a {} x {} z {}", 
-    disp_list_bit(&x1),
-    disp_list_bit(&z4),
-    disp_list_bit(&a),
-    disp_list_bit(&x),
-    disp_list_bit(&z),
-  );
+  if print {
+    println!("x1 {} z4 {} a {} x {} z {}", 
+      disp_list_bit(&x1),
+      disp_list_bit(&z4),
+      disp_list_bit(&a),
+      disp_list_bit(&x),
+      disp_list_bit(&z),
+    );
+  }
   /*
   check X1 Z4 Z4^n A = X Z Z^(n+1)
       by thm it sufficies to check n=0 n=1
@@ -517,7 +733,23 @@ pub fn prove_bouncer(machine: &SmallBinMachine, state_0: State, x: &[Bit], y: &[
     return Err("n=1 of loop case failed")
   }
 
-  return Ok(());
+  let proof = BouncerProof { x: x.to_vec(), y: y.to_vec(), z: z.to_vec(), state_0 };
+  return Ok(proof);
+}
+
+pub fn try_prove_bouncer(machine: &SmallBinMachine) -> Result<BouncerProof, &'static str> {
+  let (x, y, z, state_0) = match find_bouncer_xyz(&machine) {
+    None => return Err("x y z not found"),
+    Some(ans) => ans,
+  };
+  construct_bouncer_proof(&machine, state_0, &x, &y, &z)
+}
+
+pub fn print_mb_proof(mb_proof: &Result<BouncerProof, &str>) -> String{
+  match mb_proof {
+    Ok(proof) => format!("{}", proof),
+    Err(s) => format!("Err: {}", s),
+  }
 }
 
 mod test {
