@@ -9,7 +9,7 @@ use std::fmt::Display;
 use std::{collections::HashSet, fs, io};
 
 use beep::{detect_quasihalt_of_lr_or_cycler, scan_from_filename_beep};
-use brady::{construct_bouncer_proof, find_bouncer_xyz, monotonic, print_mb_proof, split_records, try_prove_bouncer, BouncerProof};
+use brady::{construct_bouncer_proof, find_bouncer_xyz, monotonic, print_mb_proof, split_records, try_prove_bouncer, BouncerProof, MbBounce};
 use either::Either::{Left, Right};
 use itertools::Itertools;
 use rand::{prelude::SliceRandom, Rng};
@@ -91,7 +91,7 @@ todo 21 aug 23
  */
 
 #[derive(Debug)]
-struct BL<'a>(&'a Vec<Bit>);
+struct BL<'a>(&'a [Bit]);
 
 impl<'a> Display for BL<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -409,6 +409,17 @@ fn list_which_proven(machines: &Vec<SmallBinMachine>, num_steps: u32, verbose: b
   }
 }
 
+fn prove_with_brady_bouncer(machines: Vec<SmallBinMachine>) -> Vec<(SmallBinMachine, MbBounce)> {
+  let mut out = vec![];
+  for (_i, machine) in machines.into_iter().enumerate() {
+    // dbg!(i);
+    let proof_res = try_prove_bouncer(&machine);
+    out.push((machine, proof_res))
+
+  }
+  out
+}
+
 fn scan_from_machines(
   machines: &[SmallBinMachine],
   num_lr_steps: u32,
@@ -437,13 +448,16 @@ fn scan_from_machines(
     "{} had no halt trans, leaving {} to be decided",
     no_halt_trans_count, remaining_undecided_len,
   );
+  let bouncer_results = prove_with_brady_bouncer(undecided_with_halt);
+  let bouncer_proofs = bouncer_results.iter().map(|(_, p)| p.clone()).collect_vec();
+  aggregate_and_display_bouncer_res(&bouncer_proofs);
+  let final_undecided = get_bouncer_undecided(bouncer_results);
   // let final_undecided = prove_with_macros(undecided_with_halt, num_rule_steps, false);
-  let final_undecided = undecided_with_halt;
   
   if let Some(filename) = mb_undecided_file {
     dump_machines_to_file(final_undecided.clone(), filename).expect("file should be openable");
   }
-
+  
   // let num_undecided_to_display = 10;
   // let seed = 123456789012345;
   // let mut rng: ChaCha8Rng = SeedableRng::seed_from_u64(seed);
@@ -453,7 +467,7 @@ fn scan_from_machines(
   //   .collect_vec();
 
   // println!(
-  //   "some undecided machines:\n{}",
+    //   "some undecided machines:\n{}",
   //   machines_to_str(random_undecideds)
   // );
   
@@ -479,7 +493,7 @@ fn scan_from_machines(
   //     .map(|m| m.to_compact_format())
   //     .join("\n")
   // );
-
+  
   // loop {
   //   println!("Enter the index of a machine you would like to run:");
   //   let mut input_text = String::new();
@@ -499,6 +513,19 @@ fn scan_from_machines(
   //   println!("selected machine: {}", machine.to_compact_format());
   //   run_machine(machine);
   // }
+}
+
+fn get_bouncer_undecided(bouncer_results: Vec<(SmallBinMachine, Result<BouncerProof, &str>)>) 
+  -> Vec<SmallBinMachine> 
+{
+    let mut out = vec![];
+    for res in bouncer_results {
+      match res {
+          (_m, Ok(_p)) => (),
+          (m, Err(_s)) => out.push(m),
+      }
+    }
+    out
 }
 
 
@@ -562,21 +589,22 @@ fn aggregate_and_display_bouncer_res(proofs: &[Result<BouncerProof, &str>]) {
 }
 
 fn main() {
+  // 1_000 instead of 1_000_000 misses 296 machines (of ~3M, so 0.01%), but we can always come back to those
   let num_lr_steps = 1_000;
   let num_rule_steps = 200;
   dbg!(num_lr_steps, num_rule_steps);
 
-  // let first_machine = SmallBinMachine::start_machine(3, Bit(true));
-  // // scan_from_machine(
-  // scan_from_machine_beep(
-  //   &first_machine,
-  //   num_lr_steps,
-  //   num_rule_steps,
-  //   // Some("size3_holdouts_2_may.txt"),
-  //   // Some("size4_holdouts_31_may_29e2280.txt"),
-  //   // Some("size3_qh_holdouts_30_july_24"),
-  //   None,
-  // );
+  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // scan_from_machine(
+  scan_from_machine_beep(
+    &first_machine,
+    num_lr_steps,
+    num_rule_steps,
+    // Some("size3_holdouts_2_may.txt"),
+    // Some("size4_holdouts_31_may_29e2280.txt"),
+    // Some("size4_bouncer_not_quite_qh_holdouts_2_august_24"),
+    None,
+  );
 
   // scan_from_filename_beep(
   //   "size4_qh_holdouts_24_july_24", 
@@ -609,22 +637,22 @@ fn main() {
   //   decideable_by_macro[2],
   // ));
 
-  let mut proofs = vec![];
-  let random_undecided = undecided_size_4_random_100();
-  // let bouncers = bouncers();
-  let machines = random_undecided;
-  for i in 0..machines.len() {
-    let machine = SmallBinMachine::from_compact_format(machines[i]);
-    println!("{}: {}", i, machine.to_compact_format());
-    let proof_res = try_prove_bouncer(&machine);
-    println!("{}\n\n", print_mb_proof(&proof_res));
-    proofs.push(proof_res);
-  }
-  println!("proofs");
-  for mb_proof in &proofs {
-    println!("{}", print_mb_proof(mb_proof));
-  }
-  aggregate_and_display_bouncer_res(&proofs);
+  // let mut proofs = vec![];
+  // let random_undecided = undecided_size_4_random_100();
+  // // let bouncers = bouncers();
+  // let machines = random_undecided;
+  // for i in 0..machines.len() {
+  //   let machine = SmallBinMachine::from_compact_format(machines[i]);
+  //   println!("{}: {}", i, machine.to_compact_format());
+  //   let proof_res = try_prove_bouncer(&machine);
+  //   println!("{}\n\n", print_mb_proof(&proof_res));
+  //   proofs.push(proof_res);
+  // }
+  // println!("proofs");
+  // for (i, mb_proof) in proofs.iter().enumerate() {
+  //   println!("{}: {}", i, print_mb_proof(mb_proof));
+  // }
+  // aggregate_and_display_bouncer_res(&proofs);
 }
 
 /*

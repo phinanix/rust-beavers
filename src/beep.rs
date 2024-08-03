@@ -8,7 +8,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 use crate::{
-  brady::{difference_of, find_records, get_rs_hist_for_machine, split_and_filter_records, Record}, dump_machines_to_file, linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult}, load_machines_from_file, machines_to_str, macro_machines::{MacroMachine, MacroState}, rules::{detect_chain_rules, Rulebook}, run_machine, simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules}, tape::{disp_list_bit,tnf_simulate, ExpTape, Tape}, turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT}, turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100}
+  aggregate_and_display_bouncer_res, brady::{difference_of, find_records, get_rs_hist_for_machine, split_and_filter_records, Record}, dump_machines_to_file, get_bouncer_undecided, linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult}, load_machines_from_file, machines_to_str, macro_machines::{MacroMachine, MacroState}, prove_with_brady_bouncer, rules::{detect_chain_rules, Rulebook}, run_machine, simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules}, tape::{disp_list_bit,tnf_simulate, ExpTape, Tape}, turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT}, turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100}
 };
 
 // by convention, the first step at which a state is never used again is the 
@@ -393,7 +393,14 @@ pub fn scan_from_machines_beep(
       "there were {} undecided machines",
       undecided_len
   );
-  let final_undecided = undecided_machines;
+  let bouncer_results = prove_with_brady_bouncer(undecided_machines);
+  let bouncer_proofs = bouncer_results.iter().map(|(_, p)| p.clone()).collect_vec();
+  aggregate_and_display_bouncer_res(&bouncer_proofs);
+  let final_undecided = get_bouncer_undecided(bouncer_results);
+  
+
+
+  // let final_undecided = undecided_machines;
   if let Some(filename) = mb_undecided_file {
       dump_machines_to_file(final_undecided.clone(), filename).expect("file should be openable");
   }

@@ -357,6 +357,43 @@ pub fn undecided_size_4_random_100() -> Vec<&'static str> {
    classifying took 18.5m so that's 37s / machine.
 
   */
+  /*
+  2 Aug 24: why machines were or weren't proved by the bouncer decider
+
+  I checked all of these: 
+  90: proven
+  91: proven 
+  92: proven
+  93: counter
+  94: proven
+  95: proven 
+  96: counter 
+  97: proven 
+  98: not proven, because it's a "two sweep" bouncer
+  99: proven
+
+  unproven: 3
+  2 counter 1 two_sweep
+
+  I checked _ more that were *not* proven:
+
+  65: grows on left, not right
+  71: counter (and no right records)
+  74: grows on left, not right
+  77: counter (and no right records)
+  78: 2 stage
+  82: 2 stage
+  83: looks like would be proven with longer (yep, proven between 400 and 500)
+  88: translated bouncer (could maybe be proven if we dropped the Fs at the end, 
+      since the translation doesn't leave any garbage behind)
+
+  unproven: 7
+  2 left_grow 2 two_sweep 2 counter 1 translated_no_shadow
+
+  total: 10
+  4 counter 3 two_sweep 2 left_grow 1 translated_no_shadow
+
+  */
   vec![
     "1RB0RC_1LA0LD_0RB1LB_1RH1RA",
     "1RB0LC_0RC0RA_1LD0RA_0LA1RH",

@@ -66,6 +66,32 @@ bouncer
 goals: 
 ✓ run from list of saved machines
 ✓ look at some random machines from list of size 3 and size 4
+✓ write "spec" / alg for bouncer decider
+✓ implement bouncer decider
 
-- write "spec" / alg for bouncer decider
-- implement bouncer decider
+2 Aug 24 
+new goals: 
+✓ classify 10 holdouts from undecided size 4
+- run brady bouncer alg on both size 4 domains
+- classify 10-20 holdouts from quasihalt holdouts
+- make bouncer alg detect quasi-halting
+- pick what upgrades (if any) to make to bouncer alg 
+
+first bug: 185
+second: 
+2068
+running records of machine: 1RB0LD_1RC1RH_1LD0RD_1RA0LA
+thread 'main' panicked at src/brady.rs:322:27:
+range end index 9223372036854775838 out of range for slice of length 29
+
+fixed bugs!
+analyzed 29373 machines. bouncers: 20092 undecided: 9281
+
+[src/main.rs:594:3] num_lr_steps = 1000
+[src/main.rs:594:3] num_rule_steps = 200
+tnf machines 1000000
+tnf machines 2000000
+halted: 183983 quasihalted (cycled): 192528 quashalted (lr): 762000
+non-qh (cycled): 151072 non-qh (lr): 1504070 inconclusive: 150016
+there were 150016 undecided machines
+analyzed 150016 machines. bouncers: 87889 undecided: 62127
