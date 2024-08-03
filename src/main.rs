@@ -201,8 +201,10 @@ fn run_machine_interactive(machine: &SmallBinMachine) {
 
   // let mut rulebook = Rulebook::new(machine.num_states());
   // rulebook.add_rules(chain_rules);
-  let num_steps = 300;
+  let num_steps = 200;
   Tape::simulate_from_start(machine, num_steps * 3, true);
+  let ans = try_prove_bouncer(machine); 
+  println!("mb proof: {}", print_mb_proof(&ans));
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
   // println!("using rules");
@@ -594,17 +596,17 @@ fn main() {
   let num_rule_steps = 200;
   dbg!(num_lr_steps, num_rule_steps);
 
-  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  // scan_from_machine(
-  scan_from_machine_beep(
-    &first_machine,
-    num_lr_steps,
-    num_rule_steps,
-    // Some("size3_holdouts_2_may.txt"),
-    // Some("size4_holdouts_31_may_29e2280.txt"),
-    // Some("size4_bouncer_not_quite_qh_holdouts_2_august_24"),
-    None,
-  );
+  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // // scan_from_machine(
+  // scan_from_machine_beep(
+  //   &first_machine,
+  //   num_lr_steps,
+  //   num_rule_steps,
+  //   // Some("size3_holdouts_2_may.txt"),
+  //   // Some("size4_holdouts_31_may_29e2280.txt"),
+  //   // Some("size4_bouncer_not_quite_qh_holdouts_2_august_24"),
+  //   None,
+  // );
 
   // scan_from_filename_beep(
   //   "size4_qh_holdouts_24_july_24", 
@@ -613,10 +615,10 @@ fn main() {
   //   None,
   // );
 
-  // run_random_machines_from_file(
-  //   "size4_qh_holdouts_24_july_24", 
-  //   // "size3_qh_holdouts_30_july_24",
-  //   25);
+  run_random_machines_from_file(
+    "size4_bouncer_not_quite_qh_holdouts_2_august_24",
+    // "size3_qh_holdouts_30_july_24",
+    25);
 
   // let m = SmallBinMachine::from_compact_format("1RB---_1RC---_1RD1LD_1LD1RC");
   // run_machine(&m);

@@ -70,6 +70,16 @@ impl Display for Record {
     Ok(())
   }
 }
+pub fn accumulate_rs(readshifts: &[ReadShift]) -> Vec<ReadShift> {
+  let mut cur_rs = ReadShift { l: 0, r: 0, s: 0 };
+  let mut out = vec![];
+  for &rs in readshifts {
+    cur_rs = ReadShift::normalize(ReadShift::combine(cur_rs, rs));
+    out.push(cur_rs)
+  }
+  out
+}
+
 /*
  parameters: &[ReadShift], the list of readshifts
  returns:   Vec<(usize, i32, Dir)> which is
@@ -81,6 +91,7 @@ pub fn find_records(readshifts: &[ReadShift]) -> Vec<Record> {
   for (i, &new_rs) in readshifts.into_iter().enumerate() {
     let prev_rs = cur_rs;
     cur_rs = ReadShift::normalize(ReadShift::combine(cur_rs, new_rs));
+    println!("{}", cur_rs);
     if cur_rs.l < prev_rs.l {
       out.push(Record(i, cur_rs.l, Dir::L));
     }
@@ -89,6 +100,37 @@ pub fn find_records(readshifts: &[ReadShift]) -> Vec<Record> {
     }
   }
   out
+}
+
+fn find_turnarounds(rs: &[ReadShift]) -> Vec<(usize, i32)> {
+  let mut out = vec![];
+  // println!("rses {:?}", rs);
+  for i in 1..rs.len()-1 {
+    let prev = rs[i-1].s; 
+    let cur = rs[i].s;
+    let next = rs[i+1].s;
+    if cur > prev && cur > next {
+      out.push((i, cur))
+    }
+  }
+  out  
+}
+
+//extracts and returns the biggest turnarounds, then the rest
+fn biggest_turnaround(turnarounds: &Vec<(usize, i32)>) -> (Vec<(usize, i32)>, Vec<(usize, i32)>) {
+  let (_, max_shift) = turnarounds.iter().max_by_key(|&(_, s)| s).unwrap();
+
+  let mut biggest = vec![];
+  let mut rest = vec![];
+  for turnaround in turnarounds {
+    if turnaround.1 == *max_shift {
+      biggest.push(*turnaround);
+    } else {
+      rest.push(*turnaround)
+    }
+  }
+
+  (biggest, rest)
 }
 
 /*
@@ -159,15 +201,7 @@ pub fn difference_of<T: CheckedSub + Copy + Debug>(xs: &[T]) -> Vec<T> {
   out
 }
 
-fn display_record_steps(records: Vec<Record>) {
-  if records.len() < 3 {
-    println!("records was short: {:?}", records);
-    return;
-  }
-  // for record in records.iter() {
-  //   println!("{record}");
-  // }
-  let steps = records.iter().map(|Record(s, _, _)| *s).collect_vec();
+fn display_stepcounts(steps: Vec<usize>) {
   println!("steps: {:?}", steps);
   if !monotonic(&steps) {
     println!("steps wasn't monotonic");
@@ -183,8 +217,22 @@ fn display_record_steps(records: Vec<Record>) {
   println!("d2   : {:?}", d2);
 }
 
+fn display_record_steps(records: Vec<Record>) {
+  if records.len() < 3 {
+    println!("records was short: {:?}", records);
+    return;
+  }
+  // for record in records.iter() {
+  //   println!("{record}");
+  // }
+  let steps = records.iter().map(|Record(s, _, _)| *s).collect_vec();
+  display_stepcounts(steps);
+}
+
 // returns: x, y, z, state, for the config x z^4 y<
-pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Result<(Vec<Bit>, Vec<Bit>, Vec<Bit>, State), &'static str> {
+pub fn find_bouncer_xyz(machine: &SmallBinMachine, print: bool) 
+  -> Result<(Vec<Bit>, Vec<Bit>, Vec<Bit>, State), &'static str> 
+{
   /*
   goal: extract x, y, z st the machine satisfies x z^n >y => x z^(n+1) >y
 
@@ -208,7 +256,7 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Result<(Vec<Bit>, Vec<Bit>
     the main improvement here to me is that if there is never a right side record, 
     we should switch to using the left side records, but otherwise proceed identically    
    */
-  let print = false;
+  // let print = false;
   if print {
     println!(
       "\nrunning records of machine: {}",
@@ -261,16 +309,53 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Result<(Vec<Bit>, Vec<Bit>
     println!("\nfiltered right");
     display_record_steps(right_records.clone());
   }
-  if right_records.len() < 2 {
-    return Err("too few right records");
-  }
+  // if right_records.len() < 2 {
+  //   let turnarounds = find_turnarounds(&accumulate_rs(&rs));
+  //   let biggish = {
+  //     let mut biggest = vec![];
+  //     let mut rest = turnarounds.clone(); 
+  //     while biggest.len() < 4 && rest.len() >=4 {
+  //       (biggest, rest) = biggest_turnaround(&rest)
+  //     }
+  //     if biggest.len() < 4 {
+  //       panic!("didn't find *any* biggest turnaround {}", machine.to_compact_format())
+  //     }
+  //     biggest
+  //   };
+  //   dbg!(&biggish);
+  //   let biggish_steps = biggish.iter().map(|(s, _)| *s).collect_vec();
+  //   display_stepcounts(biggish_steps);
+  //   return Err("too few right records");
+  // }
   /* goal: extract |Z| in X Z^n Y
     strategy: look at the filtered right records, take the difference of their tape extents
     hope the last 3 agree
   */
+  let mut danger = false; 
+  let stepcounts = if right_records.len() >= 2 {
+    right_records.iter().map(|rec|rec.0).collect_vec()
+  } else {
+    danger = true;
+    let turnarounds = find_turnarounds(&accumulate_rs(&rs));
+    let biggish = {
+      let mut biggest = vec![];
+      let mut rest = turnarounds.clone(); 
+      while biggest.len() < 4 && rest.len() >=4 {
+        (biggest, rest) = biggest_turnaround(&rest)
+      }
+      if biggest.len() < 4 {
+        panic!("didn't find *any* biggest turnaround {}", machine.to_compact_format())
+      }
+      biggest
+    };
+    dbg!(&biggish);
+    let biggish_steps = biggish.iter().map(|(s, _)| *s).collect_vec();
+    display_stepcounts(biggish_steps.clone());
+    biggish_steps
+  };
   let mut tape_extents = vec![];
-  for Record(r_step, _, _) in right_records.iter() {
-    let (step, phase, tape) = &hist[*r_step];
+  for r_step in stepcounts {
+    let (step, phase, tape) = &hist[r_step];
     let tape_extent = tape.len();
     tape_extents.push(tape_extent);
     if print {
@@ -288,6 +373,8 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Result<(Vec<Bit>, Vec<Bit>
   if print {
     println!("tape diffs  : {:?}", tape_diffs);
   }
+  
+
   let mb_len_z = match &tape_diffs[..] {
     [.., d, e, f] => {
       if d == e && e == f {
@@ -308,9 +395,11 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine) -> Result<(Vec<Bit>, Vec<Bit>
       }
       return Err("couldn't find a len for z");
     }
+    Some(0) => return Err("guessed z was len 0"),
     Some(len_z) => len_z,
   };
   assert!(len_z > 0);
+  if danger { return Err("danger") }
 
   let last_record = right_records.last().unwrap();
   let (_, last_phase, last_tape) = &hist[last_record.0];
@@ -505,7 +594,7 @@ impl Display for BouncerProof {
 preconditions: x, y, z are nonempty
 returns: either a proof or an error message
 */
-pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[Bit], y: &[Bit], z: &[Bit])
+pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[Bit], y: &[Bit], z: &[Bit], print: bool)
  -> Result<BouncerProof, &'static str> 
 {
   /*
@@ -555,7 +644,7 @@ pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[B
   thing farthest from the machine head and read towards the machine head. if 
   you want to put something on the right half of the tape, as in Z < Z1, you have to flip it. 
    */
-  let print = false;
+  // let print = false;
 
   let max_steps = 100;
   let max_tape = 50;
@@ -799,11 +888,12 @@ pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[B
 }
 
 pub fn try_prove_bouncer(machine: &SmallBinMachine) -> Result<BouncerProof, &'static str> {
-  let (x, y, z, state_0) = match find_bouncer_xyz(&machine) {
+  let print = true;
+  let (x, y, z, state_0) = match find_bouncer_xyz(&machine, print) {
     Err(s) => return Err(s),
     Ok(ans) => ans,
   };
-  construct_bouncer_proof(&machine, state_0, &x, &y, &z)
+  construct_bouncer_proof(&machine, state_0, &x, &y, &z, print)
 }
 
 pub type MbBounce = Result<BouncerProof, &'static str>;
