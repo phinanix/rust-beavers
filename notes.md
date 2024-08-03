@@ -97,9 +97,23 @@ there were 150016 undecided machines
 analyzed 150016 machines. bouncers: 87889 undecided: 62127
 
 2 Aug 24 diff size
+(this one is a mistake)
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
 Rust                            12            741           1276           6789
 Rust                            12            805           1463           7310
-                                 0             64            287            521
+                                 0             64            187            521
 
+(this one is correct)
+Rust                            12            746           1298           6812
+Rust                            12            805           1463           7310
+                                 0             59            165            498
+
+total
+ 63,185 additions and 201 deletions 
+holdouts file
+ 62,127 additions, 0 deletions
+not holdouts file
+ +1,059 - 201
+
+https://github.com/phinanix/rust-beavers/compare/bb77c..6797c
