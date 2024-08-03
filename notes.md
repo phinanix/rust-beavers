@@ -95,3 +95,11 @@ halted: 183983 quasihalted (cycled): 192528 quashalted (lr): 762000
 non-qh (cycled): 151072 non-qh (lr): 1504070 inconclusive: 150016
 there were 150016 undecided machines
 analyzed 150016 machines. bouncers: 87889 undecided: 62127
+
+2 Aug 24 diff size
+Language                     files          blank        comment           code
+-------------------------------------------------------------------------------
+Rust                            12            741           1276           6789
+Rust                            12            805           1463           7310
+                                 0             64            287            521
+
