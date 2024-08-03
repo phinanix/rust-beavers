@@ -439,25 +439,26 @@ println!(
 //     .join("\n")
 // );
 
-loop {
-  println!("Enter the index of a machine you would like to run [not of the previous list]:");
-  let mut input_text = String::new();
-  io::stdin()
-    .read_line(&mut input_text)
-    .expect("failed to read from stdin");
 
-  let trimmed = input_text.trim();
-  let i = match trimmed.parse::<usize>() {
-    Ok(i) => i,
-    Err(..) => {
-      println!("this was not an integer: {}", trimmed);
-      exit(1)
-    }
-  };
-  let machine = &final_undecided[i];
-  println!("selected machine: {}", machine.to_compact_format());
-  run_machine(machine);
-}
+  loop {
+    println!("Enter the index of a machine you would like to run [not of the previous list]:");
+    let mut input_text = String::new();
+    io::stdin()
+      .read_line(&mut input_text)
+      .expect("failed to read from stdin");
+
+    let trimmed = input_text.trim();
+    let i = match trimmed.parse::<usize>() {
+      Ok(i) => i,
+      Err(..) => {
+        println!("this was not an integer: {}", trimmed);
+        exit(1)
+      }
+    };
+    let machine = &final_undecided[i];
+    println!("selected machine: {}", machine.to_compact_format());
+    run_machine(machine);
+  }
 }
 
 

@@ -117,3 +117,46 @@ not holdouts file
  +1,059 - 201
 
 https://github.com/phinanix/rust-beavers/compare/bb77c..6797c
+
+adding limited support for bouncers growing on the left and not the right: 
+analyzed 150016 machines. bouncers: 96514 undecided: 53502
+proved 8625 machines, an additional 5.7%. 
+estimated total grow_left bouncers: 22366
+estimated remaining grow_left bouncers: 13741
+est. 39% of grow left bouncers proven
+around 1379 machines had no largest turnaround; the first one of this type I examined was a translated bouncer
+(2.5%)
+with shadow that grows to the left 
+5 more: 
+1RB1RB_1RC0RA_1LD0LC_1LA1LC
+leftmoving translated bouncer with shadow two_stage
+1RB0LC_1LC1LD_1LA1LC_0RA1RD
+leftmoving translated bouncer, no shadow, but there is some stuff left on the tape from the beginning
+1RB1LA_0LA0LC_1RD1LC_1RB1RD
+"tail eating dragon", ie cubic bouncer that grows every step but has two inductions needed to prove 
+1RB1LA_1RC1LB_0RD1RC_0LD0LA
+leftmoving translated bouncer without shadow
+1RB0LD_0RC1RB_0LD0LD_1LA1LD
+leftmoving translated bouncer without shadow
+1 shadow 3 no_shadow 1 tail_eating_dragon_fast
+
+
+
+analyzed 29373 machines. bouncers: 22803 undecided: 6570
+9281 -> 6570 = 2711 
+reduced undecided machines by 29% 
+there were an additional 13% bouncers who were grow_left
+202 (3%) of machines had no biggest turnaround
+5 of them were: 
+1RB0LC_0LA1RD_1LA1LB_0RA1RH
+leftmoving translated bouncer (no shadow)
+1RB0LC_0LA0RA_0LD1RH_1LA1LC
+same as prev (category and behavior)
+1RB0LC_0LA1RB_1LD1LC_1LA1RH 
+same as prev (category)
+1RB1RH_0LC0LB_1RC0LD_1LB0RA
+same as prev (category)
+1RB0LD_1LC0RA_1RH1LA_1LA1LD
+leftmoving translated bouncer with shadow
+(all 5 were this, with or without shadow) 
+4 no shadow 1 shadow

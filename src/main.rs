@@ -9,7 +9,7 @@ use std::fmt::Display;
 use std::{collections::HashSet, fs, io};
 
 use beep::{detect_quasihalt_of_lr_or_cycler, scan_from_filename_beep};
-use brady::{construct_bouncer_proof, find_bouncer_xyz, monotonic, print_mb_proof, split_records, try_prove_bouncer, BouncerProof, MbBounce};
+use brady::{monotonic, print_mb_proof, split_records, try_prove_bouncer, BouncerProof, MbBounce};
 use either::Either::{Left, Right};
 use itertools::Itertools;
 use rand::{prelude::SliceRandom, Rng};
@@ -596,17 +596,17 @@ fn main() {
   let num_rule_steps = 200;
   dbg!(num_lr_steps, num_rule_steps);
 
-  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  // // scan_from_machine(
-  // scan_from_machine_beep(
-  //   &first_machine,
-  //   num_lr_steps,
-  //   num_rule_steps,
-  //   // Some("size3_holdouts_2_may.txt"),
-  //   // Some("size4_holdouts_31_may_29e2280.txt"),
-  //   // Some("size4_bouncer_not_quite_qh_holdouts_2_august_24"),
-  //   None,
-  // );
+  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // scan_from_machine(
+  scan_from_machine_beep(
+    &first_machine,
+    num_lr_steps,
+    num_rule_steps,
+    // Some("size3_holdouts_2_may.txt"),
+    // Some("size4_holdouts_31_may_29e2280.txt"),
+    // Some("size4_bouncer_not_quite_qh_holdouts_2_august_24"),
+    None,
+  );
 
   // scan_from_filename_beep(
   //   "size4_qh_holdouts_24_july_24", 
@@ -615,10 +615,10 @@ fn main() {
   //   None,
   // );
 
-  run_random_machines_from_file(
-    "size4_bouncer_not_quite_qh_holdouts_2_august_24",
-    // "size3_qh_holdouts_30_july_24",
-    25);
+  // run_random_machines_from_file(
+  //   "size4_bouncer_not_quite_qh_holdouts_2_august_24",
+  //   // "size3_qh_holdouts_30_july_24",
+  //   25);
 
   // let m = SmallBinMachine::from_compact_format("1RB---_1RC---_1RD1LD_1LD1RC");
   // run_machine(&m);

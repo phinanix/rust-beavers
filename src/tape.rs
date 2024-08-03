@@ -480,11 +480,20 @@ impl<'a, S: TapeSymbol + 'a> ExpTape<S, u32> {
       .any(|&(_s, n)| n > too_large)
   }
 
+  pub fn left_len(&self) -> u32 {
+    self.left.iter().map(|(_s, n)| n).sum()
+  }
+  
+  pub fn right_len(&self) -> u32 {
+    self.right.iter().map(|(_s, n)| n).sum()
+  }
+
   pub fn len(&self) -> u32 {
-    let Self { left, head: _, right, tape_end_inf: _ } = self;
-    let l_sum: u32 = left.iter().map(|(_s, n)| n).sum();
-    let r_sum: u32 = right.iter().map(|(_s, n)| n).sum();
-    l_sum + r_sum + 1
+    // let Self { left, head: _, right, tape_end_inf: _ } = self;
+    // let l_sum: u32 = left.iter().map(|(_s, n)| n).sum();
+    // let r_sum: u32 = right.iter().map(|(_s, n)| n).sum();
+    self.left_len() + self.right_len() + 1
+    // l_sum + r_sum + 1
   }
 }
 

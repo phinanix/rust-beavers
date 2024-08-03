@@ -91,7 +91,7 @@ pub fn find_records(readshifts: &[ReadShift]) -> Vec<Record> {
   for (i, &new_rs) in readshifts.into_iter().enumerate() {
     let prev_rs = cur_rs;
     cur_rs = ReadShift::normalize(ReadShift::combine(cur_rs, new_rs));
-    println!("{}", cur_rs);
+    // println!("{}", cur_rs);
     if cur_rs.l < prev_rs.l {
       out.push(Record(i, cur_rs.l, Dir::L));
     }
@@ -344,17 +344,22 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine, print: bool)
         (biggest, rest) = biggest_turnaround(&rest)
       }
       if biggest.len() < 4 {
-        panic!("didn't find *any* biggest turnaround {}", machine.to_compact_format())
+        // println!("didn't find *any* biggest turnaround {}", machine.to_compact_format());
+        // Tape::simulate_from_start(machine, 500, true);
+        // println!("proof failed biggest turnaround ^^^ {}", machine.to_compact_format());
+        return Err("no biggest turnaround");
       }
       biggest
     };
-    dbg!(&biggish);
+    // dbg!(&biggish);
     let biggish_steps = biggish.iter().map(|(s, _)| *s).collect_vec();
-    display_stepcounts(biggish_steps.clone());
+    if print {
+      display_stepcounts(biggish_steps.clone());
+    }
     biggish_steps
   };
   let mut tape_extents = vec![];
-  for r_step in stepcounts {
+  for &r_step in &stepcounts {
     let (step, phase, tape) = &hist[r_step];
     let tape_extent = tape.len();
     tape_extents.push(tape_extent);
@@ -399,11 +404,13 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine, print: bool)
     Some(len_z) => len_z,
   };
   assert!(len_z > 0);
-  if danger { return Err("danger") }
+  
+  // let last_record = right_records.last().unwrap();
+  let last_step = stepcounts.last().unwrap();
+  let (_, last_phase, last_tape) = &hist[*last_step];
 
-  let last_record = right_records.last().unwrap();
-  let (_, last_phase, last_tape) = &hist[last_record.0];
-  let last_tape_len = last_tape.len() as usize;
+  // let last_tape_len = last_tape.len() as usize;
+  let last_tape_len = usize::try_from(last_tape.left_len()).unwrap() + 1;
   // dbg!(last_tape_len, len_z);
   let rem_last_tape_len = match last_tape_len.checked_sub(4 * len_z) {
     None => return Err("len_z was too big"),
@@ -411,15 +418,21 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine, print: bool)
   };
   let mut len_x = rem_last_tape_len.div_floor(2);
   let mut len_y = rem_last_tape_len.div_ceil(2);
-  let last_tape_list: Vec<Bit> = ExpTape::to_tape(last_tape).to_list();
-  let z4 = &last_tape_list[len_x..len_x + 4 * len_z];
+  let Tape { mut left, head, right } = ExpTape::to_tape(last_tape);
+  if print {
+    println!("extracting from tape {} {} {}", BL(&left), head, BL(&right))
+  }
+  left.push(head);
+  let last_tape_left_list: Vec<Bit> = left;
+  if danger && right.len() > 0 { return Err("danger") }
+  let z4 = &last_tape_left_list[len_x..len_x + 4 * len_z];
   assert_eq!(len_x + len_y + 4 * len_z, last_tape_len);
   //include one copy of z so that x is not empty
   if len_x == 0 {len_x += len_z}
   //include one copy of z so that y is not empty
   if len_y == 0 {len_y += len_z}
-  let x = &last_tape_list[0..len_x];
-  let y = &last_tape_list[(last_tape_list.len() - len_y)..];
+  let x = &last_tape_left_list[0..len_x];
+  let y = &last_tape_left_list[(last_tape_left_list.len() - len_y)..];
 
   assert_eq!(z4.len(), (len_z * 4) as usize);
   let mut zs = vec![];
@@ -442,9 +455,9 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine, print: bool)
   if print {
     println!(
       "extracted x y z from tape at step {}:\n{}\ntapelist:\n{}\nx: {} y: {} z: {}",
-      last_record.0,
+      last_step,
       last_tape,
-      disp_list_bit(&last_tape_list),
+      disp_list_bit(&last_tape_left_list),
       disp_list_bit(x),
       disp_list_bit(y),
       disp_list_bit(z),
@@ -888,7 +901,7 @@ pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[B
 }
 
 pub fn try_prove_bouncer(machine: &SmallBinMachine) -> Result<BouncerProof, &'static str> {
-  let print = true;
+  let print = false;
   let (x, y, z, state_0) = match find_bouncer_xyz(&machine, print) {
     Err(s) => return Err(s),
     Ok(ans) => ans,
