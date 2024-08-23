@@ -430,6 +430,9 @@ fn list_which_proven(machines: &Vec<SmallBinMachine>, num_steps: u32, verbose: b
 
 fn prove_with_brady_bouncer(machines: Vec<SmallBinMachine>) -> Vec<(SmallBinMachine, MbBounce)> {
   let mut out = vec![];
+  // let num_wxyz_steps = 10_000;
+  // let max_proof_steps = 20_000;
+  // let max_proof_tape = 300;
   let num_wxyz_steps = 2_000;
   let max_proof_steps = 2_000;
   let max_proof_tape = 100;
@@ -660,18 +663,18 @@ fn main() {
   let num_rule_steps = 200;
   dbg!(num_lr_steps, num_rule_steps);
 
-  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  // // scan_from_machine(
-  // scan_from_machine_beep(
-  //   &first_machine,
-  //   num_lr_steps,
-  //   num_rule_steps,
-  //   false,
-  //   // Some("size3_holdouts_2_may.txt"),
-  //   // Some("size4_holdouts_31_may_29e2280.txt"),
-  //   Some("size4_bouncer_2k_2k_100_22_august_24"),
-  //   // None,
-  // );
+  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // scan_from_machine(
+  scan_from_machine_beep(
+    &first_machine,
+    num_lr_steps,
+    num_rule_steps,
+    false,
+    // Some("size3_holdouts_2_may.txt"),
+    // Some("size4_holdouts_31_may_29e2280.txt"),
+    // Some("size4_bouncer_2k_2k_100_22_august_24"),
+    None,
+  );
 
   // scan_from_filename_beep(
   //   "size4_qh_holdouts_24_july_24", 
@@ -680,11 +683,11 @@ fn main() {
   //   None,
   // );
 
-  run_random_machines_from_file(
-    "size4_bounce_proven_only_10k_22_aug_24",
-    //"size4_bouncer_not_quite_qh_holdouts_2_august_24",
-    // "size3_qh_holdouts_30_july_24",
-    25);
+  // run_random_machines_from_file(
+  //   "size4_bounce_proven_only_10k_22_aug_24",
+  //   //"size4_bouncer_not_quite_qh_holdouts_2_august_24",
+  //   // "size3_qh_holdouts_30_july_24",
+  //   25);
 
   // diff_machine_files("size4_bouncer_2k_2k_100_22_august_24", "size4_bouncer_10k_20k_300_22_august_24", 
   // Some("size4_bounce_proven_only_10k_22_aug_24"),

@@ -183,3 +183,37 @@ results for perhaps.
 
 I still have to produce the actual holdouts file, but currently 
 the confirmed-proven-bouncers count is 99296
+
+23 Aug 24
+late yesterday I found a correctness bug: in steps 2 and 4 
+(eg Z < Z1 -> < Z1 Z2) the start and end states need to match 
+for the rule to apply arbitrarily many times, which wasn't checked.
+
+some stats with the bug: 
+halted: 183983 quasihalted (cycled): 192528 quashalted (lr): 762000
+non-qh (cycled): 151072 non-qh (lr): 1504070 inconclusive: 150016
+there were 150016 undecided machines
+
+wxyz steps: 2000 proof steps: 2000 proof max_tape: 100
+analyzed 150016 machines. bouncers: 99239 undecided: 50777
+wxyz steps: 3000 proof steps: 2000 proof max_tape: 100
+analyzed 150016 machines. bouncers: 99239 undecided: 50777
+wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
+analyzed 150016 machines. bouncers: 99216 undecided: 50800
+
+having fixed the bug: 
+halted: 183983 quasihalted (cycled): 192528 quashalted (lr): 762000
+non-qh (cycled): 151072 non-qh (lr): 1504070 inconclusive: 150016
+there were 150016 undecided machines
+
+wxyz steps: 2000 proof steps: 2000 proof max_tape: 100
+analyzed 150016 machines. bouncers: 98040 undecided: 51976
+wxyz steps: 3000 proof steps: 2000 proof max_tape: 100
+analyzed 150016 machines. bouncers: 98046 undecided: 51970
+wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
+analyzed 150016 machines. bouncers: 98020 undecided: 51996
+
+unfixed -> fixed
+2k:  99239 -> 98040 = 1199
+3k:  99239 -> 98046 = 1193
+10k: 99216 -> 98020 = 1196

@@ -8,7 +8,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 use crate::{
-  aggregate_and_display_bouncer_res, brady::{difference_of, find_records, get_rs_hist_for_machine, split_and_filter_records, Record}, dump_machines_to_file, get_bouncer_undecided, linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult}, load_machines_from_file, machines_to_str, macro_machines::{MacroMachine, MacroState}, prove_with_brady_bouncer, rules::{detect_chain_rules, Rulebook}, run_machine, simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules}, tape::{disp_list_bit,tnf_simulate, ExpTape, Tape}, turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT}, turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100}
+  aggregate_and_display_bouncer_res, brady::{difference_of, find_records, get_rs_hist_for_machine, split_and_filter_records, try_prove_bouncer, MbBounce, Record}, dump_machines_to_file, get_bouncer_undecided, linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult}, load_machines_from_file, machines_to_str, macro_machines::{MacroMachine, MacroState}, prove_with_brady_bouncer, rules::{detect_chain_rules, Rulebook}, run_machine, simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules}, tape::{disp_list_bit,tnf_simulate, ExpTape, Tape}, turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT}, turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100}
 };
 
 // by convention, the first step at which a state is never used again is the 
@@ -371,8 +371,35 @@ fn get_undecided_beep(res: Vec<(SmallBinMachine, LRResultBeep)>) -> Vec<SmallBin
     .collect_vec()
 }
 
+enum BouncerQHProof {}
 
-  
+fn decide_qh_via_bouncer(
+  machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize
+) ->  Result<BouncerQHProof, &'static str> {
+  todo!();
+}
+
+fn prove_qh_with_brady_bouncer(machines: Vec<SmallBinMachine>) -> Vec<(SmallBinMachine, MbBounce)> {
+  let mut out = vec![];
+  let num_wxyz_steps = 10_000;
+  let max_proof_steps = 20_000;
+  let max_proof_tape = 300;
+  // let num_wxyz_steps = 3_000;
+  // let max_proof_steps = 2_000;
+  // let max_proof_tape = 100;
+  println!("wxyz steps: {} proof steps: {} proof max_tape: {}", num_wxyz_steps, max_proof_steps, max_proof_tape); 
+
+  for (_i, machine) in machines.into_iter().enumerate() {
+    // dbg!(i);
+    let proof_res = try_prove_bouncer(
+      &machine, num_wxyz_steps, max_proof_steps, max_proof_tape);
+    out.push((machine, proof_res))
+
+  }
+  out
+}
+
+
 pub fn scan_from_machines_beep(
     machines: &[SmallBinMachine],
     num_lr_steps: u32,

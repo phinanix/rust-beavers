@@ -528,7 +528,7 @@ pub fn simulate_on_chunk(
       corresponds to running the machine on a tape that doesn't have 0* at the end) 
    */
   // let mut step = 0;
-  let print = true;
+  let print = false;
 
   let mut disp = 0; 
   let min_left_disp = if left_blocked 
@@ -715,6 +715,8 @@ pub fn construct_bouncer_proof(
   }
   
   // sim Z < Z1 -> < Z1 Z2
+  // note to be a bouncer this step needs to have same state in as out
+  // ie need state_1 == state_2
   if print {
     println!("step 2   sim Z < Z1 -> < Z1 Z2");
     println!("z {} z1 {}", disp_list_bit(z), disp_list_bit(&z1))
@@ -755,6 +757,9 @@ pub fn construct_bouncer_proof(
   if print {
     println!("mbz1z2 {} z2 {}", BL(&mb_z1z2), BL(&z2));
   }
+  if state_1 != state_2 {
+    return Err("state 1 and state 2 differed")
+  }
   
   // sim 0* X < Z1 -> 0* X1 Z3 >
   if print {
@@ -791,6 +796,8 @@ pub fn construct_bouncer_proof(
   }
 
   // sim Z3 > Z2 -> Z4 Z3 >
+  // note to be a bouncer this step needs to have same state in as out
+  // ie state_3 == state_4
   if print {
     println!("step 4   sim Z3 > Z2 -> Z4 Z3 >");
     println!("z3 {} z2 {}", BL(&z3), BL(&z2));
@@ -823,6 +830,9 @@ pub fn construct_bouncer_proof(
   }
   if mb_z3 != z3 {
     return Err("mb_z3 didn't match z3 in step 4")
+  }
+  if state_3 != state_4 {
+    return Err("state 3 and state 4 differed")
   }
 
   // sim Z4 Z3 > Y1 0* -> A < B 0* where |B| = |Z1 Y1|
@@ -931,7 +941,7 @@ pub fn construct_bouncer_proof(
 pub fn try_prove_bouncer(machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize)
  -> Result<BouncerProof, &'static str> 
 {
-  let print = true;
+  let print = false;
   let (w, x, y, z, state_0) = match find_bouncer_wxyz(&machine, num_wxyz_steps, print) {
     Err(s) => return Err(s),
     Ok(ans) => ans,
