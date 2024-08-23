@@ -202,16 +202,17 @@ pub fn difference_of<T: CheckedSub + Copy + Debug>(xs: &[T]) -> Vec<T> {
 }
 
 fn display_stepcounts(steps: Vec<usize>) {
+  let steps: Vec<i32> = steps.into_iter().map(|x|x.try_into().unwrap()).collect_vec();
   println!("steps: {:?}", steps);
   if !monotonic(&steps) {
     println!("steps wasn't monotonic");
-    return;
+    // return;
   }
   let d1 = difference_of(&steps);
   println!("d1   : {:?}", d1);
   if !monotonic(&d1) {
     println!("d1 wasn't monotonic");
-    return;
+    // return;
   }
   let d2 = difference_of(&d1);
   println!("d2   : {:?}", d2);
@@ -229,12 +230,12 @@ fn display_record_steps(records: Vec<Record>) {
   display_stepcounts(steps);
 }
 
-// returns: x, y, z, state, for the config x z^4 y<
-pub fn find_bouncer_xyz(machine: &SmallBinMachine, print: bool) 
-  -> Result<(Vec<Bit>, Vec<Bit>, Vec<Bit>, State), &'static str> 
+// returns: w, x, y, z, state, for the config x z^4 y< w
+pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool) 
+  -> Result<(Vec<Bit>, Vec<Bit>, Vec<Bit>, Vec<Bit>, State), &'static str> 
 {
   /*
-  goal: extract x, y, z st the machine satisfies x z^n >y => x z^(n+1) >y
+  goal: extract w, x, y, z st the machine satisfies x z^n y< w => x z^(n+1) y< w
 
   full strat: 
     run machine for N steps, tracking history and readshift
@@ -264,7 +265,6 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine, print: bool)
     );
   }
 
-  let num_steps = 500;
   if print {
     Tape::simulate_from_start(machine, num_steps, true);
   }
@@ -331,11 +331,9 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine, print: bool)
     strategy: look at the filtered right records, take the difference of their tape extents
     hope the last 3 agree
   */
-  let mut danger = false; 
   let stepcounts = if right_records.len() >= 2 {
     right_records.iter().map(|rec|rec.0).collect_vec()
   } else {
-    danger = true;
     let turnarounds = find_turnarounds(&accumulate_rs(&rs));
     let biggish = {
       let mut biggest = vec![];
@@ -424,8 +422,15 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine, print: bool)
   }
   left.push(head);
   let last_tape_left_list: Vec<Bit> = left;
-  if danger && right.len() > 0 { return Err("danger") }
+
+  // extract w 
+  let w = right; 
+  // if danger && right.len() > 0 { return Err("danger") }
+
   let z4 = &last_tape_left_list[len_x..len_x + 4 * len_z];
+  if print {
+    println!("z4 was {}", BL(z4));
+  }
   assert_eq!(len_x + len_y + 4 * len_z, last_tape_len);
   //include one copy of z so that x is not empty
   if len_x == 0 {len_x += len_z}
@@ -454,16 +459,21 @@ pub fn find_bouncer_xyz(machine: &SmallBinMachine, print: bool)
   };
   if print {
     println!(
-      "extracted x y z from tape at step {}:\n{}\ntapelist:\n{}\nx: {} y: {} z: {}",
+      "extracted w x y z from tape at step {}:\n{}\ntapelist:\n{}\nlen w: {} len x: {} len y: {} len z: {}\nw: {} x: {} y: {} z: {}",
       last_step,
       last_tape,
       disp_list_bit(&last_tape_left_list),
+      w.len(),
+      x.len(),
+      y.len(),
+      z.len(),
+      disp_list_bit(&w),
       disp_list_bit(x),
       disp_list_bit(y),
       disp_list_bit(z),
     );
   }
-  return Ok((x.to_vec(), y.to_vec(), z.to_vec(), *last_phase))
+  return Ok((w, x.to_vec(), y.to_vec(), z.to_vec(), *last_phase))
 
 }
 
@@ -518,7 +528,7 @@ pub fn simulate_on_chunk(
       corresponds to running the machine on a tape that doesn't have 0* at the end) 
    */
   // let mut step = 0;
-  let print = false;
+  let print = true;
 
   let mut disp = 0; 
   let min_left_disp = if left_blocked 
@@ -591,33 +601,40 @@ pub fn simulate_on_chunk(
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct BouncerProof {
+  w: Vec<Bit>,
   x: Vec<Bit>, 
   y: Vec<Bit>, 
   z: Vec<Bit>, 
   state_0: State,
 }
+
 impl Display for BouncerProof {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("BouncerProof x: {} y: {} z: {} state_0: {} ", 
-            BL(&self.x), BL(&self.y), BL(&self.z), self.state_0))
+        f.write_fmt(format_args!("BouncerProof w: {} x: {} y: {} z: {} state_0: {} ", 
+            BL(&self.w), BL(&self.x), BL(&self.y), BL(&self.z), self.state_0))
     }
 }
 
 /*
 preconditions: x, y, z are nonempty
 returns: either a proof or an error message
+
+note that x, y, z are in the "left frame" and w is in the "right frame"
 */
-pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[Bit], y: &[Bit], z: &[Bit], print: bool)
+pub fn construct_bouncer_proof(
+  machine: &SmallBinMachine, state_0: State, w: &[Bit], x: &[Bit], y: &[Bit], z: &[Bit], 
+  max_steps: u32, max_tape: usize, print: bool
+)
  -> Result<BouncerProof, &'static str> 
 {
   /*
   here's the plan: we want to prove M is a bouncer, specifically that M satisfies
-  0* X Z^n Y < 0* 
+  0* X Z^n Y < W 0* 
   becomes 
-  0* X Z^(n+1) Y < 0*
-  We are given X, Y, Z, so we just need to simulate M on small parts of the tape. 
+  0* X Z^(n+1) Y < W 0*
+  We are given W, X, Y, Z, so we just need to simulate M on small parts of the tape. 
 
-  0* X Z Z^n Z Y < 0*   sim Z Y < 0* -> < Z1 Y1 0*
+  0* X Z Z^n Z Y < W 0*   sim Z Y < W 0* -> < Z1 Y1 0*
   now armed with Z1 and Y1 we're actually going to aim for a slightly different loop
   0* X Z Z^n     < Z1 Y1 0*
   becomes 
@@ -657,20 +674,19 @@ pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[B
   thing farthest from the machine head and read towards the machine head. if 
   you want to put something on the right half of the tape, as in Z < Z1, you have to flip it. 
    */
-  // let print = false;
 
-  let max_steps = 100;
-  let max_tape = 50;
-
-  // sim Z Y < 0* -> < Z1 Y1 0*
+  // // sim Z Y < 0* -> < Z1 Y1 0*
+  // sim Z Y < W 0* -> < Z1 Y1 0*
   if print {
-    println!("step 1   sim Z Y < 0* -> < Z1 Y1 0*");
+    println!("step 1   sim Z Y < W 0* -> < Z1 Y1 0*");
   }
   let mut tape_left = vec![];
   tape_left.extend(z);
   tape_left.extend(y);
   let head = tape_left.pop().unwrap();
-  let mut tape : Tape<Bit> = Tape {left: tape_left, head, right: vec![]};
+  let mut tape_right = vec![];
+  tape_right.extend(w);
+  let mut tape : Tape<Bit> = Tape {left: tape_left, head, right: tape_right};
   let (state_1, res) = simulate_on_chunk(
     machine, state_0, &mut tape, 
     true, false, None, None, max_steps, max_tape);
@@ -701,6 +717,7 @@ pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[B
   // sim Z < Z1 -> < Z1 Z2
   if print {
     println!("step 2   sim Z < Z1 -> < Z1 Z2");
+    println!("z {} z1 {}", disp_list_bit(z), disp_list_bit(&z1))
   }
   let mut left = z.to_vec();
   let head = left.pop().unwrap();
@@ -726,8 +743,7 @@ pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[B
   // to put it in the left frame
   mb_z1z2.reverse();
   if print {
-    println!("mbz1z2 {}", disp_list_bit(&mb_z1z2));
-    println!("z1 {}", disp_list_bit(&z1));
+    println!("mbz1z2 {} z1 {}", disp_list_bit(&mb_z1z2), disp_list_bit(&z1));
   }
 
   assert_eq!(mb_z1z2.len(), z1.len()*2);
@@ -737,12 +753,13 @@ pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[B
   };
   let z2 = mb_z1z2[z1.len()..2*z1.len()].to_vec();
   if print {
-    println!("mb_z1z2 {} z2 {}", BL(&mb_z1z2), BL(&z2));
+    println!("mbz1z2 {} z2 {}", BL(&mb_z1z2), BL(&z2));
   }
   
   // sim 0* X < Z1 -> 0* X1 Z3 >
   if print {
     println!("step 3   sim 0* X < Z1 -> 0* X1 Z3 >");
+    println!("x {} z1 {}", BL(x), BL(&z1));
   }
   let mut left = x.to_vec();
   let head = left.pop().unwrap();
@@ -776,6 +793,7 @@ pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[B
   // sim Z3 > Z2 -> Z4 Z3 >
   if print {
     println!("step 4   sim Z3 > Z2 -> Z4 Z3 >");
+    println!("z3 {} z2 {}", BL(&z3), BL(&z2));
   }
   let left = z3.clone(); 
   let mut right = z2.iter().rev().cloned().collect_vec();
@@ -794,8 +812,15 @@ pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[B
   }
   // extract Z4 Z3 
   let z4z3 = tape.left; 
+  if print {
+    println!("mbz4z3 {}", BL(&z4z3));
+  }
   assert_eq!(z4z3.len(), z.len()*2);
+
   let (z4, mb_z3) = split_first_n(z.len(), &mut z4z3.into_iter());
+  if print {
+    println!("z4 {} mb_z3 {}", BL(&z4), BL(&mb_z3));
+  }
   if mb_z3 != z3 {
     return Err("mb_z3 didn't match z3 in step 4")
   }
@@ -874,10 +899,13 @@ pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[B
   xzzz.extend(z);
   xzzz.extend(z);
   xzzz.extend(z);
+  if print {
+    println!("len x1z4a {} len xzzz {}\nx1z4a {} xzzz {}", x1z4a.len(), xzzz.len(), BL(&x1z4a), BL(&xzzz));
+  }
   // this doesn't actually hold; it was proven wrong by 1RB1RH_1RC1RD_1RD1LC_0LC1RB
   // assert_eq!(x1z4a.len(), xzzz.len(), "x1z4a {} xzzz {}", BL(&x1z4a), BL(&xzzz));
   if x1z4a != xzzz {
-    return Err("n=0 of loop case failed")
+    return Err("n=0 of loop case failed: x1z4a != xzzz")
   }
 
   let mut x1z4z4a: Vec<Bit> = vec![];
@@ -896,17 +924,21 @@ pub fn construct_bouncer_proof(machine: &SmallBinMachine, state_0: State, x: &[B
     return Err("n=1 of loop case failed")
   }
 
-  let proof = BouncerProof { x: x.to_vec(), y: y.to_vec(), z: z.to_vec(), state_0 };
+  let proof = BouncerProof { w: w.to_vec(), x: x.to_vec(), y: y.to_vec(), z: z.to_vec(), state_0 };
   return Ok(proof);
 }
 
-pub fn try_prove_bouncer(machine: &SmallBinMachine) -> Result<BouncerProof, &'static str> {
-  let print = false;
-  let (x, y, z, state_0) = match find_bouncer_xyz(&machine, print) {
+pub fn try_prove_bouncer(machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize)
+ -> Result<BouncerProof, &'static str> 
+{
+  let print = true;
+  let (w, x, y, z, state_0) = match find_bouncer_wxyz(&machine, num_wxyz_steps, print) {
     Err(s) => return Err(s),
     Ok(ans) => ans,
   };
-  construct_bouncer_proof(&machine, state_0, &x, &y, &z, print)
+  construct_bouncer_proof(
+    &machine, state_0, &w, &x, &y, &z, 
+    max_proof_steps, max_proof_tape, print)
 }
 
 pub type MbBounce = Result<BouncerProof, &'static str>;

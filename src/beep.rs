@@ -377,6 +377,7 @@ pub fn scan_from_machines_beep(
     machines: &[SmallBinMachine],
     num_lr_steps: u32,
     _num_rule_steps: u32,
+    interactive: bool, 
     mb_undecided_file: Option<&str>,
 ) {
   let mut lr_results = vec![];
@@ -404,60 +405,61 @@ pub fn scan_from_machines_beep(
   if let Some(filename) = mb_undecided_file {
       dump_machines_to_file(final_undecided.clone(), filename).expect("file should be openable");
   }
-let num_undecided_to_display = 10;
-let seed = 123456789012345;
-let mut rng: ChaCha8Rng = SeedableRng::seed_from_u64(seed);
-let random_undecideds = final_undecided
-    .choose_multiple(&mut rng, num_undecided_to_display)
-    .cloned()
-    .collect_vec();
+  let num_undecided_to_display = 10;
+  let seed = 123456789012345;
+  let mut rng: ChaCha8Rng = SeedableRng::seed_from_u64(seed);
+  let random_undecideds = final_undecided
+      .choose_multiple(&mut rng, num_undecided_to_display)
+      .cloned()
+      .collect_vec();
 
-println!(
-    "some undecided machines:\n{}",
-    machines_to_str(random_undecideds)
-);
-// println!(
-//   "final_undecided:\n{}",
-//   final_undecided
-//     .iter()
-//     .map(|m| m.to_compact_format())
-//     .join("\n")
-// );
-// let previous_set: HashSet<_> = undecided_size_3()
-//   .into_iter()
-//   .map(|s| SmallBinMachine::from_compact_format(s))
-//   .collect();
-// let final_undecided_new = final_undecided
-//   .iter()
-//   .filter(|m| !previous_set.contains(m))
-//   .collect_vec();
-// println!(
-//   "new_undecided:\n{}",
-//   final_undecided_new
-//     .iter()
-//     .map(|m| m.to_compact_format())
-//     .join("\n")
-// );
+  println!(
+      "some undecided machines:\n{}",
+      machines_to_str(random_undecideds)
+  );
+  // println!(
+  //   "final_undecided:\n{}",
+  //   final_undecided
+  //     .iter()
+  //     .map(|m| m.to_compact_format())
+  //     .join("\n")
+  // );
+  // let previous_set: HashSet<_> = undecided_size_3()
+  //   .into_iter()
+  //   .map(|s| SmallBinMachine::from_compact_format(s))
+  //   .collect();
+  // let final_undecided_new = final_undecided
+  //   .iter()
+  //   .filter(|m| !previous_set.contains(m))
+  //   .collect_vec();
+  // println!(
+  //   "new_undecided:\n{}",
+  //   final_undecided_new
+  //     .iter()
+  //     .map(|m| m.to_compact_format())
+  //     .join("\n")
+  // );
 
+  if interactive {
+    loop {
+      println!("Enter the index of a machine you would like to run [not of the previous list]:");
+      let mut input_text = String::new();
+      io::stdin()
+        .read_line(&mut input_text)
+        .expect("failed to read from stdin");
 
-  loop {
-    println!("Enter the index of a machine you would like to run [not of the previous list]:");
-    let mut input_text = String::new();
-    io::stdin()
-      .read_line(&mut input_text)
-      .expect("failed to read from stdin");
-
-    let trimmed = input_text.trim();
-    let i = match trimmed.parse::<usize>() {
-      Ok(i) => i,
-      Err(..) => {
-        println!("this was not an integer: {}", trimmed);
-        exit(1)
-      }
-    };
-    let machine = &final_undecided[i];
-    println!("selected machine: {}", machine.to_compact_format());
-    run_machine(machine);
+      let trimmed = input_text.trim();
+      let i = match trimmed.parse::<usize>() {
+        Ok(i) => i,
+        Err(..) => {
+          println!("this was not an integer: {}", trimmed);
+          exit(1)
+        }
+      };
+      let machine = &final_undecided[i];
+      println!("selected machine: {}", machine.to_compact_format());
+      run_machine(machine);
+    }
   }
 }
 
@@ -466,17 +468,20 @@ pub fn scan_from_machine_beep(
   machine: &SmallBinMachine,
   num_lr_steps: u32,
   num_rule_steps: u32,
+  interactive: bool, 
   mb_undecided_file: Option<&str>,
 ) {
-  scan_from_machines_beep(&vec![machine.clone()][..], num_lr_steps, num_rule_steps, mb_undecided_file);
+  scan_from_machines_beep(&vec![machine.clone()][..], num_lr_steps, num_rule_steps, interactive, mb_undecided_file);
 }
 
 pub fn scan_from_filename_beep(
   filename: &str, 
   num_lr_steps: u32,
   num_rule_steps: u32,
+  interactive: bool, 
   mb_undecided_file: Option<&str>,
 ) {
   let machines = load_machines_from_file(filename);
-  scan_from_machines_beep(&machines, num_lr_steps, num_rule_steps, mb_undecided_file);
+  println!("there were {} machines total in the file {}", machines.len(), filename);
+  scan_from_machines_beep(&machines, num_lr_steps, num_rule_steps, interactive, mb_undecided_file);
 }

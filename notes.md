@@ -160,3 +160,26 @@ same as prev (category)
 leftmoving translated bouncer with shadow
 (all 5 were this, with or without shadow) 
 4 no shadow 1 shadow
+
+22 Aug 24
+added additional support for bouncers that grow left
+
+halted: 183983 quasihalted (cycled): 192528 quashalted (lr): 762000
+non-qh (cycled): 151072 non-qh (lr): 1504070 inconclusive: 150016
+there were 150016 undecided machines
+analyzed 150016 machines. bouncers: 98118 undecided: 51898
+
+I am confused though, as these numbers seem small to me 
+we proved 98118 bouncers. previously we proved 87889 bouncers. 
+so that's an additional 10229 bouncers. probably we just got 
+somewhat unlucky here? I will have to do the stats it seems. 
+As it is, the full bouncers project would reduce us from 
+149720 machines to 51602, which is 2.9x, which isn't quite
+as much as we hoped but it's overall not bad. 
+
+the main stat I want when all this is done is % of that 51.6k 
+that is a counter, which I'll want to aggregate some previous 
+results for perhaps. 
+
+I still have to produce the actual holdouts file, but currently 
+the confirmed-proven-bouncers count is 99296

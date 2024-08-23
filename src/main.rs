@@ -5,6 +5,7 @@
 
 
 
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::{collections::HashSet, fs, io};
 
@@ -128,6 +129,13 @@ fn dump_machines_to_file(machines: Vec<SmallBinMachine>, filename: &str) -> std:
   Ok(())
 }
 
+fn mb_dump_machiens_to_file(machines: Vec<SmallBinMachine>, filename: Option<&str>) -> std::io::Result<()> {
+  match filename {
+    None => Ok(()),
+    Some(filename) => dump_machines_to_file(machines, filename),
+  }
+}
+
 fn load_machines_from_file(filename: &str) -> Vec<SmallBinMachine> {
   let message = match fs::read_to_string(filename) {
     Ok(message) => message,
@@ -188,6 +196,14 @@ fn run_machine(machine: &SmallBinMachine) {
 
 fn run_machine_interactive(machine: &SmallBinMachine) {
   println!("\nrunning machine: {}", machine.to_compact_format());
+  // let num_wxyz_steps = 10_000;
+  // let max_proof_steps = 20_000;
+  // let max_proof_tape = 300;  
+
+  let num_wxyz_steps = 400;
+  let max_proof_steps = 2_000;
+  let max_proof_tape = 100;
+  println!("wxyz steps: {} proof steps: {} proof max_tape: {}", num_wxyz_steps, max_proof_steps, max_proof_tape); 
   let mut input_text = String::new();
     io::stdin()
     .read_line(&mut input_text)
@@ -203,8 +219,9 @@ fn run_machine_interactive(machine: &SmallBinMachine) {
   // rulebook.add_rules(chain_rules);
   let num_steps = 200;
   Tape::simulate_from_start(machine, num_steps * 3, true);
-  let ans = try_prove_bouncer(machine); 
+  let ans = try_prove_bouncer(machine, num_wxyz_steps, max_proof_steps, max_proof_tape); 
   println!("mb proof: {}", print_mb_proof(&ans));
+  println!("\njust ran machine: {}", machine.to_compact_format());
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
   // println!("using rules");
@@ -413,9 +430,15 @@ fn list_which_proven(machines: &Vec<SmallBinMachine>, num_steps: u32, verbose: b
 
 fn prove_with_brady_bouncer(machines: Vec<SmallBinMachine>) -> Vec<(SmallBinMachine, MbBounce)> {
   let mut out = vec![];
+  let num_wxyz_steps = 2_000;
+  let max_proof_steps = 2_000;
+  let max_proof_tape = 100;
+  println!("wxyz steps: {} proof steps: {} proof max_tape: {}", num_wxyz_steps, max_proof_steps, max_proof_tape); 
+
   for (_i, machine) in machines.into_iter().enumerate() {
     // dbg!(i);
-    let proof_res = try_prove_bouncer(&machine);
+    let proof_res = try_prove_bouncer(
+      &machine, num_wxyz_steps, max_proof_steps, max_proof_tape);
     out.push((machine, proof_res))
 
   }
@@ -590,23 +613,65 @@ fn aggregate_and_display_bouncer_res(proofs: &[Result<BouncerProof, &str>]) {
   )
 }
 
+fn diff_machine_files(f1: &str, f2: &str, 
+  out_f1_uniques: Option<&str>, out_f2_uniques: Option<&str>, out_both: Option<&str>
+) {
+  let ms1 = load_machines_from_file(f1);
+  println!("loaded {} machines from f1 {}", ms1.len(), f1);
+  let ms2 = load_machines_from_file(f2); 
+  println!("loaded {} machines from f2 {}", ms2.len(), f2);
+
+  // map Machine to (bool, bool) which is true when machine is in file1 and file2 resp. 
+  let mut map = HashMap::new();
+  for m in ms1 {
+    map.insert(m, (true, false));
+  }
+  for m in ms2 {
+    if let Some(v) = map.get_mut(&m) {
+      v.1 = true;
+    } else {
+      map.insert(m, (false, true));
+    }
+  }
+  let mut f1_ms = vec![];
+  let mut f2_ms = vec![];
+  let mut both_ms = vec![];
+  for (m, (in_f1, in_f2)) in map {
+    match (in_f1, in_f2) {
+      (true, true) => both_ms.push(m),
+      (true, false) => f1_ms.push(m), 
+      (false, true) => f2_ms.push(m),
+      (false, false) => unreachable!(),
+    }
+  }
+  println!("there were {} machines in both files, {} machines in f1 only {} machines in f2 only", 
+    both_ms.len(), f1_ms.len(), f2_ms.len());
+    
+  println!("f1 uniques:\n{}", machines_to_str(f1_ms.clone()));
+  println!("f2 uniques:\n{}", machines_to_str(f2_ms.clone()));
+  mb_dump_machiens_to_file(both_ms, out_both).expect("file should be openable");
+  mb_dump_machiens_to_file(f1_ms, out_f1_uniques).expect("file should be openable");
+  mb_dump_machiens_to_file(f2_ms, out_f2_uniques).expect("file should be openable");
+}
+
 fn main() {
   // 1_000 instead of 1_000_000 misses 296 machines (of ~3M, so 0.01%), but we can always come back to those
   let num_lr_steps = 1_000;
   let num_rule_steps = 200;
   dbg!(num_lr_steps, num_rule_steps);
 
-  let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  // scan_from_machine(
-  scan_from_machine_beep(
-    &first_machine,
-    num_lr_steps,
-    num_rule_steps,
-    // Some("size3_holdouts_2_may.txt"),
-    // Some("size4_holdouts_31_may_29e2280.txt"),
-    // Some("size4_bouncer_not_quite_qh_holdouts_2_august_24"),
-    None,
-  );
+  // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // // scan_from_machine(
+  // scan_from_machine_beep(
+  //   &first_machine,
+  //   num_lr_steps,
+  //   num_rule_steps,
+  //   false,
+  //   // Some("size3_holdouts_2_may.txt"),
+  //   // Some("size4_holdouts_31_may_29e2280.txt"),
+  //   Some("size4_bouncer_2k_2k_100_22_august_24"),
+  //   // None,
+  // );
 
   // scan_from_filename_beep(
   //   "size4_qh_holdouts_24_july_24", 
@@ -615,10 +680,18 @@ fn main() {
   //   None,
   // );
 
-  // run_random_machines_from_file(
-  //   "size4_bouncer_not_quite_qh_holdouts_2_august_24",
-  //   // "size3_qh_holdouts_30_july_24",
-  //   25);
+  run_random_machines_from_file(
+    "size4_bounce_proven_only_10k_22_aug_24",
+    //"size4_bouncer_not_quite_qh_holdouts_2_august_24",
+    // "size3_qh_holdouts_30_july_24",
+    25);
+
+  // diff_machine_files("size4_bouncer_2k_2k_100_22_august_24", "size4_bouncer_10k_20k_300_22_august_24", 
+  // Some("size4_bounce_proven_only_10k_22_aug_24"),
+  // Some("size4_bounce_proven_only_2k_22_aug_24"),
+  //  None,
+  // );
+
 
   // let m = SmallBinMachine::from_compact_format("1RB---_1RC---_1RD1LD_1LD1RC");
   // run_machine(&m);
