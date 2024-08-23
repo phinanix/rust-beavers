@@ -971,7 +971,7 @@ pub fn construct_bouncer_proof(
 pub fn try_prove_bouncer(machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize)
  -> Result<(BouncerProof, StateSet), &'static str> 
 {
-  let print = false;
+  let print = true;
   let (w, x, y, z, state_0) = match find_bouncer_wxyz(&machine, num_wxyz_steps, print) {
     Err(s) => return Err(s),
     Ok(ans) => ans,

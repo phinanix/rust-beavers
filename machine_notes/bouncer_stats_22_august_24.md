@@ -309,3 +309,111 @@ w:  x: TTFT y: FTFF z: FTFTFT
 mb proof: BouncerProof w:  x: TTFT y: FTFF z: FTFTFT state_0: B 
 
 config: TTFT FTFTFT FTFF<B
+
+23 Aug 24
+"machine_lists/size4_bounce_proven_only_10k_23_aug_24"
+machines proven at 10k but not 3k were analyzed
+most appeared to be alignment issues and were not investigated further. 
+2 machines did not start bouncing until nearly step 3k. 
+
+0 1RB0LA_0LC1RD_1LD0RC_0RB1LA
+1 1RB1LB_0LC0RC_1LC0LD_1RA1LA
+2 1RB1RA_0LC0LB_1RA1LD_1LA1LC
+3 1RB1LB_0LC0RC_1LC0LD_1RA1LA
+4 1RB1LB_0RC0RA_1RD0LA_1LD0LC
+5 1RB0RC_1LA1RA_0LB0RD_1LC1LD
+6 1RB1LC_1LC0LA_0RD1RC_1LD0LB
+7 1RB---_0LC0RD_0RA1LB_1LD0LC
+8 1RB0LB_0RC1RD_1LC0LA_0RD1LC
+9 1RB1LB_0RC1LC_1RD0LA_0LB1RD
+10 1RB0LD_1LC0RC_1RC1RD_1LA1LB
+11 1RB1LA_0LC1LC_1LA0RD_1LB1RC
+12 1RB0LC_1LA0RA_1LD1RB_1RD0RC
+13 1RB1LC_0LC1RD_1RC1LB_0LA0RA
+14 1RB1LC_0RC---_1RD0LA_0LA1RD
+15 1RB0LC_1LA0RA_1LD1RB_1RD0RC
+16 1RB0RD_0LC1RA_1LB1LA_0RB0LD
+17 1RB0LD_0LC1RB_0RA1LA_1RC1LC
+18 1RB0RA_1RC0LD_1LD0LA_0RB1LC
+19 1RB0LD_0LC0RB_1RA1LC_0RC0LD
+20 1RB1LB_1RC1LC_0LD0RD_1LD0LA
+21 1RB1LB_1RC1LC_0LD0RD_1LD0LA
+22 1RB1LA_1RC0LD_0LA0RC_0RA0LD
+23 1RB0RD_0LC0RB_1RA1LC_1LD1LB
+24 1RB1RB_1LC0RA_1LD1LC_1RA0LB
+
+idx 2
+running machine: 1RB1RA_0LC0LB_1RA1LD_1LA1LC
+
+this is a bouncer, but it does something weird at the beginning. 
+so it takes us a v. long time to find the bouncer thing. 
+(even though it stars bouncing at step 205, we don't first believe it is 
+a new right-side record until step 5494)
+unfiltered right records
+steps: [0, 205, 244, 287, 334, 385, 440, 499, 562, 629, 700, 775, 854, 937, 1024, 1115, 1210, 1309, 1412, 1519, 1630, 1745, 1864, 1987, 2114, 2245, 2380, 2519, 2662, 2809, 2960]
+d1   : [205, 39, 43, 47, 51, 55, 59, 63, 67, 71, 75, 79, 83, 87, 91, 95, 99, 103, 107, 111, 115, 119, 123, 127, 131, 135, 139, 143, 147, 151]
+d1 wasn't monotonic
+d2   : [-166, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+
+filtered left
+steps: [3, 6, 12, 21, 34, 79, 100, 125, 154, 187, 224, 265, 310, 359, 412, 469, 530, 595, 664, 737, 814, 895, 980, 1069, 1162, 1259, 1360, 1465, 1574, 1687, 1804, 1925, 2050, 2179, 2312, 2449, 2590, 2735, 2884]
+d1   : [3, 6, 9, 13, 45, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57, 61, 65, 69, 73, 77, 81, 85, 89, 93, 97, 101, 105, 109, 113, 117, 121, 125, 129, 133, 137, 141, 145, 149]
+d1 wasn't monotonic
+d2   : [3, 3, 4, 32, -24, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+
+filtered right
+records was short: [Record(205, 2, R)]
+mb proof: Err: no biggest turnaround
+
+
+idx 23
+just ran machine: 1RB0RD_0LC0RB_1RA1LC_1LD1LB
+
+3k
+tape extents: [6, 8, 9, 14, 20, 26, 33, 36, 43, 48, 57, 63]
+tape diffs  : [2, 1, 5, 6, 6, 7, 3, 7, 5, 9, 6]
+mb len z: None
+couldn't find a len for z
+mb proof: Err: couldn't find a len for z
+10k
+
+
+
+this machine genuinely doesn't start bouncing until tape extent 63 step 2848
+but yeah looks great!
+
+idx 24
+this machine starts bouncing at tape extent 102, step 2832
+so similar to prev. 
+
+"machine_lists/size4_bounce_proven_only_3k_23_aug_24",
+0 1RB1LC_0LA1RD_1LD0LC_0RB0RC
+1 1RB1RA_0LC0RD_1RA1LD_1RC0LD
+2 1RB0RD_0LC0RC_1LD0LC_1RA0LA
+3 1RB1LC_1LA1RC_0RB0RD_0LA1LD
+4 1RB1RA_1RC0LD_1LD0LA_1LC0RB
+5 1RB0LB_0RC0LD_1LC0LA_0RA1RA
+6 1RB1LB_1LC---_0LA0RD_0RC1RC
+7 1RB0RA_0RC1RD_1LD0LA_1LC1LD
+8 1RB1LD_1RC1LC_0LA0RD_1RA0LD
+9 1RB0LA_0RC0RA_0LD1RB_1LD1LA
+10 1RB0LB_0RC0LD_1LC0LA_0RA1RA
+11 1RB0RD_0LC0LD_1RD1LB_1RA0RA
+12 1RB0LD_1LC0RB_1LD1RC_0RA0LB
+13 1RB0LC_0LC0LD_1RD1LA_0RA1RA
+14 1RB1RA_0LC0RD_1RA1LD_1RC0LD
+15 1RB1LA_0LC0RD_---1LD_1RA0LD
+16 1RB1LC_0LC0LA_0RD1LB_1RD0RA
+17 1RB1LA_0LC0RD_---1LD_1RA0LD
+18 1RB0RA_1RC0LC_0LD0LA_0RA1LB
+19 1RB0LC_0LC1RB_0RD1LA_1RD0RA
+20 1RB1RA_0LC0RD_1LA1LD_1RC0LD
+21 1RB1LC_0RC1RC_1RD0LA_1LB1RD
+22 1RB0LD_1LC0RB_1LD1RC_0RA0LB
+23 1RB0LB_0LC1RD_0RA1LB_1LC0RD
+24 1RB1LC_0RC1RC_1RD0LA_1LB1RD
+
+I scanned through quickly. All machines appeared to be alignment issues. 
+ie I verified that all machines failed in step 2 or step 4 by falling the wrong way
+and for first 5 machines, that they seemed to "wiggle" back and forth 
+during at least one of their traversal left or right. 

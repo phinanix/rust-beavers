@@ -405,7 +405,7 @@ fn get_last_used_to_time(machine: &SmallBinMachine, steps_to_simulate: u32) -> L
 fn decide_qh_via_bouncer(
   machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize
 ) ->  MbQHBounce {
-  let print = false;
+  let print = true;
   let (w, x, y, z, state_0) = find_bouncer_wxyz(&machine, num_wxyz_steps, print)?;
   let (proof, state_set) = construct_bouncer_proof(
     &machine, state_0, &w, &x, &y, &z, 

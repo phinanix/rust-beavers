@@ -255,6 +255,8 @@ TODOs
 * do stats on stuff remaining after bouncers
 * aggregate stats to get summary of what machines likely remain
 * start implementing the musical analyzer / compression-based algorithm
+CouldDOs:
+* for bouncers, start detection later / cut off the first few things to dodge beginning-effects
 
 implemented qh detection for bouncers!
 there were 150016 undecided machines

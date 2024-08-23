@@ -196,13 +196,13 @@ fn run_machine(machine: &SmallBinMachine) {
 
 fn run_machine_interactive(machine: &SmallBinMachine) {
   println!("\nrunning machine: {}", machine.to_compact_format());
-  // let num_wxyz_steps = 10_000;
-  // let max_proof_steps = 20_000;
-  // let max_proof_tape = 300;  
+  let num_wxyz_steps = 10_000;
+  let max_proof_steps = 20_000;
+  let max_proof_tape = 300;  
 
-  let num_wxyz_steps = 400;
-  let max_proof_steps = 2_000;
-  let max_proof_tape = 100;
+  // let num_wxyz_steps = 3_000;
+  // let max_proof_steps = 2_000;
+  // let max_proof_tape = 100;
   println!("wxyz steps: {} proof steps: {} proof max_tape: {}", num_wxyz_steps, max_proof_steps, max_proof_tape); 
   let mut input_text = String::new();
     io::stdin()
@@ -671,7 +671,8 @@ fn main() {
     false,
     // Some("size3_holdouts_2_may.txt"),
     // Some("size4_holdouts_31_may_29e2280.txt"),
-    // Some("size4_bouncer_2k_2k_100_22_august_24"),
+    // Some("machine_lists/size4_bouncer_3k_2k_100_23_august_24"),
+    // Some("machine_lists/size4_bouncer_10k_20k_300_23_august_24"),
     None,
   );
 
@@ -683,14 +684,21 @@ fn main() {
   // );
 
   // run_random_machines_from_file(
-  //   "size4_bounce_proven_only_10k_22_aug_24",
+  // "machine_lists/size4_bounce_proven_only_3k_23_aug_24",
   //   //"size4_bouncer_not_quite_qh_holdouts_2_august_24",
   //   // "size3_qh_holdouts_30_july_24",
   //   25);
 
-  // diff_machine_files("size4_bouncer_2k_2k_100_22_august_24", "size4_bouncer_10k_20k_300_22_august_24", 
-  // Some("size4_bounce_proven_only_10k_22_aug_24"),
-  // Some("size4_bounce_proven_only_2k_22_aug_24"),
+  // diff_machine_files(
+  //   "machine_lists/size4_bouncer_3k_2k_100_23_august_24", 
+  //   "machine_lists/size4_bouncer_10k_20k_300_23_august_24",
+
+  // // Some("machine_lists/size4_bounce_proven_only_10k_23_aug_24"),
+  // None,
+
+  // // Some("machine_lists/size4_bounce_proven_only_3k_23_aug_24"),
+  // None,
+
   //  None,
   // );
 
