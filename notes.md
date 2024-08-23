@@ -252,8 +252,9 @@ unfixed -> fixed
 TODOs
 ✓ decide QH via bouncing
 ✓ decide bouncers that depend on "alignment" via shifting the tape over
+* categorize stuff remaining after bouncers
+* aggregate all collected stats so far to estimate eg. proportion of counters
 * read through 10-30 machines that QH and that don't to ensure they are decided correctly
-* do stats on stuff remaining after bouncers
 * run fmt
 * fix tests
 * aggregate stats to get summary of what machines likely remain
