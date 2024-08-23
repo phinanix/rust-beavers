@@ -138,14 +138,14 @@ filters the records such that only first differences in step larger than any see
 are kept, which is hopefully the time between tape expansions, rather than during
 tape expansions
  */
-pub fn filter_records<'a>(mut records: impl Iterator<Item = &'a Record>) -> Vec<Record> {
+pub fn filter_records<'a>(records: &[Record]) -> Vec<Record> {
   let mut out = vec![];
   let mut max_diff_so_far = 0;
-  let mut prev_record = match records.next() {
+  let mut prev_record = match records.first() {
     None => return out, 
     Some(r) => *r,
   };
-  for &record in records {
+  for &record in &records[1..] {
     let diff = record.0.checked_sub(prev_record.0).unwrap();
     if diff > max_diff_so_far {
       max_diff_so_far = diff;
@@ -162,15 +162,26 @@ pub fn split_records(records: Vec<Record>) -> (Vec<Record>, Vec<Record>) {
   (left_records, right_records)
 }
 
+fn truncate_start<T>(vec: &mut Vec<T>, to_take: usize, min_remain: usize) {
+  let amount_to_remove = vec.len().saturating_sub(min_remain).min(to_take);
+  for _ in 0..amount_to_remove {
+      vec.remove(0);
+  }
+}
 /*
 returns the left records filtered and the right records filtered
  */
 pub fn split_and_filter_records(records: Vec<Record>) -> (Vec<Record>, Vec<Record>) {
-  let left_record_iter = records.iter().filter(|Record(_, _, d)| *d == L);
-  let right_record_iter = records.iter().filter(|Record(_, _, d)| *d == R);
+  let mut left_record_unfilt = records.iter().filter(|Record(_, _, d)| *d == L).cloned().collect_vec();
+  let mut right_record_unfilt = records.iter().filter(|Record(_, _, d)| *d == R).cloned().collect_vec();
 
-  let left_records = filter_records(left_record_iter);
-  let right_records = filter_records(right_record_iter);
+  let to_take = 4; 
+  let min_remain = 4; 
+  truncate_start(&mut left_record_unfilt, to_take, min_remain);
+  truncate_start(&mut right_record_unfilt, to_take, min_remain);
+
+  let left_records = filter_records(&left_record_unfilt);
+  let right_records = filter_records(&right_record_unfilt);
   (left_records, right_records)
 }
 
@@ -286,7 +297,7 @@ impl Display for BouncerHypothesis {
 }
 // returns: w, x, y, z, state, for the config x z^4 y< w
 pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool) 
-  -> Result<BouncerHypothesis, &'static str> 
+  -> Result<Vec<BouncerHypothesis>, &'static str> 
 {
   /*
   goal: extract w, x, y, z st the machine satisfies x z^n y< w => x z^(n+1) y< w
@@ -468,8 +479,26 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
     None => return Err("len_z was too big"),
     Some(x) => x,
   };
-  let len_x = rem_last_tape_len.div_floor(2);
-  let len_y = rem_last_tape_len.div_ceil(2);
+  // let len_x = rem_last_tape_len.div_floor(2);
+  // let len_y = rem_last_tape_len.div_ceil(2);
+  let base_len_x = rem_last_tape_len.div_floor(2);
+  // let (min_change, max_change) = if len_z % 2 == 0 {
+  //   let half_z = len_z.div_euclid(2) as isize;
+  //   (-1 * (half_z - 1), half_z)
+  // } else {
+  //   let half_zm = len_z.checked_sub(1).unwrap().div_euclid(2) as isize;
+  //   (-1 * half_zm, half_zm)
+  // };
+  let (min_change, max_change) = (-1 * (len_z as isize), len_z as isize);
+  let mut possible_len_xs = vec![];
+  for change in min_change..=max_change {
+  // for change in 0..=0 {
+    if let Some(len_x) = base_len_x.checked_add_signed(change) {
+      possible_len_xs.push(len_x)
+    }
+  }
+
+
   let Tape { mut left, head, right } = ExpTape::to_tape(last_tape);
   if print {
     println!("extracting from tape {} {} {}", BL(&left), head, BL(&right))
@@ -479,60 +508,49 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
 
   // extract w 
   let w = right; 
-
-  // given lens for x, y, z, here we attempt to split tape into x z^4 y
-  let (x, y, z) = split_tape_xz4y(len_x, len_y, len_z, last_tape_left_list.clone(), print)?;
-
-  // let z4 = &last_tape_left_list[len_x..len_x + 4 * len_z];
-  // if print {
-  //   println!("z4 was {}", BL(z4));
-  // }
-
-  // assert_eq!(len_x + len_y + 4 * len_z, last_tape_len);
-  // //include one copy of z so that x is not empty
-  // if len_x == 0 {len_x += len_z}
-  // //include one copy of z so that y is not empty
-  // if len_y == 0 {len_y += len_z}
-  // let x = &last_tape_left_list[0..len_x];
-  // let y = &last_tape_left_list[(last_tape_left_list.len() - len_y)..];
-
-  // assert_eq!(z4.len(), (len_z * 4) as usize);
-  // let mut zs = vec![];
-  // for i in 0..=3 {
-  //   zs.push(&z4[i * len_z..(i + 1) * len_z]);
-  // }
-  // let z = match &zs[..] {
-  //   [a, b, c, d] => {
-  //     if a == b && b == c && c == d {
-  //       a
-  //     } else {
-  //       if print {
-  //         println!("failed to extract z from z4: {} and zs: {:?}", BL(z4), zs);
-  //       }
-  //       return Err("failed to extract z from z4 and zs");
-  //     }
-  //   }
-  //   _ => panic!("zs was not length 4"),
-  // };
-  // finished here 
-
-  if print {
-    println!(
-      "extracted w x y z from tape at step {}:\n{}\ntapelist:\n{}\nlen w: {} len x: {} len y: {} len z: {}\nw: {} x: {} y: {} z: {}",
-      last_step,
-      last_tape,
-      disp_list_bit(&last_tape_left_list),
-      w.len(),
-      x.len(),
-      y.len(),
-      z.len(),
-      disp_list_bit(&w),
-      disp_list_bit(&x),
-      disp_list_bit(&y),
-      disp_list_bit(&z),
-    );
+  // given several possible lens for x, y, and len z here we attempt to split tape into x z^4 y
+  let mut xyzs = vec![];
+  let mut xyz_errs = vec![];
+  // dbg!(&possible_len_xs, rem_last_tape_len, len_z);
+  for len_x in possible_len_xs {
+    // dbg!(len_x);
+    let len_y = match rem_last_tape_len.checked_sub(len_x) {
+      Some(len_y) => len_y,
+      None => continue,
+    };
+    match split_tape_xz4y(len_x, len_y, len_z, last_tape_left_list.clone(), print) {
+      Ok((x,y,z)) => {
+        if print {
+          println!(
+            "extracted w x y z from tape at step {}:\n{}\ntapelist:\n{}\nlen w: {} len x: {} len y: {} len z: {}\nw: {} x: {} y: {} z: {}",
+            last_step,
+            last_tape,
+            disp_list_bit(&last_tape_left_list),
+            w.len(),
+            x.len(),
+            y.len(),
+            z.len(),
+            disp_list_bit(&w),
+            disp_list_bit(&x),
+            disp_list_bit(&y),
+            disp_list_bit(&z),
+          );
+        }
+      
+        xyzs.push((x,y,z))
+      },
+      Err(err) => xyz_errs.push(err),
+    }
   }
-  return Ok(BouncerHypothesis{w, x, y, z, state_0: *last_phase})
+  if xyzs.len() == 0 {
+    return Err(xyz_errs[0])
+  }
+  let mut hyps = vec![];
+  for (x,y,z) in xyzs {
+    let hyp = BouncerHypothesis{w: w.clone(), x, y, z, state_0: *last_phase};
+    hyps.push(hyp)
+  }
+  return Ok(hyps)
 
 }
 
@@ -1027,12 +1045,21 @@ pub fn construct_bouncer_proof(
   return Ok((proof, state_set));
 }
 
-pub fn try_prove_bouncer(machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize)
+pub fn try_prove_bouncer(machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize, print: bool)
  -> Result<(BouncerProof, StateSet), &'static str> 
 {
-  let print = false;
-  let hypothesis = find_bouncer_wxyz(&machine, num_wxyz_steps, print)?;
-  construct_bouncer_proof(&machine, hypothesis, max_proof_steps, max_proof_tape, print)
+  
+  let hypotheses = find_bouncer_wxyz(&machine, num_wxyz_steps, print)?;
+
+  let mut err = None;
+  for hypothesis in hypotheses {
+    match construct_bouncer_proof(&machine, hypothesis, max_proof_steps, max_proof_tape, print) {
+        Ok(proof) => return Ok(proof),
+        Err(e) => err = Some(e),
+    }
+  }
+  Err(err.expect("zero hypotheses"))
+  
 }
 
 pub type MbBounce = Result<(BouncerProof, StateSet), &'static str>;

@@ -403,14 +403,14 @@ fn get_last_used_to_time(machine: &SmallBinMachine, steps_to_simulate: u32) -> L
 }
 
 fn decide_qh_via_bouncer(
-  machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize
+  machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize, print: bool,
 ) ->  MbQHBounce {
   // let print = true;
   // let (w, x, y, z, state_0) = find_bouncer_wxyz(&machine, num_wxyz_steps, print)?;
   // let (proof, state_set) = construct_bouncer_proof(
   //   &machine, state_0, &w, &x, &y, &z, 
   //   max_proof_steps, max_proof_tape, print)?;
-  let (proof, state_set) = try_prove_bouncer(machine, num_wxyz_steps, max_proof_steps, max_proof_tape)?;
+  let (proof, state_set) = try_prove_bouncer(machine, num_wxyz_steps, max_proof_steps, max_proof_tape, print)?;
   /* in order to figure out whether the bouncer qh'd we need two things 
    1) which states are used in the bouncing itself
    2) the last_used up to the point at which the bouncer starts bouncing, which 
@@ -434,20 +434,23 @@ fn decide_qh_via_bouncer(
 fn prove_qh_with_brady_bouncer(machines: Vec<SmallBinMachine>) 
   -> Vec<(SmallBinMachine, MbQHBounce)> 
 {
-  let mut out = vec![];
-  // let num_wxyz_steps = 10_000;
-  // let max_proof_steps = 20_000;
-  // let max_proof_tape = 300;
-  let num_wxyz_steps = 3_000;
-  let max_proof_steps = 2_000;
-  let max_proof_tape = 100;
+  let print = false;
+  
+  let num_wxyz_steps = 10_000;
+  let max_proof_steps = 20_000;
+  let max_proof_tape = 300;
+  // let num_wxyz_steps = 3_000;
+  // let max_proof_steps = 1_000;
+  // let max_proof_tape = 100;
   println!("wxyz steps: {} proof steps: {} proof max_tape: {}", 
-    num_wxyz_steps, max_proof_steps, max_proof_tape); 
+  num_wxyz_steps, max_proof_steps, max_proof_tape); 
+  
+  let mut out = vec![];
 
   for (_i, machine) in machines.into_iter().enumerate() {
     // dbg!(i);
     let proof_res = decide_qh_via_bouncer(
-      &machine, num_wxyz_steps, max_proof_steps, max_proof_tape);
+      &machine, num_wxyz_steps, max_proof_steps, max_proof_tape, print);
     out.push((machine, proof_res))
 
   }

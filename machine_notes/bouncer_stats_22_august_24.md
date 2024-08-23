@@ -417,3 +417,40 @@ I scanned through quickly. All machines appeared to be alignment issues.
 ie I verified that all machines failed in step 2 or step 4 by falling the wrong way
 and for first 5 machines, that they seemed to "wiggle" back and forth 
 during at least one of their traversal left or right. 
+
+"machine_lists/size4_bouncer_aligned_proven_only_10k_23_aug_24"
+these are the bouncers proven between 3k and 10k
+
+0 1RB1RA_0LC0LB_1RA1LD_1LA1LC
+1 1RB1RB_1LC0RA_1LD1LC_1RA0LB
+2 1RB1RD_0LC0LB_1RA1LC_1LB1RA
+3 1RB0RD_0LC0RB_1RA1LC_1LD1LB
+
+0 1RB1RA_0LC0LB_1RA1LD_1LA1LC
+unfiltered right records
+steps: [0, 205, 244, 287, 334, 385, 440, 499, 562, 629, 700, 775, 854, 937, 1024, 1115, 1210, 1309, 1412, 1519, 1630, 1745, 1864, 1987, 2114, 2245, 2380, 2519, 2662, 2809, 2960, 3115, 3274, 3437, 3604, 3775, 3950, 4129, 4312, 4499, 4690, 4885, 5084, 5287, 5494, 5705, 5920, 6139, 6362, 6589, 6820, 7055, 7294, 7537, 7784, 8035, 8290, 8549, 8812, 9079, 9350, 9625, 9904]
+d1   : [205, 39, 43, 47, 51, 55, 59, 63, 67, 71, 75, 79, 83, 87, 91, 95, 99, 103, 107, 111, 115, 119, 123, 127, 131, 135, 139, 143, 147, 151, 155, 159, 163, 167, 171, 175, 179, 183, 187, 191, 195, 199, 203, 207, 211, 215, 219, 223, 227, 231, 235, 239, 243, 247, 251, 255, 259, 263, 267, 271, 275, 279]
+d1 wasn't monotonic
+d2   : [-166, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+filtered right
+steps: [205, 5494, 5705, 5920, 6139, 6362, 6589, 6820, 7055, 7294, 7537, 7784, 8035, 8290, 8549, 8812, 9079, 9350, 9625, 9904]
+d1   : [5289, 211, 215, 219, 223, 227, 231, 235, 239, 243, 247, 251, 255, 259, 263, 267, 271, 275, 279]
+d1 wasn't monotonic
+d2   : [-5078, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+
+so this machine actually starts bouncing at step 205, but due to it fucking around before that, we don't
+start counting rhs records until step 5494
+before bouncing it does some cubic bouncer / slow tail eating dragon stuff
+
+1 1RB1RB_1LC0RA_1LD1LC_1RA0LB
+starts bouncing step 420 but like previous we don't start counting rhs records until 2831
+before 420 it does some cubic bouncer / slow tail eating dragon stuff
+
+2 1RB1RD_0LC0LB_1RA1LC_1LB1RA
+same deal. starts bouncing 206
+before which, you guessed it. cubic bouncer. 
+
+3 1RB0RD_0LC0RB_1RA1LC_1LD1LB
+doesn't start bouncing until 2848!
+before 3k it is doing something pretty complex and hard to analyze, once I have bigger guns 
+in terms of analysis tools I'm excited to look at it. 

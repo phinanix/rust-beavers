@@ -220,7 +220,7 @@ fn run_machine_interactive(machine: &SmallBinMachine) {
   // rulebook.add_rules(chain_rules);
   let num_steps = 200;
   Tape::simulate_from_start(machine, num_steps * 3, true);
-  let ans = try_prove_bouncer(machine, num_wxyz_steps, max_proof_steps, max_proof_tape); 
+  let ans = try_prove_bouncer(machine, num_wxyz_steps, max_proof_steps, max_proof_tape, true); 
   println!("mb proof: {}", print_mb_proof(&ans));
   println!("\njust ran machine: {}", machine.to_compact_format());
   // println!("vanilla");
@@ -430,7 +430,8 @@ fn list_which_proven(machines: &Vec<SmallBinMachine>, num_steps: u32, verbose: b
 }
 
 fn prove_with_brady_bouncer(machines: Vec<SmallBinMachine>) -> Vec<(SmallBinMachine, MbBounce)> {
-  let mut out = vec![];
+  let print = false; 
+
   // let num_wxyz_steps = 10_000;
   // let max_proof_steps = 20_000;
   // let max_proof_tape = 300;
@@ -438,11 +439,12 @@ fn prove_with_brady_bouncer(machines: Vec<SmallBinMachine>) -> Vec<(SmallBinMach
   let max_proof_steps = 2_000;
   let max_proof_tape = 100;
   println!("wxyz steps: {} proof steps: {} proof max_tape: {}", num_wxyz_steps, max_proof_steps, max_proof_tape); 
-
+  
+  let mut out = vec![];
   for (_i, machine) in machines.into_iter().enumerate() {
     // dbg!(i);
     let proof_res = try_prove_bouncer(
-      &machine, num_wxyz_steps, max_proof_steps, max_proof_tape);
+      &machine, num_wxyz_steps, max_proof_steps, max_proof_tape, print);
     out.push((machine, proof_res))
 
   }
@@ -604,6 +606,15 @@ fn run_random_machines_from_file(
   }
 }
 
+fn run_all_machines_from_file(filename: &str) {
+  let machines = load_machines_from_file(filename);
+  println!("all machines:\n{}\n\n{}", machines_to_str(machines.clone()), machines_to_idx_str(machines.clone()));
+  for (idx, machine) in machines.iter().enumerate() {
+    println!("\nidx {}", idx);
+    run_machine_interactive(&machine)
+  }
+}
+
 fn aggregate_and_display_bouncer_res(proofs: &[MbBounce]) {
   let mut bounce_proof_count = 0;
   let mut undecided_count = 0; 
@@ -663,22 +674,22 @@ fn diff_machine_files(f1: &str, f2: &str,
 
 fn main() {
   // 1_000 instead of 1_000_000 misses 296 machines (of ~3M, so 0.01%), but we can always come back to those
-  let num_lr_steps = 1_000;
+  let num_lr_steps = 1_000_000;
   let num_rule_steps = 200;
   dbg!(num_lr_steps, num_rule_steps);
 
   let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  scan_from_machine(
-  // scan_from_machine_beep(
+  // scan_from_machine(
+  scan_from_machine_beep(
     &first_machine,
     num_lr_steps,
     num_rule_steps,
     false,
     // Some("size3_holdouts_2_may.txt"),
     // Some("size4_holdouts_31_may_29e2280.txt"),
-    // Some("machine_lists/size4_bouncer_3k_2k_100_23_august_24"),
-    // Some("machine_lists/size4_bouncer_10k_20k_300_23_august_24"),
-    None,
+    // Some("machine_lists/size4_bouncer_aligned_3k_2k_100_23_august_24"),
+    Some("machine_lists/size4_bouncer_aligned_truncated_10k_20k_300_23_august_24"),
+    // None,
   );
 
   // scan_from_filename_beep(
@@ -694,12 +705,14 @@ fn main() {
   //   // "size3_qh_holdouts_30_july_24",
   //   25);
 
-  // diff_machine_files(
-  //   "machine_lists/size4_bouncer_3k_2k_100_23_august_24", 
-  //   "machine_lists/size4_bouncer_10k_20k_300_23_august_24",
+  // run_all_machines_from_file("machine_lists/size4_bouncer_aligned_proven_only_10k_23_aug_24");
 
-  // // Some("machine_lists/size4_bounce_proven_only_10k_23_aug_24"),
-  // None,
+  // diff_machine_files(
+  //   "machine_lists/size4_bouncer_aligned_3k_2k_100_23_august_24", 
+  //   "machine_lists/size4_bouncer_aligned_10k_20k_300_23_august_24",
+
+  // Some("machine_lists/size4_bouncer_aligned_proven_only_10k_23_aug_24"),
+  // // None,
 
   // // Some("machine_lists/size4_bounce_proven_only_3k_23_aug_24"),
   // None,

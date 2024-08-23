@@ -41,6 +41,8 @@ undecided @ LR   750: 150_167  diff
           @ LR   384_000: 149_723 19
           @ LR 1_000_000: 149_720 3
 
+(note rerunning @1M takes ~15m)
+
 undecided @ LR   750: 150_167  diff ratio
           @ LR  1061: 149_988  179  
           @ LR  1500: 149_912   76  2.36
@@ -249,15 +251,17 @@ unfixed -> fixed
 
 TODOs
 ✓ decide QH via bouncing
-* decide bouncers that depend on "alignment" via shifting the tape over
-* run fmt
+✓ decide bouncers that depend on "alignment" via shifting the tape over
 * read through 10-30 machines that QH and that don't to ensure they are decided correctly
 * do stats on stuff remaining after bouncers
+* run fmt
 * fix tests
 * aggregate stats to get summary of what machines likely remain
+* implement "golden master testing"
 * start implementing the musical analyzer / compression-based algorithm
+* for those machines that do QH, determine *when* they QH
 CouldDOs:
-* for bouncers, start detection later / cut off the first few things to dodge beginning-effects
+✓ for bouncers, start detection later / cut off the first few things to dodge beginning-effects
 
 implemented qh detection for bouncers!
 there were 150016 undecided machines
@@ -266,3 +270,83 @@ analyzed 150016 machines. bouncers: 98020 of which QH bouncers: 6116 notQH bounc
 there were 150016 undecided machines
 wxyz steps: 3000 proof steps: 2000 proof max_tape: 100
 analyzed 150016 machines. bouncers: 98046 of which QH bouncers: 6116 notQH bouncers: 91930 undecided: 51970
+
+implemented trying multiple alignments!
+before alignment
+there were 150016 undecided machines
+wxyz steps: 3000 proof steps: 2000 proof max_tape: 100
+analyzed 150016 machines. bouncers: 98046 of which QH bouncers: 6116 notQH bouncers: 91930 undecided: 51970
+after alignment
+there were 150016 undecided machines
+wxyz steps: 3000 proof steps: 2000 proof max_tape: 100
+analyzed 150016 machines. bouncers: 98152 of which QH bouncers: 6116 notQH bouncers: 92036 undecided: 51864
+
+98046 -> 98152 = +106, all of which do not QH!
+
+after alignment
+there were 150016 undecided machines
+wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
+analyzed 150016 machines. bouncers: 98157 of which QH bouncers: 6116 notQH bouncers: 92041 undecided: 51859
+
+98020 -> 98157 = +137, all of which do not QH
+
+3k 
+aligning -len_z to len_z instead of half that proves exactly 1 machine at 3k lol (it does not QH)
+98153 / 51863 
+10k 
+but at 10k it proves nothing
+98157 / 51859
+
+more steps seems strictly good now - it proves 4 more machines without failing to prove any others
+
+added truncation to the beginnings of records to see what happens and in particular whether it can 
+let us solve some of the machines that take a very long time sooner
+with truncation: 
+there were 150016 undecided machines
+wxyz steps: 3000 proof steps: 2000 proof max_tape: 100
+analyzed 150016 machines. bouncers: 98160 of which QH bouncers: 6116 notQH bouncers: 92044 undecided: 51856
+
+98153 -> 98160 = +7 LOL
+wxyz steps: 3000 proof steps: 1000 proof max_tape: 100
+analyzed 150016 machines. bouncers: 98160 of which QH bouncers: 6116 notQH bouncers: 92044 undecided: 51856
+halving proof steps doesn't cost anything currently
+
+wxyz steps: 1000 proof steps: 1000 proof max_tape: 100
+analyzed 150016 machines. bouncers: 97939 of which QH bouncers: 6116 notQH bouncers: 91823 undecided: 52077
+going down to 1k does cost us a couple hundred machines still, but not very many 
+
+wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
+analyzed 150016 machines. bouncers: 98181 of which QH bouncers: 6116 notQH bouncers: 92065 undecided: 51835
+
+
+better truncaction was implemented 
+3k 98160 -> 98179 (+19)
+from no trunctation to good truncation
+10k 98157 -> 98181 (+24)
+from no trunctation to mid trunctation to good truncation
+10k 98157 ->(+5) 98162 ->(+19) 98181
+
+with good truncatin
+wxyz steps: 20000 proof steps: 20000 proof max_tape: 300
+analyzed 150016 machines. bouncers: 98181 of which QH bouncers: 6116 notQH bouncers: 92065 undecided: 51835
+
+
+
+1k = 97939
+3k = 98179 (+221)
+10k = 98181 (+2)
+20k = 98181 (+0)
+
+I did a big run to produce the canonical remaining machines file
+[src/main.rs:679:3] num_lr_steps = 1000000
+[src/main.rs:679:3] num_rule_steps = 200
+tnf machines 1000000
+tnf machines 2000000
+halted: 183983 quasihalted (cycled): 192528 quashalted (lr): 762025
+non-qh (cycled): 151072 non-qh (lr): 1504341 inconclusive: 149720
+there were 149720 undecided machines
+wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
+analyzed 149720 machines. bouncers: 98181 of which QH bouncers: 6116 notQH bouncers: 92065 undecided: 51539
+wrote 51539 machines to file: machine_lists/size4_bouncer_aligned_truncated_10k_20k_300_23_august_24
+
+149720 down to 51539! ~3x, 2.905 to be specific
