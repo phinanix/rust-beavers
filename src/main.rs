@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::process::exit;
 use std::{collections::HashSet, fs, io};
 
 use beep::{detect_quasihalt_of_lr_or_cycler, scan_from_filename_beep};
@@ -452,6 +453,7 @@ fn scan_from_machines(
   machines: &[SmallBinMachine],
   num_lr_steps: u32,
   _num_rule_steps: u32,
+  interactive: bool,
   mb_undecided_file: Option<&str>,
 ) {
   let mut lr_results = vec![];
@@ -521,26 +523,27 @@ fn scan_from_machines(
   //     .map(|m| m.to_compact_format())
   //     .join("\n")
   // );
-  
-  // loop {
-  //   println!("Enter the index of a machine you would like to run:");
-  //   let mut input_text = String::new();
-  //   io::stdin()
-  //     .read_line(&mut input_text)
-  //     .expect("failed to read from stdin");
+  if interactive {
+    loop {
+      println!("Enter the index of a machine you would like to run (not from above list):");
+      let mut input_text = String::new();
+      io::stdin()
+        .read_line(&mut input_text)
+        .expect("failed to read from stdin");
 
-  //   let trimmed = input_text.trim();
-  //   let i = match trimmed.parse::<usize>() {
-  //     Ok(i) => i,
-  //     Err(..) => {
-  //       println!("this was not an integer: {}", trimmed);
-  //       exit(1)
-  //     }
-  //   };
-  //   let machine = &final_undecided[i];
-  //   println!("selected machine: {}", machine.to_compact_format());
-  //   run_machine(machine);
-  // }
+      let trimmed = input_text.trim();
+      let i = match trimmed.parse::<usize>() {
+        Ok(i) => i,
+        Err(..) => {
+          println!("this was not an integer: {}", trimmed);
+          exit(1)
+        }
+      };
+      let machine = &final_undecided[i];
+      println!("selected machine: {}", machine.to_compact_format());
+      run_machine(machine);
+    }
+  }
 }
 
 fn get_bouncer_undecided(bouncer_results: Vec<(SmallBinMachine, MbBounce)>) 
@@ -560,19 +563,21 @@ fn scan_from_machine(
   machine: &SmallBinMachine,
   num_lr_steps: u32,
   num_rule_steps: u32,
+  interactive: bool,
   mb_undecided_file: Option<&str>,
 ) {
-  scan_from_machines(&vec![machine.clone()][..], num_lr_steps, num_rule_steps, mb_undecided_file);
+  scan_from_machines(&vec![machine.clone()][..], num_lr_steps, num_rule_steps, interactive, mb_undecided_file);
 }
 
 fn scan_from_filename(
   filename: &str, 
   num_lr_steps: u32,
   num_rule_steps: u32,
+  interactive: bool,
   mb_undecided_file: Option<&str>,
 ) {
   let machines = load_machines_from_file(filename);
-  scan_from_machines(&machines, num_lr_steps, num_rule_steps, mb_undecided_file);
+  scan_from_machines(&machines, num_lr_steps, num_rule_steps, interactive, mb_undecided_file);
 }
 
 fn run_random_machines_from_file(
@@ -663,8 +668,8 @@ fn main() {
   dbg!(num_lr_steps, num_rule_steps);
 
   let first_machine = SmallBinMachine::start_machine(4, Bit(true));
-  // scan_from_machine(
-  scan_from_machine_beep(
+  scan_from_machine(
+  // scan_from_machine_beep(
     &first_machine,
     num_lr_steps,
     num_rule_steps,
@@ -740,3 +745,4 @@ fn main() {
   // aggregate_and_display_bouncer_res(&proofs);
 }
 
+ 

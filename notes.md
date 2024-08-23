@@ -249,10 +249,11 @@ unfixed -> fixed
 
 TODOs
 ✓ decide QH via bouncing
-* run fmt
 * decide bouncers that depend on "alignment" via shifting the tape over
+* run fmt
 * read through 10-30 machines that QH and that don't to ensure they are decided correctly
 * do stats on stuff remaining after bouncers
+* fix tests
 * aggregate stats to get summary of what machines likely remain
 * start implementing the musical analyzer / compression-based algorithm
 CouldDOs:
