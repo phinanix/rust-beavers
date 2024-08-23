@@ -476,8 +476,8 @@ fn scan_from_machines(
     "{} had no halt trans, leaving {} to be decided",
     no_halt_trans_count, remaining_undecided_len,
   );
-  let bouncer_results = prove_with_brady_bouncer(undecided_with_halt);
-  let bouncer_proofs = bouncer_results.iter().map(|(_, p)| p.clone()).collect_vec();
+  let bouncer_results: Vec<(SmallBinMachine, MbBounce)> = prove_with_brady_bouncer(undecided_with_halt);
+  let bouncer_proofs: Vec<MbBounce> = bouncer_results.iter().map(|(_, p)| p.clone()).collect_vec();
   aggregate_and_display_bouncer_res(&bouncer_proofs);
   let final_undecided = get_bouncer_undecided(bouncer_results);
   // let final_undecided = prove_with_macros(undecided_with_halt, num_rule_steps, false);
@@ -543,7 +543,7 @@ fn scan_from_machines(
   // }
 }
 
-fn get_bouncer_undecided(bouncer_results: Vec<(SmallBinMachine, Result<BouncerProof, &str>)>) 
+fn get_bouncer_undecided(bouncer_results: Vec<(SmallBinMachine, MbBounce)>) 
   -> Vec<SmallBinMachine> 
 {
     let mut out = vec![];
@@ -555,7 +555,6 @@ fn get_bouncer_undecided(bouncer_results: Vec<(SmallBinMachine, Result<BouncerPr
     }
     out
 }
-
 
 fn scan_from_machine(
   machine: &SmallBinMachine,
@@ -600,7 +599,7 @@ fn run_random_machines_from_file(
   }
 }
 
-fn aggregate_and_display_bouncer_res(proofs: &[Result<BouncerProof, &str>]) {
+fn aggregate_and_display_bouncer_res(proofs: &[MbBounce]) {
   let mut bounce_proof_count = 0;
   let mut undecided_count = 0; 
   for proof in proofs {
@@ -733,30 +732,3 @@ fn main() {
   // aggregate_and_display_bouncer_res(&proofs);
 }
 
-/*
-2 may 23 rule step to machine counts
-7820 @ 42-1000
-7819 @ 38-41
-7818 @ 35-37
-7817 @ 34
-7816 @ 31-33
-7814 @ 30
-7810 @ 29
-7807 @ 28
-7798 @ 27
-7789 @ 26
-7772 @ 25
-7725 @ 24
-so the record holding machines take
-42
-38
-35
-34
-2 @ 31
-4 @ 30
-3 @ 29
-9 @ 28
-9 @ 27
-27 @ 26
-47 @ 25
- */

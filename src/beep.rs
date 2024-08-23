@@ -8,7 +8,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 use crate::{
-  aggregate_and_display_bouncer_res, brady::{difference_of, find_records, get_rs_hist_for_machine, split_and_filter_records, try_prove_bouncer, MbBounce, Record}, dump_machines_to_file, get_bouncer_undecided, linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult}, load_machines_from_file, machines_to_str, macro_machines::{MacroMachine, MacroState}, prove_with_brady_bouncer, rules::{detect_chain_rules, Rulebook}, run_machine, simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules}, tape::{disp_list_bit,tnf_simulate, ExpTape, Tape}, turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT}, turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100}
+  aggregate_and_display_bouncer_res, brady::{construct_bouncer_proof, difference_of, find_bouncer_wxyz, find_records, get_rs_hist_for_machine, split_and_filter_records, try_prove_bouncer, BouncerProof, MbBounce, Record}, dump_machines_to_file, get_bouncer_undecided, linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult}, load_machines_from_file, machines_to_str, macro_machines::{MacroMachine, MacroState}, prove_with_brady_bouncer, rules::{detect_chain_rules, Rulebook}, run_machine, simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules}, tape::{disp_list_bit,tnf_simulate, ExpTape, Tape}, turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT}, turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100}
 };
 
 // by convention, the first step at which a state is never used again is the 
@@ -30,6 +30,7 @@ struct LastUsed {num_states: u8, step: u32, last_used: [i32; 10]}
 
 impl LastUsed {
   pub fn new(num_states: u8) -> Self {
+    assert!(num_states < 10 && num_states > 0, "bad many states {}", num_states);
     LastUsed { num_states, step: 0, last_used: [-1; 10] }
   }
 
@@ -44,7 +45,6 @@ impl LastUsed {
   }
 
   pub fn qh_time(&self) -> u32 {
-    assert!(self.num_states < 10 && self.num_states > 0, "bad many states {}", self.num_states);
     let ans = self.state_slice().iter().max().unwrap() + 1;
     ans.try_into().unwrap()
   }
@@ -371,27 +371,81 @@ fn get_undecided_beep(res: Vec<(SmallBinMachine, LRResultBeep)>) -> Vec<SmallBin
     .collect_vec()
 }
 
-enum BouncerQHProof {}
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+enum BouncerQHProof {
+  BouncerQH{proof: BouncerProof, qh_time: u32},
+  BouncerNonQH{proof: BouncerProof}
+}
+use BouncerQHProof::*;
+
+type MbQHBounce = Result<BouncerQHProof, &'static str>;
+
+fn get_last_used_to_time(machine: &SmallBinMachine, steps_to_simulate: u32) -> LastUsed {
+  let mut tape: Tape<Bit> = Tape::new();
+  let mut state = State::START;
+  // let mut steps = 0;
+  let mut last_used = LastUsed::new(machine.num_states());
+  last_used.state_used(state.as_byte(), 0);
+  for step in 1..=steps_to_simulate {
+    state = match tape.step_dir(state, machine) {
+      Left(_unknown_edge) => unreachable!("machine is defined"),
+      Right((new_state, _mb_dir, steps)) => {
+        assert_eq!(steps, 1);
+        if new_state.halted() {
+          unreachable!("nonhalter halted fast lastused {}", machine.to_compact_format());
+        }
+        last_used.state_used(new_state.as_byte(), step);
+        new_state
+      }
+    }
+  }
+  last_used
+}
 
 fn decide_qh_via_bouncer(
   machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize
-) ->  Result<BouncerQHProof, &'static str> {
-  todo!();
+) ->  MbQHBounce {
+  let print = false;
+  let (w, x, y, z, state_0) = find_bouncer_wxyz(&machine, num_wxyz_steps, print)?;
+  let (proof, state_set) = construct_bouncer_proof(
+    &machine, state_0, &w, &x, &y, &z, 
+    max_proof_steps, max_proof_tape, print)?;
+  /* in order to figure out whether the bouncer qh'd we need two things 
+   1) which states are used in the bouncing itself
+   2) the last_used up to the point at which the bouncer starts bouncing, which 
+      at the latest happens at num_wxyz_steps, so we can use that as an upper bound
+  */
+  if state_set.len() == machine.num_states().into() {
+    // machine does not QH, as all states are used during bouncing
+    return Ok(BouncerNonQH { proof })
+  }
+  assert!(state_set.len() < machine.num_states().into(), 
+      "more states used than available {}", machine.to_compact_format());
+      
+  // machine qhs at some point before starting bouncing, we just need to find when
+  let last_used = get_last_used_to_time(machine, num_wxyz_steps);
+  // todo add some sort of assert / sanity check that the machine does actually use the specified 
+  // states near the end of the checked part and no more or less
+  let qh_time = last_used.qh_time();
+  Ok(BouncerQH { proof, qh_time })
 }
 
-fn prove_qh_with_brady_bouncer(machines: Vec<SmallBinMachine>) -> Vec<(SmallBinMachine, MbBounce)> {
+fn prove_qh_with_brady_bouncer(machines: Vec<SmallBinMachine>) 
+  -> Vec<(SmallBinMachine, MbQHBounce)> 
+{
   let mut out = vec![];
-  let num_wxyz_steps = 10_000;
-  let max_proof_steps = 20_000;
-  let max_proof_tape = 300;
-  // let num_wxyz_steps = 3_000;
-  // let max_proof_steps = 2_000;
-  // let max_proof_tape = 100;
-  println!("wxyz steps: {} proof steps: {} proof max_tape: {}", num_wxyz_steps, max_proof_steps, max_proof_tape); 
+  // let num_wxyz_steps = 10_000;
+  // let max_proof_steps = 20_000;
+  // let max_proof_tape = 300;
+  let num_wxyz_steps = 3_000;
+  let max_proof_steps = 2_000;
+  let max_proof_tape = 100;
+  println!("wxyz steps: {} proof steps: {} proof max_tape: {}", 
+    num_wxyz_steps, max_proof_steps, max_proof_tape); 
 
   for (_i, machine) in machines.into_iter().enumerate() {
     // dbg!(i);
-    let proof_res = try_prove_bouncer(
+    let proof_res = decide_qh_via_bouncer(
       &machine, num_wxyz_steps, max_proof_steps, max_proof_tape);
     out.push((machine, proof_res))
 
@@ -399,6 +453,37 @@ fn prove_qh_with_brady_bouncer(machines: Vec<SmallBinMachine>) -> Vec<(SmallBinM
   out
 }
 
+fn aggregate_and_display_bouncer_res_beep(proofs: &[MbQHBounce]) {
+  let mut bounce_qh_proof_count = 0;
+  let mut bounce_nqh_proof_count = 0;
+  let mut undecided_count = 0; 
+  for proof in proofs {
+    match proof {
+      Err(_s) => undecided_count+=1, 
+      Ok(BouncerQH{..}) => bounce_qh_proof_count+=1, 
+      Ok(BouncerNonQH{..}) => bounce_nqh_proof_count+=1, 
+    }
+  }
+  assert_eq!(bounce_qh_proof_count + bounce_nqh_proof_count + undecided_count, proofs.len());
+  let bounce_proof_count = bounce_qh_proof_count + bounce_nqh_proof_count;
+  println!(
+    "analyzed {} machines. bouncers: {} of which QH bouncers: {} notQH bouncers: {} undecided: {}", 
+    proofs.len(), bounce_proof_count, bounce_qh_proof_count, bounce_nqh_proof_count, undecided_count
+  )
+}
+
+fn get_bouncer_undecided_beep(bouncer_results: Vec<(SmallBinMachine, MbQHBounce)>) 
+  -> Vec<SmallBinMachine> 
+{
+    let mut out = vec![];
+    for res in bouncer_results {
+      match res {
+          (_m, Ok(_p)) => (),
+          (m, Err(_s)) => out.push(m),
+      }
+    }
+    out
+}
 
 pub fn scan_from_machines_beep(
     machines: &[SmallBinMachine],
@@ -421,10 +506,10 @@ pub fn scan_from_machines_beep(
       "there were {} undecided machines",
       undecided_len
   );
-  let bouncer_results = prove_with_brady_bouncer(undecided_machines);
-  let bouncer_proofs = bouncer_results.iter().map(|(_, p)| p.clone()).collect_vec();
-  aggregate_and_display_bouncer_res(&bouncer_proofs);
-  let final_undecided = get_bouncer_undecided(bouncer_results);
+  let bouncer_results = prove_qh_with_brady_bouncer(undecided_machines);
+  let bouncer_proofs: Vec<Result<BouncerQHProof, &str>> = bouncer_results.iter().map(|(_, p)| p.clone()).collect_vec();
+  aggregate_and_display_bouncer_res_beep(&bouncer_proofs);
+  let final_undecided = get_bouncer_undecided_beep(bouncer_results);
   
 
 

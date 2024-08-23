@@ -1,4 +1,4 @@
-use std::{fmt::{Debug, Display}, ops::Sub};
+use std::{collections::HashSet, fmt::{Debug, Display}, ops::Sub};
 
 use crate::{
   rules::{ReadShift, Rulebook}, simulate::{one_rule_step, RuleStepResult::*}, tape::{disp_list_bit, ExpTape, Tape}, turing::{
@@ -517,7 +517,7 @@ pub fn simulate_on_chunk(
   goal_right_len: Option<usize>,
   max_steps: u32, 
   max_tape: usize, 
-) -> (State, ChunkSimRes) // return tape instead of mutating?
+) -> (State, StateSet, ChunkSimRes) // return tape instead of mutating?
 {
   /*
   we check two conditions: 
@@ -537,6 +537,10 @@ pub fn simulate_on_chunk(
   let max_right_disp = if right_blocked 
     {Some(i32::try_from(tape.right_length()).unwrap())} 
     else {None};
+
+  let mut state_set = HashSet::new();
+  state_set.insert(state);
+  // todo!("update state set");
 
   if tape.left_length() > max_tape || tape.right_length() > max_tape {
     panic!("fed in a too long tape to start");
@@ -561,7 +565,7 @@ pub fn simulate_on_chunk(
       
     };
     state = new_state;
-
+    state_set.insert(state);
     disp += dir.to_displacement();
     if print {
       println!(
@@ -572,32 +576,34 @@ pub fn simulate_on_chunk(
 
     // check falling off
     if min_left_disp.is_some_and(|min| disp < min) {
-      return (state, FellLeft);
+      return (state, state_set, FellLeft);
     }
     if max_right_disp.is_some_and(|max| disp > max) {
-      return (state, FellRight);
+      return (state, state_set, FellRight);
     }
     
     // check goal lengths
     if tape.left_length() >= left_len_target {
       assert_eq!(tape.left_length(), left_len_target);
       if left_len_target == max_tape {
-        return (state, TapeSizeExceeded);
+        return (state, state_set, TapeSizeExceeded);
       } else {
-        return (state, GoalLeft);
+        return (state, state_set, GoalLeft);
       }
     }
     if tape.right_length() >= right_len_target {
       assert_eq!(tape.right_length(), right_len_target);
       if right_len_target == max_tape {
-        return (state, TapeSizeExceeded);
+        return (state, state_set, TapeSizeExceeded);
       } else {
-        return (state, GoalRight);
+        return (state, state_set, GoalRight);
       }
     }
   }
-  return (state, TimedOut);
+  return (state, state_set, TimedOut);
 }
+
+type StateSet = HashSet<State>;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct BouncerProof {
@@ -625,7 +631,8 @@ pub fn construct_bouncer_proof(
   machine: &SmallBinMachine, state_0: State, w: &[Bit], x: &[Bit], y: &[Bit], z: &[Bit], 
   max_steps: u32, max_tape: usize, print: bool
 )
- -> Result<BouncerProof, &'static str> 
+  // -> Result<(BouncerProof), &'static str> 
+  -> Result<(BouncerProof, StateSet), &'static str> 
 {
   /*
   here's the plan: we want to prove M is a bouncer, specifically that M satisfies
@@ -675,6 +682,9 @@ pub fn construct_bouncer_proof(
   you want to put something on the right half of the tape, as in Z < Z1, you have to flip it. 
    */
 
+
+  let mut state_set: StateSet = HashSet::new();
+
   // // sim Z Y < 0* -> < Z1 Y1 0*
   // sim Z Y < W 0* -> < Z1 Y1 0*
   if print {
@@ -687,7 +697,7 @@ pub fn construct_bouncer_proof(
   let mut tape_right = vec![];
   tape_right.extend(w);
   let mut tape : Tape<Bit> = Tape {left: tape_left, head, right: tape_right};
-  let (state_1, res) = simulate_on_chunk(
+  let (state_1, step_1_states, res) = simulate_on_chunk(
     machine, state_0, &mut tape, 
     true, false, None, None, max_steps, max_tape);
   match res {
@@ -698,6 +708,9 @@ pub fn construct_bouncer_proof(
     _ => unreachable!(),
   }
   assert_eq!(tape.head, Bit(false));
+  //we don't add in step_1_states yet because it should be a subset of steps 2-5
+  // I think even even a substep of step 5 
+
   // note that these are reversed due to being on the right. z1 is closest to the head, 
   //which means it's at the *end* of this vec
   let z1y1 = tape.right; 
@@ -726,7 +739,7 @@ pub fn construct_bouncer_proof(
   // rev since Z1 is on the right
   let right = z1.iter().rev().cloned().collect_vec();
   let mut tape = Tape {left, head, right};
-  let (state_2, res) = simulate_on_chunk(
+  let (state_2, step_2_states, res) = simulate_on_chunk(
     machine, state_1, &mut tape, 
     true, true, None, None, max_steps, max_tape);
   match res {
@@ -740,6 +753,8 @@ pub fn construct_bouncer_proof(
     GoalRight => unreachable!(),
   }
   assert_eq!(tape.head, Bit(false));
+  state_set.extend(&step_2_states);
+
   // extract z1, z2
   let mut mb_z1z2 = tape.right; 
   // to put it in the left frame
@@ -771,7 +786,7 @@ pub fn construct_bouncer_proof(
   // rev since it's right
   let right = z1.iter().rev().cloned().collect_vec();
   let mut tape = Tape {left, head, right};
-  let (state_3, res) = simulate_on_chunk(
+  let (state_3, step_3_states, res) = simulate_on_chunk(
     machine, state_2, &mut tape, 
     false, true, None, None, max_steps, max_tape);
   match res {
@@ -782,6 +797,9 @@ pub fn construct_bouncer_proof(
     GoalLeft => unreachable!(),
     GoalRight => unreachable!(),
   }
+  assert_eq!(tape.head, Bit(false));
+  state_set.extend(&step_3_states);
+
   // extract X1 Z3 
   let x1z3 = tape.left;
   if print {
@@ -806,7 +824,7 @@ pub fn construct_bouncer_proof(
   let mut right = z2.iter().rev().cloned().collect_vec();
   let head = right.pop().unwrap();
   let mut tape = Tape {left, head, right};
-  let (state_4, res) = simulate_on_chunk(
+  let (state_4, step_4_states, res) = simulate_on_chunk(
     machine, state_3, &mut tape, 
     true, true, None, None, max_steps, max_tape);
   match res {
@@ -817,6 +835,9 @@ pub fn construct_bouncer_proof(
     GoalLeft => unreachable!(),
     GoalRight => unreachable!(),
   }
+  assert_eq!(tape.head, Bit(false));
+  state_set.extend(&step_4_states);
+
   // extract Z4 Z3 
   let z4z3 = tape.left; 
   if print {
@@ -845,7 +866,7 @@ pub fn construct_bouncer_proof(
   let head = right.pop().unwrap();
   let mut tape = Tape {left, head, right};
   let goal_right_len = z1.len() + y1.len();
-  let (state_5, res) = simulate_on_chunk(
+  let (state_5, step_5_states, res) = simulate_on_chunk(
     machine, state_4, &mut tape, 
     true, false, None, Some(goal_right_len), max_steps, max_tape);
   match res {
@@ -856,6 +877,10 @@ pub fn construct_bouncer_proof(
     GoalLeft => unreachable!(),
     GoalRight => (),
   }
+  
+  state_set.extend(&step_5_states);
+  
+
   let mut b = tape.right;
   b.reverse();
   let mut a = tape.left;
@@ -934,12 +959,17 @@ pub fn construct_bouncer_proof(
     return Err("n=1 of loop case failed")
   }
 
+  // this assertion only applies if we have a proof, ie if it is actually a bouncer
+  // so we check now
+  assert!(step_1_states.is_subset(&step_5_states), "step1 step5 subset check {}", machine.to_compact_format());
+
   let proof = BouncerProof { w: w.to_vec(), x: x.to_vec(), y: y.to_vec(), z: z.to_vec(), state_0 };
-  return Ok(proof);
+  
+  return Ok((proof, state_set));
 }
 
 pub fn try_prove_bouncer(machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize)
- -> Result<BouncerProof, &'static str> 
+ -> Result<(BouncerProof, StateSet), &'static str> 
 {
   let print = false;
   let (w, x, y, z, state_0) = match find_bouncer_wxyz(&machine, num_wxyz_steps, print) {
@@ -951,11 +981,12 @@ pub fn try_prove_bouncer(machine: &SmallBinMachine, num_wxyz_steps: u32, max_pro
     max_proof_steps, max_proof_tape, print)
 }
 
-pub type MbBounce = Result<BouncerProof, &'static str>;
+pub type MbBounce = Result<(BouncerProof, StateSet), &'static str>;
 
-pub fn print_mb_proof(mb_proof: &Result<BouncerProof, &str>) -> String{
+pub fn print_mb_proof(mb_proof: &MbBounce) -> String{
   match mb_proof {
-    Ok(proof) => format!("{}", proof),
+    Ok((proof, states_used)) 
+      => format!("{} using states {:?}", proof, states_used),
     Err(s) => format!("Err: {}", s),
   }
 }

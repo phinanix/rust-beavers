@@ -1,3 +1,32 @@
+
+/*
+2 may 23 rule step to machine counts
+7820 @ 42-1000
+7819 @ 38-41
+7818 @ 35-37
+7817 @ 34
+7816 @ 31-33
+7814 @ 30
+7810 @ 29
+7807 @ 28
+7798 @ 27
+7789 @ 26
+7772 @ 25
+7725 @ 24
+so the record holding machines take
+42
+38
+35
+34
+2 @ 31
+4 @ 30
+3 @ 29
+9 @ 28
+9 @ 27
+27 @ 26
+47 @ 25
+ */
+
 24 July 2024
 Testing BBB size 4
 total machines: 2_943_669
@@ -217,3 +246,20 @@ unfixed -> fixed
 2k:  99239 -> 98040 = 1199
 3k:  99239 -> 98046 = 1193
 10k: 99216 -> 98020 = 1196
+
+TODOs
+✓ decide QH via bouncing
+* run fmt
+* decide bouncers that depend on "alignment" via shifting the tape over
+* read through 10-30 machines that QH and that don't to ensure they are decided correctly
+* do stats on stuff remaining after bouncers
+* aggregate stats to get summary of what machines likely remain
+* start implementing the musical analyzer / compression-based algorithm
+
+implemented qh detection for bouncers!
+there were 150016 undecided machines
+wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
+analyzed 150016 machines. bouncers: 98020 of which QH bouncers: 6116 notQH bouncers: 91904 undecided: 51996
+there were 150016 undecided machines
+wxyz steps: 3000 proof steps: 2000 proof max_tape: 100
+analyzed 150016 machines. bouncers: 98046 of which QH bouncers: 6116 notQH bouncers: 91930 undecided: 51970
