@@ -55,6 +55,9 @@ undecided @ LR   750: 150_167  diff ratio
           @ LR 16971: 149_751    7  1
           @ LR 24000: 149_742    9  .78
 
+LR @ 1000 = 150016
+LR @ 1M = 149720 
+1M - 1K = 296
 
 qh first results: 
 [src/beep.rs:359:5] machines.len() = 2943669
@@ -336,3 +339,71 @@ analyzed 149720 machines. bouncers: 98181 of which QH bouncers: 6116 notQH bounc
 wrote 51539 machines to file: machine_lists/size4_bouncer_aligned_truncated_10k_20k_300_23_august_24
 
 149720 down to 51539! ~3x, 2.905 to be specific
+
+I checked that all the goes_left machines from random_machines_2_august_24.md were actually proven, 
+since the intention of adding the goes_left prover was to prove them . . . but they weren't!!
+The problem was the fact that we were filtering right records in a particular way that we weren't filtering "biggest_turnarounds", see the 2aug24 file for details. 
+
+after fixing this there were a bunch of additional machines proven! 
+
+there were 51539 machines total in the file machine_lists/size4_bouncer_aligned_truncated_10k_20k_300_23_august_24
+halted: 0 quasihalted (cycled): 0 quashalted (lr): 0
+non-qh (cycled): 0 non-qh (lr): 0 inconclusive: 51539
+there were 51539 undecided machines
+wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
+analyzed 51539 machines. bouncers: 2085 of which QH bouncers: 31 notQH bouncers: 2054 undecided: 49454
+
+could I have noticed this by noticing surprisingly few goes_left machines were proven? unclear. 
+here is my 2aug estimate of how many there were: 
+single pass bouncers decided by program: 87889
+estimated undecided grows_left: 22366
+
+how many were there actually? before grows left, there were 87889 bouncers proven. 
+after, but with bug, there were 98181. 
+fixing bug proved 2085. 
+
+so with bug, there were 98181 - 87889 = 10292 goes left
+once bug was fixed there were 12377
+which were 46% and 55% of what was expected resp.
+so there wasn't really enough evidence there, though the fact that it was half of what was expected
+could perhaps still have tipped me off. 
+
+checking the 22366 number: 
+we saw 9 / 25 = 36% goes_left in our sample
+there were I think 51539 + 10292 = 61831 undecided at the time give or take
+61831 * 9/25 = 22259
+which is slightly off but close enough. so in sum, we got an estimate of 36%
+but the true prevalence. well
+
+62127 machines are in the holdouts file, it would appear, which differs by 296, which is 
+exactly the LR 1M - LR 1K number, so that explains that. and indeed 62127 * 9/25 = 22366. 
+
+so the true prevalence was 12377 / 62127 = 20%, not so far off from our 36%.
+but in fairness with a beta(1,1) prior this is 2.3rd percentile, ie it is 1 in 43 surprising low
+or 1 in 22 surprising extremal overall
+
+the erroneous prevalance was 10292 / 62127 = 16.57%. 
+which is .6288 percentile or 1 in 159 low, 1 in 80 extremal. 
+
+I wanted to add truncation to the left hand side machines as well, so I did that which 
+improved 2085 to 2086 at 10k (20k, 300). 
+wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
+analyzed 51539 machines. bouncers: 2086 of which QH bouncers: 31 notQH bouncers: 2055 undecided: 49453
+
+that brings our total number of bouncers at 10k steps to 100_267, the expected 
+98181 + 2086 = 100267
+
+wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
+analyzed 150016 machines. bouncers: 100267 of which QH bouncers: 6147 notQH bouncers: 94120 undecided: 49749
+note running that today takes 2m20s
+
+there were 51539 machines total in the file machine_lists/size4_bouncer_aligned_truncated_10k_20k_300_23_august_24
+total machines: 51539
+halted: 0 quasihalted (cycled): 0 quashalted (lr): 0
+non-qh (cycled): 0 non-qh (lr): 0 inconclusive: 51539
+there were 51539 undecided machines
+wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
+analyzed 51539 machines. bouncers: 2086 of which QH bouncers: 31 notQH bouncers: 2055 undecided: 49453
+wrote 49453 machines to file: machine_lists/size4_bouncer_more_goes_left_10k_20k_300_26_august_24
+
+used the change to prove an additional 2086 machines!

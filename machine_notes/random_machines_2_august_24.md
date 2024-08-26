@@ -5,7 +5,7 @@ and also it only has LR run for 1K steps, not 1M, but that only affects 296 mach
 results 
 9 grows_left 5 two_stage 4 three_stage 4 counter  (22)
 (36%) (36% multi) (20%)      (16%)       (16%)
-1 midpoint bouncer 1 translated bouncer with shadow 1 cubic bouncer
+1 midpoint bouncer 1 translated bouncer with shadow 1 translated cycler
 (4% each)
 25 total
 
@@ -68,7 +68,7 @@ bouncer: three_stage
 6 1RB1LD_1RC0RB_1LA0RC_0LD0RC
 counter
 7 1RB0LD_0RC1RB_1RD0RD_1LA0RC
-cubic bouncer
+cubic bouncer (came back 26 aug. this is actually a 1M LR! but not a 1K lr !!)
 8 1RB1RA_0LC0LB_1RD1LC_1LA0RD
 counter
 9 1RB0LB_1RC1LD_0LA0RC_0LA0LB
@@ -80,7 +80,7 @@ bouncer: two_stage
 12 1RB1RB_1LC1RD_0LB1LA_1LB0RD
 counter
 13 1RB1LC_1LA0RC_1LD0LA_1RD1RB
-bouncer: grows_left
+bouncer: grows_left (wasn't proven (!))
 14 1RB0RA_0LC---_1LD0LC_1RA1LD
 counter
 15 1RB1LC_1RC1RD_0LA1LB_0RB0RB
@@ -90,7 +90,7 @@ bouncer: grows_left
 17 1RB0LD_1RC1LA_1LD1RB_1RB1LC
 bouncer: two_stage
 18 1RB0LD_1LC0RA_0LD0RD_1LA0LC
-bouncer: grows_left
+bouncer: grows_left (wasn't proven (!))
 19 1RB0LD_0LC1RA_1RC1LA_0LB0LD
 bouncer: grows_left
 20 1RB0LC_1LC1RB_1LA0LD_0RB1RD
@@ -105,5 +105,27 @@ bouncer: grows_left
 translated bouncer with shadow
 
 9 grows_left 5 two_stage 4 three_stage 4 counter  (22)
-1 midpoint bouncer 1 translated bouncer with shadow 1 cubic bouncer
+1 midpoint bouncer 1 translated bouncer with shadow 1 translated cycler
 25 total
+
+26 Aug 24
+came back to ensure only "grows_left" were proven (yep) and all were proven 
+(no! - 13 and 18 were missed). so I need to check why. 
+
+13 was missed because couldn't find a len for z, because 
+tape extents: [4, 4, 6, 6, 8, 8, 10, 10, 12, 12, 14, 14, 16, 16, 18, 18, 20, 20, 22, 22, 24, 24, 26, 26, 28, 28, 30, 30, 32, 32, 34, 34, 36, 36, 38, 38, 40, 40, 42, 42, 44, 44, 46, 46, 48, 48, 50, 50, 52, 52, 54, 54, 56, 56, 58, 58, 60, 60, 62, 62, 64, 64, 66, 66, 68, 68, 70, 70, 72, 72, 74, 74, 76, 76, 78, 78, 80, 80, 82, 82, 84, 84, 86, 86, 88, 88, 90, 90, 92, 92, 94, 94, 96, 96, 98, 98, 100, 100, 102, 102, 104, 104, 106, 106, 108, 108, 110, 110, 112, 112, 114, 114]
+tape diffs  : [0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0]
+rstep: 8370 step: 8371 phase: C tape: (T, 104) (F, 1) |>T<| tape extent: 106 
+rstep: 8372 step: 8373 phase: B tape: (T, 105) |>F<| tape extent: 106 
+rstep: 8690 step: 8691 phase: C tape: (T, 106) (F, 1) |>T<| tape extent: 108 
+rstep: 8692 step: 8693 phase: B tape: (T, 107) |>F<| tape extent: 108 
+rstep: 9016 step: 9017 phase: C tape: (T, 108) (F, 1) |>T<| tape extent: 110 
+rstep: 9018 step: 9019 phase: B tape: (T, 109) |>F<| tape extent: 110 
+rstep: 9348 step: 9349 phase: C tape: (T, 110) (F, 1) |>T<| tape extent: 112 
+rstep: 9350 step: 9351 phase: B tape: (T, 111) |>F<| tape extent: 112 
+rstep: 9686 step: 9687 phase: C tape: (T, 112) (F, 1) |>T<| tape extent: 114 
+rstep: 9688 step: 9689 phase: B tape: (T, 113) |>F<| tape extent: 114 
+
+note that the steps come in pairs only 2 apart :facepalm:
+
+18 is the same deal

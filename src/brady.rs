@@ -60,6 +60,7 @@ pub fn get_rs_hist_for_machine<P: Phase, S: TapeSymbol>(
   return Right((history, readshifts));
 }
 
+//3 fields are step, l/r, dir 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Record(pub usize, pub i32, pub Dir);
 
@@ -93,6 +94,7 @@ pub fn find_records(readshifts: &[ReadShift]) -> Vec<Record> {
     cur_rs = ReadShift::normalize(ReadShift::combine(cur_rs, new_rs));
     // println!("{}", cur_rs);
     if cur_rs.l < prev_rs.l {
+      
       out.push(Record(i, cur_rs.l, Dir::L));
     }
     if cur_rs.r > prev_rs.r {
@@ -152,6 +154,24 @@ pub fn filter_records<'a>(records: &[Record]) -> Vec<Record> {
       out.push(record);
     }
     prev_record = record;
+  }
+  out
+}
+
+pub fn filter_stepcounts<'a>(stepcounts: &[usize]) -> Vec<usize> {
+  let mut out = vec![];
+  let mut max_diff_so_far = 0;
+  let mut prev_stepcount = match stepcounts.first() {
+    None => return out, 
+    Some(r) => *r,
+  };
+  for &stepcount in &stepcounts[1..] {
+    let diff = stepcount.checked_sub(prev_stepcount).unwrap();
+    if diff > max_diff_so_far {
+      max_diff_so_far = diff;
+      out.push(stepcount);
+    }
+    prev_stepcount = stepcount;
   }
   out
 }
@@ -270,7 +290,7 @@ fn split_tape_xz4y(mut len_x: usize, mut len_y: usize, len_z: usize, left_tape: 
         a
       } else {
         if print {
-          println!("failed to extract z from z4: {} and zs: {:?}", BL(z4), zs);
+          println!("failed to extract z from z4: {} and zs: {} {} {} {}", BL(z4), BL(zs[0]), BL(zs[1]), BL(zs[2]), BL(zs[3]));
         }
         return Err("failed to extract z from z4 and zs");
       }
@@ -358,9 +378,9 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
   //     println!("{record}");
   //   }
   // }
+  let (unfilt_left_records, unfilt_right_records) = split_records(records.clone());
 
-  if print {
-    let (unfilt_left_records, unfilt_right_records) = split_records(records.clone());
+  if print {  
     println!("unfiltered left records");
     display_record_steps(unfilt_left_records.clone());
     println!("unfiltered right records");
@@ -368,12 +388,22 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
   }
 
   let (left_records, right_records) = split_and_filter_records(records);
+  
   if print {
     println!("\nfiltered left");
     display_record_steps(left_records);
     println!("\nfiltered right");
     display_record_steps(right_records.clone());
   }
+
+  let mut right_stepcounts = unfilt_right_records.into_iter().map(|Record(i, _, _)| i).collect_vec();
+  let to_take = 4; 
+  let min_remain = 4; 
+  truncate_start(&mut right_stepcounts, to_take, min_remain);
+  
+  let filt_right_stepcounts = filter_stepcounts(&right_stepcounts);
+
+
   // if right_records.len() < 2 {
   //   let turnarounds = find_turnarounds(&accumulate_rs(&rs));
   //   let biggish = {
@@ -396,30 +426,40 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
     strategy: look at the filtered right records, take the difference of their tape extents
     hope the last 3 agree
   */
-  let stepcounts = if right_records.len() >= 2 {
-    right_records.iter().map(|rec|rec.0).collect_vec()
+
+  let stepcounts = if filt_right_stepcounts.len() >= 2 {
+    filt_right_stepcounts
   } else {
     let turnarounds = find_turnarounds(&accumulate_rs(&rs));
-    let biggish = {
+    let biggest_steps = {
       let mut biggest = vec![];
+      let mut biggest_steps = biggest.iter().map(|(s, _)| *s).collect_vec();
+      truncate_start(&mut biggest_steps, to_take, min_remain);
+      let mut biggest_steps_filtered = filter_stepcounts(&biggest_steps);
       let mut rest = turnarounds.clone(); 
-      while biggest.len() < 4 && rest.len() >=4 {
-        (biggest, rest) = biggest_turnaround(&rest)
+      while biggest_steps_filtered.len() < 4 && rest.len() >=4 {
+        (biggest, rest) = biggest_turnaround(&rest);
+        biggest_steps = biggest.iter().map(|(s, _)| *s).collect_vec();
+        biggest_steps_filtered = filter_stepcounts(&biggest_steps);
       }
-      if biggest.len() < 4 {
+      if biggest_steps_filtered.len() < 4 {
         // println!("didn't find *any* biggest turnaround {}", machine.to_compact_format());
         // Tape::simulate_from_start(machine, 500, true);
         // println!("proof failed biggest turnaround ^^^ {}", machine.to_compact_format());
         return Err("no biggest turnaround");
       }
-      biggest
+      biggest_steps
     };
     // dbg!(&biggish);
-    let biggish_steps = biggish.iter().map(|(s, _)| *s).collect_vec();
+    // let biggish_steps = biggish.iter().map(|(s, _)| *s).collect_vec();
+    let filt_biggest_steps = filter_stepcounts(&biggest_steps);
     if print {
-      display_stepcounts(biggish_steps.clone());
+      println!("biggest steps");
+      display_stepcounts(biggest_steps.clone());
+      println!("filtered biggish steps");
+      display_stepcounts(filt_biggest_steps.clone());
     }
-    biggish_steps
+    filt_biggest_steps
   };
   let mut tape_extents = vec![];
   for &r_step in &stepcounts {

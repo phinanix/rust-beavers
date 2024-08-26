@@ -321,6 +321,8 @@ pub fn lr_simulate_beep(
 }
   
 pub fn aggregate_and_display_lr_res_beep(results: Vec<LRResultBeep>) {
+  let total_machines = results.len();
+
   let mut halt_count = 0;
   let mut qh_cycle_count = 0;
   let mut nqh_cycle_count = 0;
@@ -338,7 +340,8 @@ pub fn aggregate_and_display_lr_res_beep(results: Vec<LRResultBeep>) {
     }
   }
   println!(
-    "halted: {} quasihalted (cycled): {} quashalted (lr): {}\nnon-qh (cycled): {} non-qh (lr): {} inconclusive: {}",
+    "total machines: {}\nhalted: {} quasihalted (cycled): {} quashalted (lr): {}\nnon-qh (cycled): {} non-qh (lr): {} inconclusive: {}",
+    total_machines,
     halt_count, qh_cycle_count, qh_lr_count,
     nqh_cycle_count, nqh_lr_count, inconclusive_count
   );

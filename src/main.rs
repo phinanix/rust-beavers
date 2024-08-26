@@ -197,13 +197,13 @@ fn run_machine(machine: &SmallBinMachine) {
 
 fn run_machine_interactive(machine: &SmallBinMachine) {
   println!("\nrunning machine: {}", machine.to_compact_format());
-  let num_wxyz_steps = 10_000;
-  let max_proof_steps = 20_000;
-  let max_proof_tape = 300;  
+  // let num_wxyz_steps = 10_000;
+  // let max_proof_steps = 20_000;
+  // let max_proof_tape = 300;  
 
-  // let num_wxyz_steps = 3_000;
-  // let max_proof_steps = 2_000;
-  // let max_proof_tape = 100;
+  let num_wxyz_steps = 3_000;
+  let max_proof_steps = 2_000;
+  let max_proof_tape = 100;
   println!("wxyz steps: {} proof steps: {} proof max_tape: {}", num_wxyz_steps, max_proof_steps, max_proof_tape); 
   let mut input_text = String::new();
     io::stdin()
@@ -220,8 +220,8 @@ fn run_machine_interactive(machine: &SmallBinMachine) {
   // rulebook.add_rules(chain_rules);
   let num_steps = 800;
   Tape::simulate_from_start(machine, num_steps, true);
-  // let ans = try_prove_bouncer(machine, num_wxyz_steps, max_proof_steps, max_proof_tape, true); 
-  // println!("mb proof: {}", print_mb_proof(&ans));
+  let ans = try_prove_bouncer(machine, num_wxyz_steps, max_proof_steps, max_proof_tape, true); 
+  println!("mb proof: {}", print_mb_proof(&ans));
   println!("\njust ran machine: {}", machine.to_compact_format());
   // println!("vanilla");
   // ExpTape::simulate_from_start(machine, num_steps);
@@ -674,11 +674,12 @@ fn diff_machine_files(f1: &str, f2: &str,
 
 fn main() {
   // 1_000 instead of 1_000_000 misses 296 machines (of ~3M, so 0.01%), but we can always come back to those
-  let num_lr_steps = 1_000;
+  let num_lr_steps = 10_000;
   let num_rule_steps = 200;
   dbg!(num_lr_steps, num_rule_steps);
 
   // let first_machine = SmallBinMachine::start_machine(4, Bit(true));
+  // // let first_machine = SmallBinMachine::from_compact_format("1RB0LD_0RC1RB_1RD0RD_1LA0RC");
   // // scan_from_machine(
   // scan_from_machine_beep(
   //   &first_machine,
@@ -692,19 +693,21 @@ fn main() {
   //   None,
   // );
 
-  // scan_from_filename_beep(
-  //   "size4_qh_holdouts_24_july_24", 
-  //   num_lr_steps, 
-  //   num_rule_steps, 
-  //   None,
-  // );
-
-  run_random_machines_from_file(
+  scan_from_filename_beep(
     "machine_lists/size4_bouncer_aligned_truncated_10k_20k_300_23_august_24",
-    // "machine_lists/size4_bounce_proven_only_3k_23_aug_24",
-    //"size4_bouncer_not_quite_qh_holdouts_2_august_24",
-    // "size3_qh_holdouts_30_july_24",
-    25);
+  //   "size4_qh_holdouts_24_july_24", 
+    num_lr_steps, 
+    num_rule_steps, 
+    false,
+    Some("machine_lists/size4_bouncer_more_goes_left_10k_20k_300_26_august_24")
+  );
+
+  // run_random_machines_from_file(
+  //   // "machine_lists/size4_bouncer_aligned_truncated_10k_20k_300_23_august_24",
+  //   // "machine_lists/size4_bounce_proven_only_3k_23_aug_24",
+  //   "machine_lists/size4_bouncer_not_quite_qh_holdouts_2_august_24",
+  //   // "size3_qh_holdouts_30_july_24",
+  //   25);
 
   // run_all_machines_from_file("machine_lists/size4_bouncer_aligned_proven_only_10k_23_aug_24");
 

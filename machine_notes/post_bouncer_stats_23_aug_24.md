@@ -53,37 +53,82 @@ translated bouncer with shadow
 24 1RB1LC_1LB0RC_1LD1LA_0LA---
 translated bouncer with shadow
 
+idx 3
+analysis of counter: 1RB1RC_0LC1LA_0LB1RD_1LB0RD
+configs with
+A >T< 
+2735 TT FF FF
+2743 TT TF FF
+2751 TF FT FF
+2755 TT FT FF
+2763 TT TT FF
+
+2775 TT FF TF
+2783 TT TF TF
+2791 TF FT TF
+2785 TT FT TF
+2803 TT TT TF
+
+2815 TF FF FT
+2819 TT FF FT
+2827 TT TF FT
+2835 TF FT FT
+2839 TT FT FT
+2859 TT FF TT
+2867 TT TF TT
+2875 TF FT TT
+2879 TT FT TT
+2887 TT TT TT
+2903 TT FF FF T
+
+bits flipped which flip bit 2 to false: 
+bit 4
+bit 4
+bit 6
+bit 4
+bit 4
+
+bits flipped which didn't flip bit 2 to tfalse
+3
+3
+3
+3
+3
+5
+3
+3
+7
+
 total 
 12 two_stage 9 counter 
 3 translated bouncer with shadow 1 fast tail eating dragon
 
 aggregating with results from 2 aug 24: 
 9 grows_left 5 two_stage 4 three_stage 4 counter 
-1 midpoint bouncer 1 translated bouncer with shadow 1 cubic bouncer
+1 midpoint bouncer 1 translated bouncer with shadow 1 translated cycler
 9 grows_left = 9/25 = 36%, diff in bouncers from then to now: 51539 / 62127 = 83%; 1-x = 17%, oof. 
 
-dropping grows left gives 16 machines and 25 machines
+dropping grows left and TC gives 15 machines and 25 machines
 5 two_stage 4 three_stage 4 counter 
-1 midpoint bouncer 1 translated bouncer with shadow 1 cubic bouncer
+1 midpoint bouncer 1 translated bouncer with shadow 
 12 two_stage 9 counter 
 3 translated bouncer with shadow 1 fast tail eating dragon
 total
 17 two_stage 4 three_stage 13 counter (34)
-4 translated bouncer with shadow 1 midpoint bouncer 1 cubic bouncer 1 fast tail eating dragon (7)
+4 translated bouncer with shadow 1 midpoint bouncer 1 fast tail eating dragon (7)
 41 total
 7 categories
-13/41 = est 32% counters
-ie est. remaining counters are 51539 * 13/41 = 16342
+13/40 = est 33% counters
+ie est. remaining counters are 51539 * 13/40 = 16750
 var = n*p(1-p) = 41 * (.32*.68) = 41 * .2176 = 8.9
 std_dev = 2.99
-rel_err = 3/41 = 7%
+rel_err = 3/40 = 7.5%
 
-17 (41%)  two_stage 
-13 (32%)  counter
-4  (9.8%) three_stage 
-4  (9.8%) translated bouncer with shadow 
-1  (2.4%) midpoint bouncer 
-1  (2.4%) cubic bouncer 
-1  (2.4%) fast tail eating dragon 
-41 total
+17 (43%)  two_stage 
+13 (33%)  counter
+4  (10%) three_stage 
+4  (10%) translated bouncer with shadow 
+1  (2.5%) midpoint bouncer 
+1  (2.5%) fast tail eating dragon 
+40 total
 
