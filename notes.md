@@ -407,3 +407,6 @@ analyzed 51539 machines. bouncers: 2086 of which QH bouncers: 31 notQH bouncers:
 wrote 49453 machines to file: machine_lists/size4_bouncer_more_goes_left_10k_20k_300_26_august_24
 
 used the change to prove an additional 2086 machines!
+
+so in fact of 51539 machines, 2086 (4.0%) were goes_left holdouts, but I didn't find any of them
+in a 25 machine scan, which is a 35.6% chance of happening or just over 1 in 3. 

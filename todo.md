@@ -5,8 +5,9 @@ TODOs
 ✓ categorize stuff remaining after bouncers
 ✓ aggregate all collected stats so far to estimate eg. proportion of counters
 
-* check all goes_left machine and no other machines were proven from previous categorization
-* perform a quick zoology writeup 
+✓ check all goes_left machine and no other machines were proven from previous categorization
+✓ perform a quick zoology writeup 
+
 * read through 30 machines that QH and that don't to ensure they are decided correctly
 * categorize an additional 60 machines that remain after bouncers
 * aggregate stats again
