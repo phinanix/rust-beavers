@@ -249,21 +249,6 @@ unfixed -> fixed
 3k:  99239 -> 98046 = 1193
 10k: 99216 -> 98020 = 1196
 
-TODOs
-✓ decide QH via bouncing
-✓ decide bouncers that depend on "alignment" via shifting the tape over
-* categorize stuff remaining after bouncers
-* aggregate all collected stats so far to estimate eg. proportion of counters
-* read through 10-30 machines that QH and that don't to ensure they are decided correctly
-* run fmt
-* fix tests
-* aggregate stats to get summary of what machines likely remain
-* implement "golden master testing"
-* start implementing the musical analyzer / compression-based algorithm
-* for those machines that do QH, determine *when* they QH
-CouldDOs:
-✓ for bouncers, start detection later / cut off the first few things to dodge beginning-effects
-
 implemented qh detection for bouncers!
 there were 150016 undecided machines
 wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
