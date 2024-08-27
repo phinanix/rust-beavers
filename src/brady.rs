@@ -1,9 +1,19 @@
-use std::{collections::HashSet, fmt::{Debug, Display}, ops::Sub};
+use std::{
+  collections::HashSet,
+  fmt::{Debug, Display},
+  ops::Sub,
+};
 
 use crate::{
-  rules::{ReadShift, Rulebook}, simulate::{one_rule_step, RuleStepResult::*}, tape::{disp_list_bit, ExpTape, Tape}, turing::{
-    Bit, Dir::{self, L, R}, Phase, SmallBinMachine, State, TapeSymbol, Turing
-  }, BL
+  rules::{ReadShift, Rulebook},
+  simulate::{one_rule_step, RuleStepResult::*},
+  tape::{disp_list_bit, ExpTape, Tape},
+  turing::{
+    Bit,
+    Dir::{self, L, R},
+    Phase, SmallBinMachine, State, TapeSymbol, Turing,
+  },
+  BL,
 };
 use either::{
   Either,
@@ -60,7 +70,7 @@ pub fn get_rs_hist_for_machine<P: Phase, S: TapeSymbol>(
   return Right((history, readshifts));
 }
 
-//3 fields are step, l/r, dir 
+//3 fields are step, l/r, dir
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Record(pub usize, pub i32, pub Dir);
 
@@ -94,7 +104,6 @@ pub fn find_records(readshifts: &[ReadShift]) -> Vec<Record> {
     cur_rs = ReadShift::normalize(ReadShift::combine(cur_rs, new_rs));
     // println!("{}", cur_rs);
     if cur_rs.l < prev_rs.l {
-      
       out.push(Record(i, cur_rs.l, Dir::L));
     }
     if cur_rs.r > prev_rs.r {
@@ -107,15 +116,15 @@ pub fn find_records(readshifts: &[ReadShift]) -> Vec<Record> {
 fn find_turnarounds(rs: &[ReadShift]) -> Vec<(usize, i32)> {
   let mut out = vec![];
   // println!("rses {:?}", rs);
-  for i in 1..rs.len()-1 {
-    let prev = rs[i-1].s; 
+  for i in 1..rs.len() - 1 {
+    let prev = rs[i - 1].s;
     let cur = rs[i].s;
-    let next = rs[i+1].s;
+    let next = rs[i + 1].s;
     if cur > prev && cur > next {
       out.push((i, cur))
     }
   }
-  out  
+  out
 }
 
 //extracts and returns the biggest turnarounds, then the rest
@@ -144,7 +153,7 @@ pub fn filter_records<'a>(records: &[Record]) -> Vec<Record> {
   let mut out = vec![];
   let mut max_diff_so_far = 0;
   let mut prev_record = match records.first() {
-    None => return out, 
+    None => return out,
     Some(r) => *r,
   };
   for &record in &records[1..] {
@@ -162,7 +171,7 @@ pub fn filter_stepcounts<'a>(stepcounts: &[usize]) -> Vec<usize> {
   let mut out = vec![];
   let mut max_diff_so_far = 0;
   let mut prev_stepcount = match stepcounts.first() {
-    None => return out, 
+    None => return out,
     Some(r) => *r,
   };
   for &stepcount in &stepcounts[1..] {
@@ -177,26 +186,42 @@ pub fn filter_stepcounts<'a>(stepcounts: &[usize]) -> Vec<usize> {
 }
 
 pub fn split_records(records: Vec<Record>) -> (Vec<Record>, Vec<Record>) {
-  let left_records = records.iter().filter(|Record(_, _, d)| *d == L).map(|x| *x).collect_vec();
-  let right_records = records.iter().filter(|Record(_, _, d)| *d == R).map(|x| *x).collect_vec();
+  let left_records = records
+    .iter()
+    .filter(|Record(_, _, d)| *d == L)
+    .map(|x| *x)
+    .collect_vec();
+  let right_records = records
+    .iter()
+    .filter(|Record(_, _, d)| *d == R)
+    .map(|x| *x)
+    .collect_vec();
   (left_records, right_records)
 }
 
 fn truncate_start<T>(vec: &mut Vec<T>, to_take: usize, min_remain: usize) {
   let amount_to_remove = vec.len().saturating_sub(min_remain).min(to_take);
   for _ in 0..amount_to_remove {
-      vec.remove(0);
+    vec.remove(0);
   }
 }
 /*
 returns the left records filtered and the right records filtered
  */
 pub fn split_and_filter_records(records: Vec<Record>) -> (Vec<Record>, Vec<Record>) {
-  let mut left_record_unfilt = records.iter().filter(|Record(_, _, d)| *d == L).cloned().collect_vec();
-  let mut right_record_unfilt = records.iter().filter(|Record(_, _, d)| *d == R).cloned().collect_vec();
+  let mut left_record_unfilt = records
+    .iter()
+    .filter(|Record(_, _, d)| *d == L)
+    .cloned()
+    .collect_vec();
+  let mut right_record_unfilt = records
+    .iter()
+    .filter(|Record(_, _, d)| *d == R)
+    .cloned()
+    .collect_vec();
 
-  let to_take = 4; 
-  let min_remain = 4; 
+  let to_take = 4;
+  let min_remain = 4;
   truncate_start(&mut left_record_unfilt, to_take, min_remain);
   truncate_start(&mut right_record_unfilt, to_take, min_remain);
 
@@ -233,7 +258,10 @@ pub fn difference_of<T: CheckedSub + Copy + Debug>(xs: &[T]) -> Vec<T> {
 }
 
 fn display_stepcounts(steps: Vec<usize>) {
-  let steps: Vec<i32> = steps.into_iter().map(|x|x.try_into().unwrap()).collect_vec();
+  let steps: Vec<i32> = steps
+    .into_iter()
+    .map(|x| x.try_into().unwrap())
+    .collect_vec();
   println!("steps: {:?}", steps);
   if !monotonic(&steps) {
     println!("steps wasn't monotonic");
@@ -261,9 +289,13 @@ fn display_record_steps(records: Vec<Record>) {
   display_stepcounts(steps);
 }
 
-fn split_tape_xz4y(mut len_x: usize, mut len_y: usize, len_z: usize, left_tape: Vec<Bit>, print: bool)
-  -> Result<(Vec<Bit>, Vec<Bit>, Vec<Bit>), &'static str>
-{
+fn split_tape_xz4y(
+  mut len_x: usize,
+  mut len_y: usize,
+  len_z: usize,
+  left_tape: Vec<Bit>,
+  print: bool,
+) -> Result<(Vec<Bit>, Vec<Bit>, Vec<Bit>), &'static str> {
   let left_tape_len = left_tape.len();
   assert_eq!(len_x + len_y + 4 * len_z, left_tape_len);
 
@@ -273,9 +305,13 @@ fn split_tape_xz4y(mut len_x: usize, mut len_y: usize, len_z: usize, left_tape: 
   }
 
   //include one copy of z so that x is not empty
-  if len_x == 0 {len_x += len_z}
+  if len_x == 0 {
+    len_x += len_z
+  }
   //include one copy of z so that y is not empty
-  if len_y == 0 {len_y += len_z}
+  if len_y == 0 {
+    len_y += len_z
+  }
   let x = &left_tape[0..len_x];
   let y = &left_tape[(left_tape.len() - len_y)..];
 
@@ -290,7 +326,14 @@ fn split_tape_xz4y(mut len_x: usize, mut len_y: usize, len_z: usize, left_tape: 
         a
       } else {
         if print {
-          println!("failed to extract z from z4: {} and zs: {} {} {} {}", BL(z4), BL(zs[0]), BL(zs[1]), BL(zs[2]), BL(zs[3]));
+          println!(
+            "failed to extract z from z4: {} and zs: {} {} {} {}",
+            BL(z4),
+            BL(zs[0]),
+            BL(zs[1]),
+            BL(zs[2]),
+            BL(zs[3])
+          );
         }
         return Err("failed to extract z from z4 and zs");
       }
@@ -303,7 +346,7 @@ fn split_tape_xz4y(mut len_x: usize, mut len_y: usize, len_z: usize, left_tape: 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BouncerHypothesis {
   w: Vec<Bit>,
-  x: Vec<Bit>, 
+  x: Vec<Bit>,
   y: Vec<Bit>,
   z: Vec<Bit>,
   state_0: State,
@@ -311,27 +354,35 @@ pub struct BouncerHypothesis {
 
 impl Display for BouncerHypothesis {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      f.write_fmt(format_args!("BouncerHypothesis w: {} x: {} y: {} z: {} state_0: {} ", 
-          BL(&self.w), BL(&self.x), BL(&self.y), BL(&self.z), self.state_0))
+    f.write_fmt(format_args!(
+      "BouncerHypothesis w: {} x: {} y: {} z: {} state_0: {} ",
+      BL(&self.w),
+      BL(&self.x),
+      BL(&self.y),
+      BL(&self.z),
+      self.state_0
+    ))
   }
 }
 // returns: w, x, y, z, state, for the config x z^4 y< w
-pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool) 
-  -> Result<Vec<BouncerHypothesis>, &'static str> 
-{
+pub fn find_bouncer_wxyz(
+  machine: &SmallBinMachine,
+  num_steps: u32,
+  print: bool,
+) -> Result<Vec<BouncerHypothesis>, &'static str> {
   /*
   goal: extract w, x, y, z st the machine satisfies x z^n y< w => x z^(n+1) y< w
 
-  full strat: 
+  full strat:
     run machine for N steps, tracking history and readshift
     extract all "records", the times when the tape increases in size
       split those into L and R
-      within that, take only times when the difference in stepcount from previous 
-       is larger than has been seen so far (since if a machine grows the tape by 2 
+      within that, take only times when the difference in stepcount from previous
+       is larger than has been seen so far (since if a machine grows the tape by 2
        for example, there are 2 records immediately after one another)
-    look at the right records, and calculate their "tape extents" 
+    look at the right records, and calculate their "tape extents"
       (the size of the live tape in each) and the diffs thereof
-    if the last 2 diffs are identical, guess that this is a valid size for z, 
+    if the last 2 diffs are identical, guess that this is a valid size for z,
       otherwise give up
     assume the last tape is x z^4 y where |x| = |y| (giving the bonus 1 to y
       in the case of an odd number, not that it matters)
@@ -339,8 +390,8 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
     from z^4 extract z if it is 4 of the same thing, otherwise give up
     return x z y
 
-    the main improvement here to me is that if there is never a right side record, 
-    we should switch to using the left side records, but otherwise proceed identically    
+    the main improvement here to me is that if there is never a right side record,
+    we should switch to using the left side records, but otherwise proceed identically
    */
   // let print = false;
   if print {
@@ -380,7 +431,7 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
   // }
   let (unfilt_left_records, unfilt_right_records) = split_records(records.clone());
 
-  if print {  
+  if print {
     println!("unfiltered left records");
     display_record_steps(unfilt_left_records.clone());
     println!("unfiltered right records");
@@ -388,7 +439,7 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
   }
 
   let (left_records, right_records) = split_and_filter_records(records);
-  
+
   if print {
     println!("\nfiltered left");
     display_record_steps(left_records);
@@ -396,19 +447,21 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
     display_record_steps(right_records.clone());
   }
 
-  let mut right_stepcounts = unfilt_right_records.into_iter().map(|Record(i, _, _)| i).collect_vec();
-  let to_take = 4; 
-  let min_remain = 4; 
+  let mut right_stepcounts = unfilt_right_records
+    .into_iter()
+    .map(|Record(i, _, _)| i)
+    .collect_vec();
+  let to_take = 4;
+  let min_remain = 4;
   truncate_start(&mut right_stepcounts, to_take, min_remain);
-  
-  let filt_right_stepcounts = filter_stepcounts(&right_stepcounts);
 
+  let filt_right_stepcounts = filter_stepcounts(&right_stepcounts);
 
   // if right_records.len() < 2 {
   //   let turnarounds = find_turnarounds(&accumulate_rs(&rs));
   //   let biggish = {
   //     let mut biggest = vec![];
-  //     let mut rest = turnarounds.clone(); 
+  //     let mut rest = turnarounds.clone();
   //     while biggest.len() < 4 && rest.len() >=4 {
   //       (biggest, rest) = biggest_turnaround(&rest)
   //     }
@@ -436,8 +489,8 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
       let mut biggest_steps = biggest.iter().map(|(s, _)| *s).collect_vec();
       truncate_start(&mut biggest_steps, to_take, min_remain);
       let mut biggest_steps_filtered = filter_stepcounts(&biggest_steps);
-      let mut rest = turnarounds.clone(); 
-      while biggest_steps_filtered.len() < 4 && rest.len() >=4 {
+      let mut rest = turnarounds.clone();
+      while biggest_steps_filtered.len() < 4 && rest.len() >= 4 {
         (biggest, rest) = biggest_turnaround(&rest);
         biggest_steps = biggest.iter().map(|(s, _)| *s).collect_vec();
         biggest_steps_filtered = filter_stepcounts(&biggest_steps);
@@ -481,7 +534,6 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
   if print {
     println!("tape diffs  : {:?}", tape_diffs);
   }
-  
 
   let mb_len_z = match &tape_diffs[..] {
     [.., d, e, f] => {
@@ -507,7 +559,7 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
     Some(len_z) => len_z,
   };
   assert!(len_z > 0);
-  
+
   // let last_record = right_records.last().unwrap();
   let last_step = stepcounts.last().unwrap();
   let (_, last_phase, last_tape) = &hist[*last_step];
@@ -533,15 +585,13 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
   let mut possible_len_xs = vec![];
 
   // for change in min_change..=max_change {
-  
+
   dbg!("not trying different alignments");
   for change in 0..=0 {
-  
     if let Some(len_x) = base_len_x.checked_add_signed(change) {
       possible_len_xs.push(len_x)
     }
   }
-
 
   let Tape { mut left, head, right } = ExpTape::to_tape(last_tape);
   if print {
@@ -550,8 +600,8 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
   left.push(head);
   let last_tape_left_list: Vec<Bit> = left;
 
-  // extract w 
-  let w = right; 
+  // extract w
+  let w = right;
   // given several possible lens for x, y, and len z here we attempt to split tape into x z^4 y
   let mut xyzs = vec![];
   let mut xyz_errs = vec![];
@@ -563,7 +613,7 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
       None => continue,
     };
     match split_tape_xz4y(len_x, len_y, len_z, last_tape_left_list.clone(), print) {
-      Ok((x,y,z)) => {
+      Ok((x, y, z)) => {
         if print {
           println!(
             "extracted w x y z from tape at step {}:\n{}\ntapelist:\n{}\nlen w: {} len x: {} len y: {} len z: {}\nw: {} x: {} y: {} z: {}",
@@ -580,22 +630,21 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
             disp_list_bit(&z),
           );
         }
-      
-        xyzs.push((x,y,z))
-      },
+
+        xyzs.push((x, y, z))
+      }
       Err(err) => xyz_errs.push(err),
     }
   }
   if xyzs.len() == 0 {
-    return Err(xyz_errs[0])
+    return Err(xyz_errs[0]);
   }
   let mut hyps = vec![];
-  for (x,y,z) in xyzs {
-    let hyp = BouncerHypothesis{w: w.clone(), x, y, z, state_0: *last_phase};
+  for (x, y, z) in xyzs {
+    let hyp = BouncerHypothesis { w: w.clone(), x, y, z, state_0: *last_phase };
     hyps.push(hyp)
   }
-  return Ok(hyps)
-
+  return Ok(hyps);
 }
 
 fn split_first_n<T>(n: usize, iter: &mut impl Iterator<Item = T>) -> (Vec<T>, Vec<T>) {
@@ -609,10 +658,7 @@ fn split_first_n<T>(n: usize, iter: &mut impl Iterator<Item = T>) -> (Vec<T>, Ve
   (first, second)
 }
 
-fn split_last_n<T, I : ExactSizeIterator<Item = T>>(
-  n: usize, iter: &mut I
-) -> (Vec<T>, Vec<T>) 
-{  
+fn split_last_n<T, I: ExactSizeIterator<Item = T>>(n: usize, iter: &mut I) -> (Vec<T>, Vec<T>) {
   assert!(iter.len() > n);
   let first_len = iter.len() - n;
   split_first_n(first_len, iter)
@@ -622,42 +668,46 @@ pub enum ChunkSimRes {
   TimedOut,
   TapeSizeExceeded,
   FellLeft,
-  FellRight, 
-  GoalLeft, 
+  FellRight,
+  GoalLeft,
   GoalRight,
 }
 use ChunkSimRes::*;
 
 pub fn simulate_on_chunk(
-  machine: &SmallBinMachine, 
+  machine: &SmallBinMachine,
   mut state: State,
-  tape: &mut Tape<Bit>, 
-  left_blocked: bool, 
+  tape: &mut Tape<Bit>,
+  left_blocked: bool,
   right_blocked: bool,
-  goal_left_len: Option<usize>, 
+  goal_left_len: Option<usize>,
   goal_right_len: Option<usize>,
-  max_steps: u32, 
-  max_tape: usize, 
+  max_steps: u32,
+  max_tape: usize,
 ) -> (State, StateSet, ChunkSimRes) // return tape instead of mutating?
 {
   /*
-  we check two conditions: 
-   1) that neither side is longer than allowed. if there is a goal length, that's the limit, 
-      otherwise, the max_tape_size is the limit 
-   2) we check the shift left / right from start and ensure it's not larger than some fixed 
-      portion of the tape that is live if that side of the tape is "blocked" (this 
-      corresponds to running the machine on a tape that doesn't have 0* at the end) 
+  we check two conditions:
+   1) that neither side is longer than allowed. if there is a goal length, that's the limit,
+      otherwise, the max_tape_size is the limit
+   2) we check the shift left / right from start and ensure it's not larger than some fixed
+      portion of the tape that is live if that side of the tape is "blocked" (this
+      corresponds to running the machine on a tape that doesn't have 0* at the end)
    */
   // let mut step = 0;
   let print = false;
 
-  let mut disp = 0; 
-  let min_left_disp = if left_blocked 
-    {Some(-1 * i32::try_from(tape.left_length()).unwrap())} 
-    else {None};
-  let max_right_disp = if right_blocked 
-    {Some(i32::try_from(tape.right_length()).unwrap())} 
-    else {None};
+  let mut disp = 0;
+  let min_left_disp = if left_blocked {
+    Some(-1 * i32::try_from(tape.left_length()).unwrap())
+  } else {
+    None
+  };
+  let max_right_disp = if right_blocked {
+    Some(i32::try_from(tape.right_length()).unwrap())
+  } else {
+    None
+  };
 
   let mut state_set = HashSet::new();
   state_set.insert(state);
@@ -670,29 +720,26 @@ pub fn simulate_on_chunk(
   let right_len_target = goal_right_len.unwrap_or(max_tape);
 
   if print {
-    println!(
-      "step: {} state: {} tape: {}",
-      0, state, &tape
-    );
+    println!("step: {} state: {} tape: {}", 0, state, &tape);
   }
   for step in 1..=max_steps {
     let (new_state, dir) = match tape.step_dir(state, machine) {
-      Left(edge) => 
-        panic!("machine was not fully defined {:?} {} {}", edge, tape, machine.to_compact_format()),
+      Left(edge) => panic!(
+        "machine was not fully defined {:?} {} {}",
+        edge,
+        tape,
+        machine.to_compact_format()
+      ),
       Right((new_state, dir, steps_taken)) => {
         assert_eq!(steps_taken, 1);
         (new_state, dir.unwrap())
-      },
-      
+      }
     };
     state = new_state;
     state_set.insert(state);
     disp += dir.to_displacement();
     if print {
-      println!(
-        "step: {} state: {} tape: {}",
-        step, state, &tape
-      );
+      println!("step: {} state: {} tape: {}", step, state, &tape);
     }
 
     // check falling off
@@ -702,7 +749,7 @@ pub fn simulate_on_chunk(
     if max_right_disp.is_some_and(|max| disp > max) {
       return (state, state_set, FellRight);
     }
-    
+
     // check goal lengths
     if tape.left_length() >= left_len_target {
       assert_eq!(tape.left_length(), left_len_target);
@@ -729,16 +776,22 @@ type StateSet = HashSet<State>;
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
 pub struct BouncerProof {
   w: Vec<Bit>,
-  x: Vec<Bit>, 
-  y: Vec<Bit>, 
-  z: Vec<Bit>, 
+  x: Vec<Bit>,
+  y: Vec<Bit>,
+  z: Vec<Bit>,
   state_0: State,
 }
 
 impl Display for BouncerProof {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      f.write_fmt(format_args!("BouncerProof w: {} x: {} y: {} z: {} state_0: {} ", 
-          BL(&self.w), BL(&self.x), BL(&self.y), BL(&self.z), self.state_0))
+    f.write_fmt(format_args!(
+      "BouncerProof w: {} x: {} y: {} z: {} state_0: {} ",
+      BL(&self.w),
+      BL(&self.x),
+      BL(&self.y),
+      BL(&self.z),
+      self.state_0
+    ))
   }
 }
 
@@ -749,60 +802,60 @@ returns: either a proof or an error message
 note that x, y, z are in the "left frame" and w is in the "right frame"
 */
 pub fn construct_bouncer_proof(
-  // machine: &SmallBinMachine, state_0: State, w: &[Bit], x: &[Bit], y: &[Bit], z: &[Bit], 
-  machine: &SmallBinMachine, BouncerHypothesis { w, x, y, z, state_0 }: BouncerHypothesis,
-  max_steps: u32, max_tape: usize, print: bool
-)
-  -> Result<(BouncerProof, StateSet), &'static str> 
-{
+  // machine: &SmallBinMachine, state_0: State, w: &[Bit], x: &[Bit], y: &[Bit], z: &[Bit],
+  machine: &SmallBinMachine,
+  BouncerHypothesis { w, x, y, z, state_0 }: BouncerHypothesis,
+  max_steps: u32,
+  max_tape: usize,
+  print: bool,
+) -> Result<(BouncerProof, StateSet), &'static str> {
   /*
   here's the plan: we want to prove M is a bouncer, specifically that M satisfies
-  0* X Z^n Y < W 0* 
-  becomes 
+  0* X Z^n Y < W 0*
+  becomes
   0* X Z^(n+1) Y < W 0*
-  We are given W, X, Y, Z, so we just need to simulate M on small parts of the tape. 
+  We are given W, X, Y, Z, so we just need to simulate M on small parts of the tape.
 
   0* X Z Z^n Z Y < W 0*   sim Z Y < W 0* -> < Z1 Y1 0*
   now armed with Z1 and Y1 we're actually going to aim for a slightly different loop
   0* X Z Z^n     < Z1 Y1 0*
-  becomes 
+  becomes
   0* X Z Z^(n+1) < Z1 Y1 0*
-  via the following process: 
+  via the following process:
   0* X Z Z^n < Z1 Y1 0*    sim Z < Z1 -> < Z1 Z2
   0* X <  Z1 Z2^n Z2 Y1 0*  sim 0* X < Z1 -> 0* X1 Z3 >
   0* X1 Z3 > Z2^n Z2 Y1 0*  sim Z3 > Z2 -> Z4 Z3 >
   0* X1 Z4 Z4^n Z3 > Y1 0*  sim Z4 Z3 > Y1 0* -> A < B 0* where |B| = |Z1 Y1|
   0* X1 Z4 Z4^(n-1) A  < B  0* (which we hope is equal to)
   0* X Z Z^(n+1) < Z1 Y1 0*
-  we can ensure this with the following checks: 
+  we can ensure this with the following checks:
   check states match
-  check that B = Z1 Y1 
+  check that B = Z1 Y1
   check X1 Z4 Z4^(n-1) A = X Z Z^(n+1)
-      rewrite n-1 -> n 
+      rewrite n-1 -> n
       X1 Z4 Z4^n A = X Z Z^(n+2) ( = X Z^(n+1) Z^2 )
       by thm it sufficies to check n=0 n=1
       check (X1 Z4)    A = X Z   (Z Z)
       check (X1 Z4) Z4 A = X Z Z (Z Z)
 
    */
-  /* 
-  capabilities needed: 
-  * simulate M on [specific tape] until it falls off the [L/R] with the other side 
+  /*
+  capabilities needed:
+  * simulate M on [specific tape] until it falls off the [L/R] with the other side
       [0* / blocked]
   * simulate M on specific tape until it reaches a point where the live left side is
-      exactly N long. 
-  possible results of simulation: 
+      exactly N long.
+  possible results of simulation:
       * you hit the desired condition, and the final tape is returned
       * you hit a finite timeout and we give up
       * you fall off the forbidden side of the tape and we give up
       * (maybe) the tape grows too large and we give up
    */
   /*
-  note that x, y, and z are the the "left frame", which is to say they start with the 
-  thing farthest from the machine head and read towards the machine head. if 
-  you want to put something on the right half of the tape, as in Z < Z1, you have to flip it. 
+  note that x, y, and z are the the "left frame", which is to say they start with the
+  thing farthest from the machine head and read towards the machine head. if
+  you want to put something on the right half of the tape, as in Z < Z1, you have to flip it.
    */
-
 
   let mut state_set: StateSet = HashSet::new();
 
@@ -817,10 +870,10 @@ pub fn construct_bouncer_proof(
   let head = tape_left.pop().unwrap();
   let mut tape_right = vec![];
   tape_right.extend(w.clone());
-  let mut tape : Tape<Bit> = Tape {left: tape_left, head, right: tape_right};
+  let mut tape: Tape<Bit> = Tape { left: tape_left, head, right: tape_right };
   let (state_1, step_1_states, res) = simulate_on_chunk(
-    machine, state_0, &mut tape, 
-    true, false, None, None, max_steps, max_tape);
+    machine, state_0, &mut tape, true, false, None, None, max_steps, max_tape,
+  );
   match res {
     TimedOut => return Err("timed out step 1"),
     TapeSizeExceeded => return Err("taped out step 1"),
@@ -830,24 +883,24 @@ pub fn construct_bouncer_proof(
   }
   assert_eq!(tape.head, Bit(false));
   //we don't add in step_1_states yet because it should be a subset of steps 2-5
-  // I think even even a substep of step 5 
+  // I think even even a substep of step 5
 
-  // note that these are reversed due to being on the right. z1 is closest to the head, 
+  // note that these are reversed due to being on the right. z1 is closest to the head,
   //which means it's at the *end* of this vec
-  let z1y1 = tape.right; 
+  let z1y1 = tape.right;
   if print {
     println!("z1y1 {}", BL(&z1y1));
   }
   if z1y1.len() < z.len() {
     return Err("z1y1 too short");
   }
-  //we force length of z1 == length of z 
-  // we reverse everything so now they're in the left frame 
+  //we force length of z1 == length of z
+  // we reverse everything so now they're in the left frame
   let (z1, y1) = split_first_n(z.len(), &mut z1y1.into_iter().rev());
   if print {
     println!("z1 {} y1 {}", disp_list_bit(&z1), disp_list_bit(&y1));
   }
-  
+
   // sim Z < Z1 -> < Z1 Z2
   // note to be a bouncer this step needs to have same state in as out
   // ie need state_1 == state_2
@@ -859,10 +912,10 @@ pub fn construct_bouncer_proof(
   let head = left.pop().unwrap();
   // rev since Z1 is on the right
   let right = z1.iter().rev().cloned().collect_vec();
-  let mut tape = Tape {left, head, right};
+  let mut tape = Tape { left, head, right };
   let (state_2, step_2_states, res) = simulate_on_chunk(
-    machine, state_1, &mut tape, 
-    true, true, None, None, max_steps, max_tape);
+    machine, state_1, &mut tape, true, true, None, None, max_steps, max_tape,
+  );
   match res {
     TimedOut => return Err("timed out step 2"),
     TapeSizeExceeded => return Err("taped out step 2"),
@@ -877,26 +930,30 @@ pub fn construct_bouncer_proof(
   state_set.extend(&step_2_states);
 
   // extract z1, z2
-  let mut mb_z1z2 = tape.right; 
+  let mut mb_z1z2 = tape.right;
   // to put it in the left frame
   mb_z1z2.reverse();
   if print {
-    println!("mbz1z2 {} z1 {}", disp_list_bit(&mb_z1z2), disp_list_bit(&z1));
+    println!(
+      "mbz1z2 {} z1 {}",
+      disp_list_bit(&mb_z1z2),
+      disp_list_bit(&z1)
+    );
   }
 
-  assert_eq!(mb_z1z2.len(), z1.len()*2);
+  assert_eq!(mb_z1z2.len(), z1.len() * 2);
   //todo: could rewrite this to use the split helper
   if mb_z1z2[0..z1.len()] != z1 {
     return Err("z1z2 didn't start with z1");
   };
-  let z2 = mb_z1z2[z1.len()..2*z1.len()].to_vec();
+  let z2 = mb_z1z2[z1.len()..2 * z1.len()].to_vec();
   if print {
     println!("mbz1z2 {} z2 {}", BL(&mb_z1z2), BL(&z2));
   }
   if state_1 != state_2 {
-    return Err("state 1 and state 2 differed")
+    return Err("state 1 and state 2 differed");
   }
-  
+
   // sim 0* X < Z1 -> 0* X1 Z3 >
   if print {
     println!("step 3   sim 0* X < Z1 -> 0* X1 Z3 >");
@@ -906,10 +963,10 @@ pub fn construct_bouncer_proof(
   let head = left.pop().unwrap();
   // rev since it's right
   let right = z1.iter().rev().cloned().collect_vec();
-  let mut tape = Tape {left, head, right};
+  let mut tape = Tape { left, head, right };
   let (state_3, step_3_states, res) = simulate_on_chunk(
-    machine, state_2, &mut tape, 
-    false, true, None, None, max_steps, max_tape);
+    machine, state_2, &mut tape, false, true, None, None, max_steps, max_tape,
+  );
   match res {
     TimedOut => return Err("timed out step 3"),
     TapeSizeExceeded => return Err("taped out step 3"),
@@ -921,13 +978,13 @@ pub fn construct_bouncer_proof(
   assert_eq!(tape.head, Bit(false));
   state_set.extend(&step_3_states);
 
-  // extract X1 Z3 
+  // extract X1 Z3
   let x1z3 = tape.left;
   if print {
     println!("x1z3 {}", BL(&x1z3));
   }
   if x1z3.len() < z.len() {
-    return Err("x1z3 too short")
+    return Err("x1z3 too short");
   }
   let (x1, z3) = split_last_n(z.len(), &mut x1z3.into_iter());
   if print {
@@ -941,13 +998,13 @@ pub fn construct_bouncer_proof(
     println!("step 4   sim Z3 > Z2 -> Z4 Z3 >");
     println!("z3 {} z2 {}", BL(&z3), BL(&z2));
   }
-  let left = z3.clone(); 
+  let left = z3.clone();
   let mut right = z2.iter().rev().cloned().collect_vec();
   let head = right.pop().unwrap();
-  let mut tape = Tape {left, head, right};
+  let mut tape = Tape { left, head, right };
   let (state_4, step_4_states, res) = simulate_on_chunk(
-    machine, state_3, &mut tape, 
-    true, true, None, None, max_steps, max_tape);
+    machine, state_3, &mut tape, true, true, None, None, max_steps, max_tape,
+  );
   match res {
     TimedOut => return Err("timed out step 4"),
     TapeSizeExceeded => return Err("taped out step 4"),
@@ -959,22 +1016,22 @@ pub fn construct_bouncer_proof(
   assert_eq!(tape.head, Bit(false));
   state_set.extend(&step_4_states);
 
-  // extract Z4 Z3 
-  let z4z3 = tape.left; 
+  // extract Z4 Z3
+  let z4z3 = tape.left;
   if print {
     println!("mbz4z3 {}", BL(&z4z3));
   }
-  assert_eq!(z4z3.len(), z.len()*2);
+  assert_eq!(z4z3.len(), z.len() * 2);
 
   let (z4, mb_z3) = split_first_n(z.len(), &mut z4z3.into_iter());
   if print {
     println!("z4 {} mb_z3 {}", BL(&z4), BL(&mb_z3));
   }
   if mb_z3 != z3 {
-    return Err("mb_z3 didn't match z3 in step 4")
+    return Err("mb_z3 didn't match z3 in step 4");
   }
   if state_3 != state_4 {
-    return Err("state 3 and state 4 differed")
+    return Err("state 3 and state 4 differed");
   }
 
   // sim Z4 Z3 > Y1 0* -> A < B 0* where |B| = |Z1 Y1|
@@ -985,11 +1042,19 @@ pub fn construct_bouncer_proof(
   left.extend(&z3);
   let mut right = y1.iter().rev().cloned().collect_vec();
   let head = right.pop().unwrap();
-  let mut tape = Tape {left, head, right};
+  let mut tape = Tape { left, head, right };
   let goal_right_len = z1.len() + y1.len();
   let (state_5, step_5_states, res) = simulate_on_chunk(
-    machine, state_4, &mut tape, 
-    true, false, None, Some(goal_right_len), max_steps, max_tape);
+    machine,
+    state_4,
+    &mut tape,
+    true,
+    false,
+    None,
+    Some(goal_right_len),
+    max_steps,
+    max_tape,
+  );
   match res {
     TimedOut => return Err("timed out step 5"),
     TapeSizeExceeded => return Err("taped out step 5"),
@@ -998,9 +1063,8 @@ pub fn construct_bouncer_proof(
     GoalLeft => unreachable!(),
     GoalRight => (),
   }
-  
+
   state_set.extend(&step_5_states);
-  
 
   let mut b = tape.right;
   b.reverse();
@@ -1016,22 +1080,23 @@ pub fn construct_bouncer_proof(
   }
   // check that final state equals first state
   if state_5 != state_1 {
-    return Err("state 5 differed from state 1")
+    return Err("state 5 differed from state 1");
   }
-  // check that B = Z1 Y1   
-  assert_eq!(b.len(), z1.len()+y1.len());
-  let (mb_z1, mb_y1) = split_first_n(z1.len(), &mut b.into_iter()); 
+  // check that B = Z1 Y1
+  assert_eq!(b.len(), z1.len() + y1.len());
+  let (mb_z1, mb_y1) = split_first_n(z1.len(), &mut b.into_iter());
   if print {
     println!("mb_z1 {} mb_y1 {}", BL(&mb_z1), BL(&mb_y1));
   }
   if mb_z1 != z1 {
-    return Err("mb_z1 didn't match z1 step 6")
+    return Err("mb_z1 didn't match z1 step 6");
   }
   if mb_y1 != y1 {
-    return Err("mb_y1 didn't match y1 step 6")
+    return Err("mb_y1 didn't match y1 step 6");
   }
   if print {
-    println!("x1 {} z4 {} a {} x {} z {}", 
+    println!(
+      "x1 {} z4 {} a {} x {} z {}",
       disp_list_bit(&x1),
       disp_list_bit(&z4),
       disp_list_bit(&a),
@@ -1040,28 +1105,34 @@ pub fn construct_bouncer_proof(
     );
   }
   /*
-  check X1 Z4 Z4^n A = X Z Z^(n+1)
-      by thm it sufficies to check n=0 n=1
-      check (X1 Z4)    A = X Z   (Z Z)
-      check (X1 Z4) Z4 A = X Z Z (Z Z)
+   check X1 Z4 Z4^n A = X Z Z^(n+1)
+       by thm it sufficies to check n=0 n=1
+       check (X1 Z4)    A = X Z   (Z Z)
+       check (X1 Z4) Z4 A = X Z Z (Z Z)
 
- */
+  */
   let mut x1z4a: Vec<Bit> = vec![];
   x1z4a.extend(&x1);
   x1z4a.extend(&z4);
-  x1z4a.extend(&a); 
+  x1z4a.extend(&a);
   let mut xzzz = vec![];
   xzzz.extend(&x);
   xzzz.extend(&z);
   xzzz.extend(&z);
   xzzz.extend(&z);
   if print {
-    println!("len x1z4a {} len xzzz {}\nx1z4a {} xzzz {}", x1z4a.len(), xzzz.len(), BL(&x1z4a), BL(&xzzz));
+    println!(
+      "len x1z4a {} len xzzz {}\nx1z4a {} xzzz {}",
+      x1z4a.len(),
+      xzzz.len(),
+      BL(&x1z4a),
+      BL(&xzzz)
+    );
   }
   // this doesn't actually hold; it was proven wrong by 1RB1RH_1RC1RD_1RD1LC_0LC1RB
   // assert_eq!(x1z4a.len(), xzzz.len(), "x1z4a {} xzzz {}", BL(&x1z4a), BL(&xzzz));
   if x1z4a != xzzz {
-    return Err("n=0 of loop case failed: x1z4a != xzzz")
+    return Err("n=0 of loop case failed: x1z4a != xzzz");
   }
 
   let mut x1z4z4a: Vec<Bit> = vec![];
@@ -1077,41 +1148,52 @@ pub fn construct_bouncer_proof(
   xzzzz.extend(&z);
   assert_eq!(x1z4z4a.len(), xzzzz.len());
   if x1z4z4a != xzzzz {
-    return Err("n=1 of loop case failed")
+    return Err("n=1 of loop case failed");
   }
 
   // this assertion only applies if we have a proof, ie if it is actually a bouncer
   // so we check now
-  assert!(step_1_states.is_subset(&step_5_states), "step1 step5 subset check {}", machine.to_compact_format());
+  assert!(
+    step_1_states.is_subset(&step_5_states),
+    "step1 step5 subset check {}",
+    machine.to_compact_format()
+  );
 
-  let proof = BouncerProof { w: w.to_vec(), x: x.to_vec(), y: y.to_vec(), z: z.to_vec(), state_0 };
-  
+  let proof = BouncerProof {
+    w: w.to_vec(),
+    x: x.to_vec(),
+    y: y.to_vec(),
+    z: z.to_vec(),
+    state_0,
+  };
+
   return Ok((proof, state_set));
 }
 
-pub fn try_prove_bouncer(machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize, print: bool)
- -> Result<(BouncerProof, StateSet), &'static str> 
-{
-  
+pub fn try_prove_bouncer(
+  machine: &SmallBinMachine,
+  num_wxyz_steps: u32,
+  max_proof_steps: u32,
+  max_proof_tape: usize,
+  print: bool,
+) -> Result<(BouncerProof, StateSet), &'static str> {
   let hypotheses = find_bouncer_wxyz(&machine, num_wxyz_steps, print)?;
 
   let mut err = None;
   for hypothesis in hypotheses {
     match construct_bouncer_proof(&machine, hypothesis, max_proof_steps, max_proof_tape, print) {
-        Ok(proof) => return Ok(proof),
-        Err(e) => err = Some(e),
+      Ok(proof) => return Ok(proof),
+      Err(e) => err = Some(e),
     }
   }
   Err(err.expect("zero hypotheses"))
-  
 }
 
 pub type MbBounce = Result<(BouncerProof, StateSet), &'static str>;
 
-pub fn print_mb_proof(mb_proof: &MbBounce) -> String{
+pub fn print_mb_proof(mb_proof: &MbBounce) -> String {
   match mb_proof {
-    Ok((proof, states_used)) 
-      => format!("{} using states {:?}", proof, states_used),
+    Ok((proof, states_used)) => format!("{} using states {:?}", proof, states_used),
     Err(s) => format!("Err: {}", s),
   }
 }

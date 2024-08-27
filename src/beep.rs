@@ -1,4 +1,3 @@
-
 use std::{collections::HashSet, fs, io, process::exit};
 
 use either::Either::{Left, Right};
@@ -8,29 +7,75 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 use crate::{
-  aggregate_and_display_bouncer_res, brady::{construct_bouncer_proof, difference_of, find_bouncer_wxyz, find_records, get_rs_hist_for_machine, split_and_filter_records, try_prove_bouncer, BouncerProof, MbBounce, Record}, dump_machines_to_file, get_bouncer_undecided, linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult}, load_machines_from_file, machines_to_str, macro_machines::{MacroMachine, MacroState}, prove_with_brady_bouncer, rules::{detect_chain_rules, Rulebook}, run_machine, simulate::{aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res, simulate_proving_rules}, tape::{disp_list_bit,tnf_simulate, ExpTape, Tape}, turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT}, turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100}
+  aggregate_and_display_bouncer_res,
+  brady::{
+    construct_bouncer_proof, difference_of, find_bouncer_wxyz, find_records,
+    get_rs_hist_for_machine, split_and_filter_records, try_prove_bouncer, BouncerProof, MbBounce,
+    Record,
+  },
+  dump_machines_to_file, get_bouncer_undecided,
+  linrecur::{aggregate_and_display_lr_res, lr_simulate, LRResult},
+  load_machines_from_file, machines_to_str,
+  macro_machines::{MacroMachine, MacroState},
+  prove_with_brady_bouncer,
+  rules::{detect_chain_rules, Rulebook},
+  run_machine,
+  simulate::{
+    aggregate_and_display_macro_proving_res, aggregate_and_display_proving_res,
+    simulate_proving_rules,
+  },
+  tape::{disp_list_bit, tnf_simulate, ExpTape, Tape},
+  turing::{Bit, Dir, Phase, SmallBinMachine, State, TapeSymbol, Turing, HALT},
+  turing_examples::{bouncers, decideable_by_macro, get_machine, undecided_size_4_random_100},
 };
 
-// by convention, the first step at which a state is never used again is the 
+// by convention, the first step at which a state is never used again is the
 // QH state. eg if a machine never uses a state, it quasihalts at step 0
-// if a machine only uses state A at the very start and then immediately 
+// if a machine only uses state A at the very start and then immediately
 // transitions to B, it quasihalts at step 1
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum LRResultBeep {
-  QHHalt { qh_step: u32, halt_step: u32},
-  QHCycle { qh_step: u32, start_step: u32, period: u32 },
-  NonQHCycle { start_step: u32, period: u32 },
-  QHLR { qh_step: u32, start_step: u32, period: u32 },
-  NonQHLR { start_step: u32, period: u32 },
-  Inconclusive { steps_simulated: u32 },
+  QHHalt {
+    qh_step: u32,
+    halt_step: u32,
+  },
+  QHCycle {
+    qh_step: u32,
+    start_step: u32,
+    period: u32,
+  },
+  NonQHCycle {
+    start_step: u32,
+    period: u32,
+  },
+  QHLR {
+    qh_step: u32,
+    start_step: u32,
+    period: u32,
+  },
+  NonQHLR {
+    start_step: u32,
+    period: u32,
+  },
+  Inconclusive {
+    steps_simulated: u32,
+  },
 }
 use LRResultBeep::*;
-  
-struct LastUsed {num_states: u8, step: u32, last_used: [i32; 10]}
+
+struct LastUsed {
+  num_states: u8,
+  step: u32,
+  last_used: [i32; 10],
+}
 
 impl LastUsed {
   pub fn new(num_states: u8) -> Self {
-    assert!(num_states < 10 && num_states > 0, "bad many states {}", num_states);
+    assert!(
+      num_states < 10 && num_states > 0,
+      "bad many states {}",
+      num_states
+    );
     LastUsed { num_states, step: 0, last_used: [-1; 10] }
   }
 
@@ -52,8 +97,8 @@ impl LastUsed {
   pub fn all_used_after(&self, step: u32) -> bool {
     self.state_slice().iter().all(|&step_used| {
       // dbg!(step_used);
-      let compare_step : i32 = step.try_into().unwrap();
-      assert_ne!(step_used, compare_step); 
+      let compare_step: i32 = step.try_into().unwrap();
+      assert_ne!(step_used, compare_step);
       step_used > compare_step
     })
   }
@@ -76,7 +121,7 @@ fn detect_quasihalt_of_halter(machine: &SmallBinMachine, halt_steps: u32) -> u32
 
         if new_state.halted() {
           assert_eq!(steps_taken, halt_steps);
-          return last_used.qh_time()
+          return last_used.qh_time();
         }
 
         new_state
@@ -84,32 +129,36 @@ fn detect_quasihalt_of_halter(machine: &SmallBinMachine, halt_steps: u32) -> u32
     };
   }
 
-  panic!("halt detected first time but not second time {}", machine.to_compact_format())
+  panic!(
+    "halt detected first time but not second time {}",
+    machine.to_compact_format()
+  )
 }
 
-/* 
-  here's a simpler algorithm for deciding whether a machine quasihalts by LR / Cycle: 
+/*
+  here's a simpler algorithm for deciding whether a machine quasihalts by LR / Cycle:
     1. decide whether LR/Cycle exists
-    2. now knowing the length of LR/Cycle, step through the machine starting 
-        at 0 and length, and track the last time each transition was used 
+    2. now knowing the length of LR/Cycle, step through the machine starting
+        at 0 and length, and track the last time each transition was used
         in the slow and fast track
     3. once LR/Cycle is detected, you must decide whether the repeating block
         uses all transitions. you can do this by comparing the last_used_fast
         to the time at which cycling starts. if all transitions are used in the
         repeating block, that is a proof of non-quasi-halt
-    4. otherwise, the machine quasihalts before it enters the repeating block. 
+    4. otherwise, the machine quasihalts before it enters the repeating block.
         to determine when, use the last_used_slow data structure
 */
 /*
 repeat_steps is the number of steps slow and fast were apart when the recurrence
   was detected
-repeat_by_steps is the number of steps slow had taken when the recurrence was 
+repeat_by_steps is the number of steps slow had taken when the recurrence was
   detected
 */
 pub fn detect_quasihalt_of_lr_or_cycler(
-  machine: &SmallBinMachine, repeat_steps: u32, repeat_by_steps: u32
+  machine: &SmallBinMachine,
+  repeat_steps: u32,
+  repeat_by_steps: u32,
 ) -> LRResultBeep {
-
   let to_print = false;
   let mut fast_tape: Tape<Bit> = Tape::new();
   let mut fast_state = State::START;
@@ -131,13 +180,12 @@ pub fn detect_quasihalt_of_lr_or_cycler(
         fast_last_used.state_used(new_state.as_byte(), fast_steps);
         //unwrap justified because we didn't halt
         fast_cur_displacement += mb_dir.unwrap().to_displacement();
-        fast_disp_history.push(fast_cur_displacement);        
+        fast_disp_history.push(fast_cur_displacement);
         // leftmost = leftmost.min(cur_displacement);
         // rightmost = rightmost.max(cur_displacement);
         new_state
       }
     };
-
   }
 
   let mut slow_tape: Tape<Bit> = Tape::new();
@@ -148,10 +196,15 @@ pub fn detect_quasihalt_of_lr_or_cycler(
   slow_last_used.state_used(State::START.as_byte(), 0);
 
   for _slow_step in 0..=repeat_by_steps {
-  
     if to_print {
-      println!("slow steps: {} state: {:?} tape: {}", slow_steps, slow_state, &slow_tape);
-      println!("fast steps: {} state: {:?} tape: {}", fast_steps, fast_state, &fast_tape);
+      println!(
+        "slow steps: {} state: {:?} tape: {}",
+        slow_steps, slow_state, &slow_tape
+      );
+      println!(
+        "fast steps: {} state: {:?} tape: {}",
+        fast_steps, fast_state, &fast_tape
+      );
     }
 
     // cycle check
@@ -160,14 +213,14 @@ pub fn detect_quasihalt_of_lr_or_cycler(
       let period = repeat_steps;
       if fast_last_used.all_used_after(start_step) {
         // all were used, so no qh
-        return NonQHCycle { start_step, period }
+        return NonQHCycle { start_step, period };
       } else {
         // one was not used, so we qh immediately before entering this cycle
         let qh_time = slow_last_used.qh_time();
-        return QHCycle { qh_step: qh_time, start_step, period }
+        return QHCycle { qh_step: qh_time, start_step, period };
       }
     }
-  
+
     // LR check
     /* list of conditions:
     - states match
@@ -181,12 +234,8 @@ pub fn detect_quasihalt_of_lr_or_cycler(
       let leftmost: i32 = *disp_hist_slice.iter().min().unwrap();
       let rightmost: i32 = *disp_hist_slice.iter().max().unwrap();
 
-
       // todo: this is duplicating some work with all the indexing stuff
-      let start_left: i32 = leftmost
-        .abs_diff(slow_cur_displacement)
-        .try_into()
-        .unwrap();
+      let start_left: i32 = leftmost.abs_diff(slow_cur_displacement).try_into().unwrap();
       let start_right: i32 = rightmost
         .abs_diff(slow_cur_displacement)
         .try_into()
@@ -206,7 +255,6 @@ pub fn detect_quasihalt_of_lr_or_cycler(
 
       let index_left: i32 = (fast_tape.left_length() as i32).min(end_left);
       let index_right: i32 = (fast_tape.right_length() as i32).min(end_right);
-
 
       if to_print {
         dbg!(
@@ -246,11 +294,11 @@ pub fn detect_quasihalt_of_lr_or_cycler(
           let period = repeat_steps;
           if fast_last_used.all_used_after(start_step) {
             // all were used, so no qh
-            return NonQHLR { start_step, period }
+            return NonQHLR { start_step, period };
           } else {
             // one was not used, so we qh immediately before entering this cycle
             let qh_time = slow_last_used.qh_time();
-            return QHLR { qh_step: qh_time, start_step, period }
+            return QHLR { qh_step: qh_time, start_step, period };
           }
         }
       }
@@ -276,7 +324,7 @@ pub fn detect_quasihalt_of_lr_or_cycler(
         new_state
       }
     };
-    
+
     // update fast stuff
     fast_state = match fast_tape.step_dir(fast_state, machine) {
       Left(_unknown_edge) => unreachable!("machine is defined"),
@@ -289,37 +337,37 @@ pub fn detect_quasihalt_of_lr_or_cycler(
         fast_last_used.state_used(new_state.as_byte(), fast_steps);
         //unwrap justified because we didn't halt
         fast_cur_displacement += mb_dir.unwrap().to_displacement();
-        fast_disp_history.push(fast_cur_displacement);        
+        fast_disp_history.push(fast_cur_displacement);
         // leftmost = leftmost.min(cur_displacement);
         // rightmost = rightmost.max(cur_displacement);
         new_state
       }
     };
-
   }
 
-  panic!("we should have detected an lr or a cycle but we didn't {} {:?} {} {}", 
-      machine.to_compact_format(), lr_simulate(machine, 1500), repeat_steps, repeat_by_steps)
+  panic!(
+    "we should have detected an lr or a cycle but we didn't {} {:?} {} {}",
+    machine.to_compact_format(),
+    lr_simulate(machine, 1500),
+    repeat_steps,
+    repeat_by_steps
+  )
 }
 
-pub fn lr_simulate_beep(
-  machine: &SmallBinMachine, num_steps: u32
-) -> LRResultBeep
-{
+pub fn lr_simulate_beep(machine: &SmallBinMachine, num_steps: u32) -> LRResultBeep {
   let lr_res = lr_simulate(machine, num_steps);
   let (start_step, period) = match lr_res {
     LRResult::Inconclusive { steps_simulated } => return Inconclusive { steps_simulated },
     LRResult::Halt { num_steps } => {
       let qh_time = detect_quasihalt_of_halter(machine, num_steps);
-      return QHHalt { qh_step: qh_time, halt_step: num_steps }
-    },
+      return QHHalt { qh_step: qh_time, halt_step: num_steps };
+    }
     LRResult::Cycle { start_step, period } => (start_step, period),
     LRResult::LR { start_step, period } => (start_step, period),
   };
   detect_quasihalt_of_lr_or_cycler(machine, period, start_step)
-  
 }
-  
+
 pub fn aggregate_and_display_lr_res_beep(results: Vec<LRResultBeep>) {
   let total_machines = results.len();
 
@@ -348,19 +396,19 @@ pub fn aggregate_and_display_lr_res_beep(results: Vec<LRResultBeep>) {
 }
 
 pub fn search_for_translated_cyclers_beep(
-    first_machine: &SmallBinMachine,
-    num_steps: u32,
-  ) -> Vec<(SmallBinMachine, LRResultBeep)> {
-    let machines = tnf_simulate(first_machine.clone(), 130, true);
-    // dbg!(machines.len());
-    let mut lr_results = vec![];
-    for m in machines {
-      // let m_str = SmallBinMachine::to_compact_format(&m);
-      let lr_res = lr_simulate_beep(&m, num_steps);
-      lr_results.push((m, lr_res));
-    }
-    // aggregate_and_display_lr_res_beep(lr_results.iter().map(|(_m, res)| *res).collect());
-    lr_results
+  first_machine: &SmallBinMachine,
+  num_steps: u32,
+) -> Vec<(SmallBinMachine, LRResultBeep)> {
+  let machines = tnf_simulate(first_machine.clone(), 130, true);
+  // dbg!(machines.len());
+  let mut lr_results = vec![];
+  for m in machines {
+    // let m_str = SmallBinMachine::to_compact_format(&m);
+    let lr_res = lr_simulate_beep(&m, num_steps);
+    lr_results.push((m, lr_res));
+  }
+  // aggregate_and_display_lr_res_beep(lr_results.iter().map(|(_m, res)| *res).collect());
+  lr_results
 }
 
 fn get_undecided_beep(res: Vec<(SmallBinMachine, LRResultBeep)>) -> Vec<SmallBinMachine> {
@@ -376,8 +424,8 @@ fn get_undecided_beep(res: Vec<(SmallBinMachine, LRResultBeep)>) -> Vec<SmallBin
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 enum BouncerQHProof {
-  BouncerQH{proof: BouncerProof, qh_time: u32},
-  BouncerNonQH{proof: BouncerProof}
+  BouncerQH { proof: BouncerProof, qh_time: u32 },
+  BouncerNonQH { proof: BouncerProof },
 }
 use BouncerQHProof::*;
 
@@ -395,7 +443,10 @@ fn get_last_used_to_time(machine: &SmallBinMachine, steps_to_simulate: u32) -> L
       Right((new_state, _mb_dir, steps)) => {
         assert_eq!(steps, 1);
         if new_state.halted() {
-          unreachable!("nonhalter halted fast lastused {}", machine.to_compact_format());
+          unreachable!(
+            "nonhalter halted fast lastused {}",
+            machine.to_compact_format()
+          );
         }
         last_used.state_used(new_state.as_byte(), step);
         new_state
@@ -406,56 +457,75 @@ fn get_last_used_to_time(machine: &SmallBinMachine, steps_to_simulate: u32) -> L
 }
 
 fn decide_qh_via_bouncer(
-  machine: &SmallBinMachine, num_wxyz_steps: u32, max_proof_steps: u32, max_proof_tape: usize, print: bool,
-) ->  MbQHBounce {
+  machine: &SmallBinMachine,
+  num_wxyz_steps: u32,
+  max_proof_steps: u32,
+  max_proof_tape: usize,
+  print: bool,
+) -> MbQHBounce {
   // let print = true;
   // let (w, x, y, z, state_0) = find_bouncer_wxyz(&machine, num_wxyz_steps, print)?;
   // let (proof, state_set) = construct_bouncer_proof(
-  //   &machine, state_0, &w, &x, &y, &z, 
+  //   &machine, state_0, &w, &x, &y, &z,
   //   max_proof_steps, max_proof_tape, print)?;
-  let (proof, state_set) = try_prove_bouncer(machine, num_wxyz_steps, max_proof_steps, max_proof_tape, print)?;
-  /* in order to figure out whether the bouncer qh'd we need two things 
+  let (proof, state_set) = try_prove_bouncer(
+    machine,
+    num_wxyz_steps,
+    max_proof_steps,
+    max_proof_tape,
+    print,
+  )?;
+  /* in order to figure out whether the bouncer qh'd we need two things
    1) which states are used in the bouncing itself
-   2) the last_used up to the point at which the bouncer starts bouncing, which 
+   2) the last_used up to the point at which the bouncer starts bouncing, which
       at the latest happens at num_wxyz_steps, so we can use that as an upper bound
   */
   if state_set.len() == machine.num_states().into() {
     // machine does not QH, as all states are used during bouncing
-    return Ok(BouncerNonQH { proof })
+    return Ok(BouncerNonQH { proof });
   }
-  assert!(state_set.len() < machine.num_states().into(), 
-      "more states used than available {}", machine.to_compact_format());
-      
+  assert!(
+    state_set.len() < machine.num_states().into(),
+    "more states used than available {}",
+    machine.to_compact_format()
+  );
+
   // machine qhs at some point before starting bouncing, we just need to find when
   let last_used = get_last_used_to_time(machine, num_wxyz_steps);
-  // todo add some sort of assert / sanity check that the machine does actually use the specified 
+  // todo add some sort of assert / sanity check that the machine does actually use the specified
   // states near the end of the checked part and no more or less
   let qh_time = last_used.qh_time();
   Ok(BouncerQH { proof, qh_time })
 }
 
-fn prove_qh_with_brady_bouncer(machines: Vec<SmallBinMachine>) 
-  -> Vec<(SmallBinMachine, MbQHBounce)> 
-{
+fn prove_qh_with_brady_bouncer(
+  machines: Vec<SmallBinMachine>,
+) -> Vec<(SmallBinMachine, MbQHBounce)> {
   let print = false;
-  
+
   let num_wxyz_steps = 10_000;
   let max_proof_steps = 20_000;
   let max_proof_tape = 300;
   // let num_wxyz_steps = 3_000;
   // let max_proof_steps = 1_000;
   // let max_proof_tape = 100;
-  println!("wxyz steps: {} proof steps: {} proof max_tape: {}", 
-  num_wxyz_steps, max_proof_steps, max_proof_tape); 
-  
+  println!(
+    "wxyz steps: {} proof steps: {} proof max_tape: {}",
+    num_wxyz_steps, max_proof_steps, max_proof_tape
+  );
+
   let mut out = vec![];
 
   for (_i, machine) in machines.into_iter().enumerate() {
     // dbg!(i);
     let proof_res = decide_qh_via_bouncer(
-      &machine, num_wxyz_steps, max_proof_steps, max_proof_tape, print);
+      &machine,
+      num_wxyz_steps,
+      max_proof_steps,
+      max_proof_tape,
+      print,
+    );
     out.push((machine, proof_res))
-
   }
   out
 }
@@ -463,78 +533,80 @@ fn prove_qh_with_brady_bouncer(machines: Vec<SmallBinMachine>)
 fn aggregate_and_display_bouncer_res_beep(proofs: &[MbQHBounce]) {
   let mut bounce_qh_proof_count = 0;
   let mut bounce_nqh_proof_count = 0;
-  let mut undecided_count = 0; 
+  let mut undecided_count = 0;
   for proof in proofs {
     match proof {
-      Err(_s) => undecided_count+=1, 
-      Ok(BouncerQH{..}) => bounce_qh_proof_count+=1, 
-      Ok(BouncerNonQH{..}) => bounce_nqh_proof_count+=1, 
+      Err(_s) => undecided_count += 1,
+      Ok(BouncerQH { .. }) => bounce_qh_proof_count += 1,
+      Ok(BouncerNonQH { .. }) => bounce_nqh_proof_count += 1,
     }
   }
-  assert_eq!(bounce_qh_proof_count + bounce_nqh_proof_count + undecided_count, proofs.len());
+  assert_eq!(
+    bounce_qh_proof_count + bounce_nqh_proof_count + undecided_count,
+    proofs.len()
+  );
   let bounce_proof_count = bounce_qh_proof_count + bounce_nqh_proof_count;
   println!(
-    "analyzed {} machines. bouncers: {} of which QH bouncers: {} notQH bouncers: {} undecided: {}", 
-    proofs.len(), bounce_proof_count, bounce_qh_proof_count, bounce_nqh_proof_count, undecided_count
+    "analyzed {} machines. bouncers: {} of which QH bouncers: {} notQH bouncers: {} undecided: {}",
+    proofs.len(),
+    bounce_proof_count,
+    bounce_qh_proof_count,
+    bounce_nqh_proof_count,
+    undecided_count
   )
 }
 
-fn get_bouncer_undecided_beep(bouncer_results: Vec<(SmallBinMachine, MbQHBounce)>) 
-  -> Vec<SmallBinMachine> 
-{
-    let mut out = vec![];
-    for res in bouncer_results {
-      match res {
-          (_m, Ok(_p)) => (),
-          (m, Err(_s)) => out.push(m),
-      }
+fn get_bouncer_undecided_beep(
+  bouncer_results: Vec<(SmallBinMachine, MbQHBounce)>,
+) -> Vec<SmallBinMachine> {
+  let mut out = vec![];
+  for res in bouncer_results {
+    match res {
+      (_m, Ok(_p)) => (),
+      (m, Err(_s)) => out.push(m),
     }
-    out
+  }
+  out
 }
 
 pub fn scan_from_machines_beep(
-    machines: &[SmallBinMachine],
-    num_lr_steps: u32,
-    _num_rule_steps: u32,
-    interactive: bool, 
-    mb_undecided_file: Option<&str>,
+  machines: &[SmallBinMachine],
+  num_lr_steps: u32,
+  _num_rule_steps: u32,
+  interactive: bool,
+  mb_undecided_file: Option<&str>,
 ) {
   let mut lr_results = vec![];
-  for machine in machines { 
+  for machine in machines {
     lr_results.extend(search_for_translated_cyclers_beep(machine, num_lr_steps));
   }
   aggregate_and_display_lr_res_beep(lr_results.iter().map(|(_m, res)| *res).collect());
 
-
   // let lr_results = search_for_translated_cyclers_beep(machine, num_lr_steps);
   let undecided_machines = get_undecided_beep(lr_results);
   let undecided_len = undecided_machines.len();
-  println!(
-      "there were {} undecided machines",
-      undecided_len
-  );
+  println!("there were {} undecided machines", undecided_len);
   let bouncer_results = prove_qh_with_brady_bouncer(undecided_machines);
-  let bouncer_proofs: Vec<Result<BouncerQHProof, &str>> = bouncer_results.iter().map(|(_, p)| p.clone()).collect_vec();
+  let bouncer_proofs: Vec<Result<BouncerQHProof, &str>> =
+    bouncer_results.iter().map(|(_, p)| p.clone()).collect_vec();
   aggregate_and_display_bouncer_res_beep(&bouncer_proofs);
   let final_undecided = get_bouncer_undecided_beep(bouncer_results);
-  
-
 
   // let final_undecided = undecided_machines;
   if let Some(filename) = mb_undecided_file {
-      dump_machines_to_file(final_undecided.clone(), filename).expect("file should be openable");
+    dump_machines_to_file(final_undecided.clone(), filename).expect("file should be openable");
   }
   let num_undecided_to_display = 10;
   let seed = 123456789012345;
   let mut rng: ChaCha8Rng = SeedableRng::seed_from_u64(seed);
   let random_undecideds = final_undecided
-      .choose_multiple(&mut rng, num_undecided_to_display)
-      .cloned()
-      .collect_vec();
+    .choose_multiple(&mut rng, num_undecided_to_display)
+    .cloned()
+    .collect_vec();
 
   println!(
-      "some undecided machines:\n{}",
-      machines_to_str(random_undecideds)
+    "some undecided machines:\n{}",
+    machines_to_str(random_undecideds)
   );
   // println!(
   //   "final_undecided:\n{}",
@@ -582,25 +654,40 @@ pub fn scan_from_machines_beep(
   }
 }
 
-
 pub fn scan_from_machine_beep(
   machine: &SmallBinMachine,
   num_lr_steps: u32,
   num_rule_steps: u32,
-  interactive: bool, 
+  interactive: bool,
   mb_undecided_file: Option<&str>,
 ) {
-  scan_from_machines_beep(&vec![machine.clone()][..], num_lr_steps, num_rule_steps, interactive, mb_undecided_file);
+  scan_from_machines_beep(
+    &vec![machine.clone()][..],
+    num_lr_steps,
+    num_rule_steps,
+    interactive,
+    mb_undecided_file,
+  );
 }
 
 pub fn scan_from_filename_beep(
-  filename: &str, 
+  filename: &str,
   num_lr_steps: u32,
   num_rule_steps: u32,
-  interactive: bool, 
+  interactive: bool,
   mb_undecided_file: Option<&str>,
 ) {
   let machines = load_machines_from_file(filename);
-  println!("there were {} machines total in the file {}", machines.len(), filename);
-  scan_from_machines_beep(&machines, num_lr_steps, num_rule_steps, interactive, mb_undecided_file);
+  println!(
+    "there were {} machines total in the file {}",
+    machines.len(),
+    filename
+  );
+  scan_from_machines_beep(
+    &machines,
+    num_lr_steps,
+    num_rule_steps,
+    interactive,
+    mb_undecided_file,
+  );
 }

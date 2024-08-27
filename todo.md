@@ -7,10 +7,10 @@ TODOs
 
 ✓ check all goes_left machine and no other machines were proven from previous categorization
 ✓ perform a quick zoology writeup 
+✓ categorize an additional 60 machines that remain after bouncers
+✓ aggregate stats again
 
 * read through 30 machines that QH and that don't to ensure they are decided correctly
-* categorize an additional 60 machines that remain after bouncers
-* aggregate stats again
 
 * run fmt
 * fix tests

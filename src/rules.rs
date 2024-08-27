@@ -662,10 +662,10 @@ pub const RS_LEFT: ReadShift = ReadShift { l: 0, r: 0, s: -1 };
 pub const RS_RIGHT: ReadShift = ReadShift { l: 0, r: 0, s: 1 };
 
 impl Display for ReadShift {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ReadShift { l, r, s } = self; 
-        f.write_fmt(format_args!("Readshift l {} r {} s {}", l, r, s))
-    }
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let ReadShift { l, r, s } = self;
+    f.write_fmt(format_args!("Readshift l {} r {} s {}", l, r, s))
+  }
 }
 
 impl ReadShift {

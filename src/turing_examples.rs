@@ -360,15 +360,15 @@ pub fn undecided_size_4_random_100() -> Vec<&'static str> {
   /*
   2 Aug 24: why machines were or weren't proved by the bouncer decider
 
-  I checked all of these: 
+  I checked all of these:
   90: proven
-  91: proven 
+  91: proven
   92: proven
   93: counter
   94: proven
-  95: proven 
-  96: counter 
-  97: proven 
+  95: proven
+  96: counter
+  97: proven
   98: not proven, because it's a "two sweep" bouncer
   99: proven
 
@@ -384,7 +384,7 @@ pub fn undecided_size_4_random_100() -> Vec<&'static str> {
   78: 2 stage
   82: 2 stage
   83: looks like would be proven with longer (yep, proven between 400 and 500)
-  88: translated bouncer (could maybe be proven if we dropped the Fs at the end, 
+  88: translated bouncer (could maybe be proven if we dropped the Fs at the end,
       since the translation doesn't leave any garbage behind)
 
   unproven: 7

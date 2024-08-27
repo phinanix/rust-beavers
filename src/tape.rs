@@ -82,9 +82,9 @@ impl<S: TapeSymbol> Tape<S> {
     // temporarily disabling that feature because it made LR detection wrong :0
     // LR detection was actually right I think but leaving the feature disabled
     // if !(self.left.is_empty() && self.head == TapeSymbol::empty()) {
-      self.left.push(self.head);
+    self.left.push(self.head);
     // } else {
-      // println!("\n DROP\nDROP\nDROP\n")
+    // println!("\n DROP\nDROP\nDROP\n")
     // }
     self.head = match self.right.pop() {
       Some(s) => s,
@@ -94,7 +94,7 @@ impl<S: TapeSymbol> Tape<S> {
 
   fn move_left(&mut self) {
     // if !(self.right.is_empty() && self.head == TapeSymbol::empty()) {
-      self.right.push(self.head);
+    self.right.push(self.head);
     // }
     self.head = match self.left.pop() {
       Some(s) => s,
@@ -323,7 +323,7 @@ impl<S: TapeSymbol, C: TapeCount> ExpTape<S, C> {
       // temp disabling this feature, see Tape
       None => {
         // if item != TapeSymbol::empty() || !tape_end_inf {
-        stack.push((item, 1.into()));  
+        stack.push((item, 1.into()));
       }
       Some((s, count)) => {
         if item == *s {
@@ -483,7 +483,7 @@ impl<'a, S: TapeSymbol + 'a> ExpTape<S, u32> {
   pub fn left_len(&self) -> u32 {
     self.left.iter().map(|(_s, n)| n).sum()
   }
-  
+
   pub fn right_len(&self) -> u32 {
     self.right.iter().map(|(_s, n)| n).sum()
   }
@@ -549,7 +549,11 @@ impl ExpTape<Bit, u32> {
   }
 }
 
-pub fn tnf_simulate(inp_machine: SmallBinMachine, total_steps: u32, allow_no_halt: bool) -> Vec<SmallBinMachine> {
+pub fn tnf_simulate(
+  inp_machine: SmallBinMachine,
+  total_steps: u32,
+  allow_no_halt: bool,
+) -> Vec<SmallBinMachine> {
   let mut out = vec![];
 
   struct TnfState {
@@ -607,7 +611,7 @@ pub fn push_exptape<S: Eq, C: AddAssign>(tape: &mut Vec<(S, C)>, item: (S, C)) {
 mod test {
   use itertools::Itertools;
 
-use super::*;
+  use super::*;
   use crate::{
     parse::parse_tape,
     rules::{RS_LEFT, RS_RIGHT},
@@ -721,10 +725,13 @@ use super::*;
 
   #[test]
   fn tape_to_list() {
-    // you pop from the *end* of the vec because it's an array backed vec. 
+    // you pop from the *end* of the vec because it's an array backed vec.
     let tape = Tape::from_bools(vec![false, true], true, vec![false, true]);
     let list = tape.to_list();
-    let ans = vec![false, true, true, true, false].into_iter().map(|b| Bit(b)).collect_vec();
+    let ans = vec![false, true, true, true, false]
+      .into_iter()
+      .map(|b| Bit(b))
+      .collect_vec();
     assert_eq!(list, ans);
   }
   //todo: simulate bb4 to further sanity check

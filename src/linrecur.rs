@@ -52,13 +52,15 @@ where
         new_state
       }
     };
-    let rlen= tape.right_length();
-
+    let rlen = tape.right_length();
 
     if to_print {
-      println!("steps: {} state: {:?} tape: {} rlen: {}", steps_taken, state, &tape, rlen);
+      println!(
+        "steps: {} state: {:?} tape: {} rlen: {}",
+        steps_taken, state, &tape, rlen
+      );
     }
-    
+
     // assert!(*rlen_hist.last().unwrap() <= rlen, "{:?} {}", rlen_hist, rlen);
     // rlen_hist.push(rlen);
 
@@ -96,12 +98,12 @@ where
       assert_eq!(start_left, end_left);
       assert_eq!(start_right, end_right);
       // println!("hi");
-      
+
       let l_len = tape.left_length() as i32;
       let r_len = tape.right_length() as i32;
       let index_left: i32 = l_len.min(end_left);
       let index_right: i32 = r_len.min(end_right);
-      
+
       if to_print {
         dbg!(
           shift,
@@ -111,7 +113,7 @@ where
           rightmost,
           l_len,
           r_len,
-          steps_taken, 
+          steps_taken,
           num_at_which_we_check,
         );
         dbg!(
@@ -130,7 +132,7 @@ where
 
       // the short version is we need either r_len == rightmost - curdisp
       // or l_len == leftmost - curdisp
-      // because that corresponds to the thing where we have written all the bits we are reading to determine 
+      // because that corresponds to the thing where we have written all the bits we are reading to determine
       // that the lr rule actually applies
       if index_left <= start_left + shift && index_right <= start_right - shift {
         if shift > 0 {
@@ -152,13 +154,21 @@ where
         if start_tape_slice == cur_tape_slice {
           // if steps_taken - num_at_which_we_check > 3 {panic!("steps {} old steps {} ", steps_taken, num_at_which_we_check)};
           if shift > 0 {
-            assert!(r_len == (rightmost - cur_displacement), "{}", machine.to_compact_format());
+            assert!(
+              r_len == (rightmost - cur_displacement),
+              "{}",
+              machine.to_compact_format()
+            );
             if r_len != (rightmost - cur_displacement) {
               // println!("{}", machine.to_compact_format());
-            } 
+            }
             // assert!(r_len <= (rightmost - displacement_to_check));
           } else if shift < 0 {
-            assert!(l_len == -1 * (leftmost - cur_displacement), "{}", machine.to_compact_format());
+            assert!(
+              l_len == -1 * (leftmost - cur_displacement),
+              "{}",
+              machine.to_compact_format()
+            );
             if l_len != -1 * (leftmost - cur_displacement) {
               // println!("{}", machine.to_compact_format());
             }
@@ -169,7 +179,9 @@ where
           };
         }
       } else {
-        assert!(r_len > (rightmost - cur_displacement) || l_len > -1 * (leftmost - cur_displacement));
+        assert!(
+          r_len > (rightmost - cur_displacement) || l_len > -1 * (leftmost - cur_displacement)
+        );
         if shift > 0 {
           assert!(r_len > (rightmost - cur_displacement));
         } else if shift < 0 {
