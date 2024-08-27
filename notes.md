@@ -410,3 +410,26 @@ used the change to prove an additional 2086 machines!
 
 so in fact of 51539 machines, 2086 (4.0%) were goes_left holdouts, but I didn't find any of them
 in a 25 machine scan, which is a 35.6% chance of happening or just over 1 in 3. 
+
+found another 1 stage bouncer not proven by my heuristics. because if there were exactly 2 or 3
+right records, we woudldn't use the goes_left stuff, even though that's too few right records to
+*possibly* make progress. with a 10k heuristic steps, we probably ought to use even a min of 5 or 6
+right records, it's a little unclear, but min 2 is definitely bonkers. 
+there were 150016 undecided machines
+wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
+analyzed 150016 machines. bouncers: 101054 of which QH bouncers: 6243 notQH bouncers: 94811 undecided: 48962
+
+100267 -> 101054 = +787
+
+there were 49453 machines total in the file machine_lists/size4_bouncer_more_goes_left_10k_20k_300_26_august_24
+total machines: 49453
+halted: 0 quasihalted (cycled): 0 quashalted (lr): 0
+non-qh (cycled): 0 non-qh (lr): 0 inconclusive: 49453
+there were 49453 undecided machines
+wxyz steps: 10000 proof steps: 20000 proof max_tape: 300
+analyzed 49453 machines. bouncers: 787 of which QH bouncers: 96 notQH bouncers: 691 undecided: 48666
+
+requiring there to be 5 right records doesn't change anything so far. 
+
+this solves 787 / 49453 = 1.6% of machines, so 1 in 62, so I was a little lucky to notice it by sampling random machines once I had sampled 40 and not seen it - I was 20% to miss it in a sample of 100, but 38% 
+to miss it in a sample of 60. 

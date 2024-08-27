@@ -218,7 +218,7 @@ fn run_machine_interactive(machine: &SmallBinMachine) {
 
   // let mut rulebook = Rulebook::new(machine.num_states());
   // rulebook.add_rules(chain_rules);
-  let num_steps = 800;
+  let num_steps = 2_000;
   Tape::simulate_from_start(machine, num_steps, true);
   let ans = try_prove_bouncer(machine, num_wxyz_steps, max_proof_steps, max_proof_tape, true); 
   println!("mb proof: {}", print_mb_proof(&ans));
@@ -674,7 +674,7 @@ fn diff_machine_files(f1: &str, f2: &str,
 
 fn main() {
   // 1_000 instead of 1_000_000 misses 296 machines (of ~3M, so 0.01%), but we can always come back to those
-  let num_lr_steps = 10_000;
+  let num_lr_steps = 1_000;
   let num_rule_steps = 200;
   dbg!(num_lr_steps, num_rule_steps);
 
@@ -693,36 +693,38 @@ fn main() {
   //   None,
   // );
 
-  // scan_from_filename_beep(
-  //   "machine_lists/size4_bouncer_aligned_truncated_10k_20k_300_23_august_24",
-  // //   "size4_qh_holdouts_24_july_24", 
-  //   num_lr_steps, 
-  //   num_rule_steps, 
-  //   false,
-  //   // Some("machine_lists/size4_bouncer_more_goes_left_10k_20k_300_26_august_24"),
-  //   None,
-  // );
+  scan_from_filename_beep(
+  "machine_lists/size4_bouncer_more_goes_left_10k_20k_300_26_august_24",
+  // "machine_lists/size4_bouncer_aligned_truncated_10k_20k_300_23_august_24",
+  //   "size4_qh_holdouts_24_july_24", 
+    num_lr_steps, 
+    num_rule_steps, 
+    false,
+    Some("machine_lists/size4_bouncer_too_few_right_records_10k_20k_300_26_august_24"),
+    // None,
+  );
 
   // run_random_machines_from_file(
-  //   "machine_lists/size4_bouncer_aligned_truncated_10k_20k_300_23_august_24",
+  //   "machine_lists/size4_bouncer_more_goes_left_10k_20k_300_26_august_24",
+  //   // "machine_lists/size4_bouncer_aligned_truncated_10k_20k_300_23_august_24",
   //   // "machine_lists/size4_bounce_proven_only_3k_23_aug_24",
   //   // "machine_lists/size4_bouncer_not_quite_qh_holdouts_2_august_24",
   //   // "size3_qh_holdouts_30_july_24",
-    // 25);
+  //   60);
 
   // run_all_machines_from_file("machine_lists/size4_bouncer_aligned_proven_only_10k_23_aug_24");
 
-  diff_machine_files(
-    "machine_lists/25_machines_analyzed_from_size4_bouncer_aligned_truncated_10k_20k_300_23_august_24",
-    "machine_lists/size4_bouncer_more_goes_left_10k_20k_300_26_august_24",
-  // Some("machine_lists/size4_bouncer_aligned_proven_only_10k_23_aug_24"),
-  None,
+  // diff_machine_files(
+  //   "machine_lists/25_machines_analyzed_from_size4_bouncer_aligned_truncated_10k_20k_300_23_august_24",
+  //   "machine_lists/size4_bouncer_more_goes_left_10k_20k_300_26_august_24",
+  // // Some("machine_lists/size4_bouncer_aligned_proven_only_10k_23_aug_24"),
+  // None,
 
-  // Some("machine_lists/size4_bounce_proven_only_3k_23_aug_24"),
-  None,
+  // // Some("machine_lists/size4_bounce_proven_only_3k_23_aug_24"),
+  // None,
 
-   None,
-  );
+  //  None,
+  // );
 
 
   // let m = SmallBinMachine::from_compact_format("1RB---_1RC---_1RD1LD_1LD1RC");
