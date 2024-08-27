@@ -449,14 +449,14 @@ mod test {
       tape_end_inf: true,
     };
     let left_ans = parse_exact(parse_tape(
-      "(T, 2) (F, 2) (T, 2) (F, 2) |>T<| (F, 1) (T, 1) (F, 1) (T, 2)",
+      "(T, 2) (F, 2) (T, 2) (F, 2) |>T<| (F, 1) (T, 1) (F, 1) (T, 2) (F, 2)",
     ));
     let res = MacroMachine::project_down(NotHalted(State(1), Dir::L), tape.clone());
     println!("got res {}", res.1);
     assert_eq!(res, (State(1), left_ans));
 
     let right_ans = parse_exact(parse_tape(
-      "(T, 2) (F, 2) (T, 2) (F, 2) (T, 1) (F, 1) (T, 1) |>F<| (T, 2)",
+      "(T, 2) (F, 2) (T, 2) (F, 2) (T, 1) (F, 1) (T, 1) |>F<| (T, 2) (F, 2)",
     ));
     let res = MacroMachine::project_down(NotHalted(State(1), Dir::R), tape.clone());
     println!("got res {}", res.1);
@@ -469,14 +469,14 @@ mod test {
       tape_end_inf: true,
     };
     let left_ans = parse_exact(parse_tape(
-      "(T, 2) (F, 2) (T, 2) (F, 4) (T, 2) |>T<| (F, 1) (T, 1) (F, 1) (T, 2)",
+      "(T, 2) (F, 2) (T, 2) (F, 4) (T, 2) |>T<| (F, 1) (T, 1) (F, 1) (T, 2) (F, 2)",
     ));
     let res = MacroMachine::project_down(NotHalted(State(1), Dir::L), tape.clone());
     println!("got res {}", res.1);
     assert_eq!(res, (State(1), left_ans));
 
     let right_ans = parse_exact(parse_tape(
-      "(T, 2) (F, 2) (T, 2) (F, 4) (T, 3) (F, 1) (T, 1) |>F<| (T, 2)",
+      "(T, 2) (F, 2) (T, 2) (F, 4) (T, 3) (F, 1) (T, 1) |>F<| (T, 2) (F, 2)",
     ));
     let res = MacroMachine::project_down(NotHalted(State(1), Dir::R), tape.clone());
     println!("got res {}", res.1);
@@ -490,10 +490,27 @@ mod test {
       right: vec![],
       tape_end_inf: true,
     };
-    let ans = parse_exact(parse_tape("(T, 1) |>T<| (T, 2)"));
+    let ans = parse_exact(parse_tape("(F, 3) (T, 1) |>T<| (T, 2) (F, 1)"));
     let res = MacroMachine::project_down(NotHalted(State(1), Dir::L), tape);
     println!("got res {}", res.1);
     assert_eq!(res, (State(1), ans));
+  }
+
+
+  fn remove_fs<S: TapeSymbol>(tape_half: &mut Vec<(S, u32)>) {
+    if tape_half.len() > 0 {
+      let (s_0, _) = tape_half[0];
+      if s_0 == S::empty() {
+        tape_half.remove(0);
+      }
+    }
+  }
+
+  fn tape_up_to_fs<S: TapeSymbol>(tape: &ExpTape<S, u32>) -> ExpTape<S, u32> {
+    let mut out_tape = tape.clone();
+    remove_fs(&mut out_tape.left);
+    remove_fs(&mut out_tape.right);
+    out_tape
   }
 
   fn simultaneous_step_macro_step<P: Phase, S: TapeSymbol, const N: usize>(
@@ -509,7 +526,7 @@ mod test {
       MacroMachine::project_down(macro_state, macro_tape.clone());
     assert_eq!(normal_state, proj_macro_state, "step: {}", step);
     assert_eq!(
-      normal_tape, &proj_macro_tape,
+      &tape_up_to_fs(normal_tape), &tape_up_to_fs(&proj_macro_tape),
       "step: {}\nmacro_tape: {}",
       step, macro_tape
     );

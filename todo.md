@@ -12,8 +12,8 @@ TODOs
 
 * read through 30 machines that QH and that don't to ensure they are decided correctly
 
-* run fmt
-* fix tests
+✓ run fmt
+✓ fix tests
 * implement "golden master testing"
 
 * start implementing the musical analyzer / compression-based algorithm

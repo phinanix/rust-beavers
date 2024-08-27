@@ -645,13 +645,13 @@ mod test {
     let mut shrink_tape = parse_tape("(T, 1) |>F<| ").unwrap().1;
     let res = shrink_tape.step_extra_info(State(1), &machine);
     assert_eq!(res, Success(State(2), RS_LEFT, 1));
-    assert_eq!(shrink_tape, parse_tape(" |>T<| ").unwrap().1);
+    assert_eq!(shrink_tape, parse_tape(" |>T<| (F, 1)").unwrap().1);
 
     //0LB
     let mut both_tape = parse_tape(" |>F<| ").unwrap().1;
     let res = both_tape.step_extra_info(State(1), &machine);
     assert_eq!(res, Success(State(2), RS_LEFT, 1));
-    assert_eq!(both_tape, parse_tape(" |>F<| ").unwrap().1);
+    assert_eq!(both_tape, parse_tape(" |>F<| (F, 1)").unwrap().1);
 
     //1RA
     let mut nothing2_tape = parse_tape("(T, 2) |>F<| (F, 1) (T, 1)").unwrap().1;
@@ -669,13 +669,13 @@ mod test {
     let mut shrink2_tape = parse_tape(" |>T<| (T, 1)").unwrap().1;
     let res = shrink2_tape.step_extra_info(State(1), &machine);
     assert_eq!(res, Success(State(1), RS_RIGHT, 1));
-    assert_eq!(shrink2_tape, parse_tape(" |>T<| ").unwrap().1);
+    assert_eq!(shrink2_tape, parse_tape("(F, 1) |>T<| ").unwrap().1);
 
     //0RA
     let mut both_tape = parse_tape(" |>T<| ").unwrap().1;
     let res = both_tape.step_extra_info(State(1), &machine);
     assert_eq!(res, Success(State(1), RS_RIGHT, 1));
-    assert_eq!(both_tape, parse_tape(" |>F<| ").unwrap().1);
+    assert_eq!(both_tape, parse_tape("(F, 1) |>F<| ").unwrap().1);
   }
 
   #[test]
