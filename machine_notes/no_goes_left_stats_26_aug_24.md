@@ -63,10 +63,13 @@ after removing all goes_left machines, to combine with a previous 40 to get a to
 1RB1LC_1LA0RC_1LA1RD_0LD1LB
 1RB1LD_0RC1RB_0LD1LA_0LA0LC
 1RB1RD_1LC1LB_1RA0LB_0LC1RD
+1RB1LA_1RC0RA_1LD0LC_0RA0LC
+1RB1RD_1LB0RC_1RA1LC_0LC1RA
+
 
 
 0 1RB1RD_1LC0LB_0RA1LB_1RC1RC
-4 stage bouncer (!!)
+4 (four) stage bouncer (!!)
 1 1RB0RD_1LC0RD_1LA0LC_1RA0LA
 midpoint bouncer
 
@@ -170,41 +173,95 @@ fixed the thing that caused this machine not to get proven, proved 787 (1.6%) of
 
 
 40 1RB1LD_1RC1RD_1LC0LA_1LA0RB
-
+two_stage
 41 1RB0LB_1RC0LD_1LA1RB_0RA0LB
-
+counter
 42 1RB0RD_1LC1LD_1RA1LB_1LB1LC
-
+two_stage
 43 1RB1RA_1LC0LA_1LA1LD_0RD1LC
-
+two_stage
 44 1RB1RA_1LC0RD_1LD1LB_1RA0RC
-
+two_stage
 45 1RB1LA_0RC1RC_1LD0LD_0RA0LC
-
+two_stage 
 46 1RB0RB_1LC1RA_0RD0LC_0RB1LA
-
+counter
 47 1RB0LC_0LA0RA_1RA1LD_0LC0RC
-
+counter
 48 1RB0LB_1LC1RD_1LA1RA_0LD0RB
-
+two_stage
 49 1RB1LA_0RC1RD_0LD---_0LA1RB
-
+two_stage
 50 1RB0RB_1LC1RD_1RA1LC_1RA1RB
-
+translated bouncer with shadow
 51 1RB0RC_1LA0RD_1LA1LD_1LC1RB
-
+two_stage
 52 1RB0LC_1LC0RA_1LA1RD_0RB0LD
-
+two_stage
 53 1RB1LD_1RC0LB_1LA0RC_0RB1LB
+one_stage not proven for above reason, now proven
 
 54 1RB1RB_0RC0RB_1LC0LD_1RA0RD
-
+translated bouncer no shadow
 55 1RB1LC_0LC1RD_1RB1LA_0LC0RD
-
+counter
 56 1RB0LC_1LA0RD_1LB1LC_0LA0RA
-
+four_stage (!)
 57 1RB1LC_1LA0RC_1LA1RD_0LD1LB
-
+counter
 58 1RB1LD_0RC1RB_0LD1LA_0LA0LC
-
+two_stage
 59 1RB1RD_1LC1LB_1RA0LB_0LC1RD
+translated bouncer (shadow sort of)
+
+17.5m to do last 20 = 52.5s/machine
+
+totals
+26 two_stage 16 counter 9 translated bouncer 2 three_stage (53)
+2 four_stage 2 one_stage 2 fast_tail_eating_dragon 1 midpoint (7)
+
+est prevalance of one_stage: 2/60 = 3.33% or 2/100 = 2% more accurately
+actual prevalence: 787 / 49453 = 1.6%
+
+for a total of 60, although 2 are now proven, so let's do 2 more just for fun. 
+
+60 1RB1LA_1RC0RA_1LD0LC_0RA0LC
+two_stage
+61 1RB1RD_1LB0RC_1RA1LC_0LC1RA
+two stage
+
+updated totals (of those unsolved)
+28 two_stage 16 counter 9 translated bouncer 2 three_stage (55)
+2 four_stage 2 fast_tail_eating_dragon 1 midpoint (5)
+
+combined with 40 from before: 
+17 two_stage 4 three_stage 13 counter (34)
+4 translated bouncer with shadow 1 midpoint bouncer 1 fast tail eating dragon (6)
+
+aggregating: 
+28 two_stage 16 counter 9 translated bouncer 2 three_stage (55)
+2 four_stage 2 fast_tail_eating_dragon 1 midpoint (5)
+17 two_stage 4 three_stage 13 counter (34)
+4 translated bouncer with shadow 1 midpoint bouncer 1 fast tail eating dragon (6)
+
+final counts: 
+45 two_stage 29 counter 13 translated bouncer 6 three_stage (93)
+3 fast_tail_eating_dragon 2 midpoint 2 four_stage (7) 
+
+45 two_stage 
+29 counter 
+13 translated bouncer 
+6 three_stage
+3 fast_tail_eating_dragon 
+2 midpoint 
+2 four_stage
+these are out of 100, so of course the counts and percentages are the same
+
+changes in percentages
+43 -> 45 two_stage 
+33 -> 29 counter 
+10 -> 13 translated bouncer 
+10 -> 6 three_stage
+2.5 -> 3 fast_tail_eating_dragon 
+2.5 -> 2 midpoint 
+0 -> 2 four_stage

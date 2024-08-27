@@ -532,10 +532,10 @@ pub fn find_bouncer_wxyz(machine: &SmallBinMachine, num_steps: u32, print: bool)
   let (min_change, max_change) = (-1 * (len_z as isize), len_z as isize);
   let mut possible_len_xs = vec![];
 
-  for change in min_change..=max_change {
+  // for change in min_change..=max_change {
   
-  // dbg!("not trying different alignments");
-  // for change in 0..=0 {
+  dbg!("not trying different alignments");
+  for change in 0..=0 {
   
     if let Some(len_x) = base_len_x.checked_add_signed(change) {
       possible_len_xs.push(len_x)
