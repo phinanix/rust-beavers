@@ -10,11 +10,13 @@ use std::{collections::HashSet, fs, io};
 
 use beep::{detect_quasihalt_of_lr_or_cycler, scan_from_filename_beep};
 use brady::{monotonic, print_mb_proof, split_records, try_prove_bouncer, BouncerProof, MbBounce};
+use compression::analyze_machine;
 use either::Either::{Left, Right};
 use itertools::Itertools;
 use rand::SeedableRng;
 use rand::{prelude::SliceRandom, Rng};
 use rand_chacha::ChaCha8Rng;
+use turing_examples::MUSICAL_ANALYZER;
 
 use crate::{
   beep::{scan_from_machine_beep, search_for_translated_cyclers_beep},
@@ -34,6 +36,7 @@ use crate::{
 mod beep;
 mod brady;
 mod chain;
+mod compression;
 mod linrecur;
 mod macro_machines;
 mod parse;
@@ -235,7 +238,7 @@ fn run_machine_interactive(machine: &SmallBinMachine) {
     num_wxyz_steps,
     max_proof_steps,
     max_proof_tape,
-    true,
+    false,
   );
   println!("mb proof: {}", print_mb_proof(&ans));
   println!("\njust ran machine: {}", machine.to_compact_format());
@@ -245,6 +248,20 @@ fn run_machine_interactive(machine: &SmallBinMachine) {
   // simulate_using_rules::<Bit, u32>(machine, num_steps, &rulebook, true);
   // println!("\n\nproving rules");
   // simulate_proving_rules(machine, num_steps, &mut rulebook, true);
+}
+
+fn run_machine_compression_interactive(machine: &SmallBinMachine) {
+  println!("\nrunning machine: {}", machine.to_compact_format());
+
+  let mut input_text = String::new();
+  io::stdin()
+    .read_line(&mut input_text)
+    .expect("failed to read from stdin");
+
+  let num_steps = 500;
+  Tape::simulate_from_start(machine, num_steps, true);
+  analyze_machine(machine, 1000);
+  println!("\njust ran machine: {}", machine.to_compact_format());
 }
 
 fn run_machine_macro<const N: usize>(machine: &SmallBinMachine) {
@@ -656,6 +673,15 @@ fn run_all_machines_from_file(filename: &str) {
   }
 }
 
+fn run_named_machines_from_list(ms: &[(&str, &str)]) {
+  for (idx, (name, machine_str)) in ms.iter().enumerate() {
+    let machine = SmallBinMachine::from_compact_format(machine_str);
+    println!("\ncur: idx {} name {} machine {}", idx, name, machine_str);
+    run_machine_compression_interactive(&machine);
+    println!("\nprev: idx {} name {} machine {}", idx, name, machine_str);
+  }
+}
+
 fn aggregate_and_display_bouncer_res(proofs: &[MbBounce]) {
   let mut bounce_proof_count = 0;
   let mut undecided_count = 0;
@@ -765,16 +791,18 @@ fn main() {
 
   // run_all_machines_from_file("machine_lists/size4_bouncer_aligned_proven_only_10k_23_aug_24");
 
-  diff_machine_files(
-    "machine_lists/60_machines_analyzed_from_size4_bouncer_more_goes_left_10k_20k_300_26_august_24",
-    "machine_lists/size4_bouncer_too_few_right_records_10k_20k_300_26_august_24",
-    // Some("machine_lists/size4_bouncer_aligned_proven_only_10k_23_aug_24"),
-    None,
-    // Some("machine_lists/size4_bounce_proven_only_3k_23_aug_24"),
-    None,
-    None,
-  );
+  // diff_machine_files(
+  //   "machine_lists/60_machines_analyzed_from_size4_bouncer_more_goes_left_10k_20k_300_26_august_24",
+  //   "machine_lists/size4_bouncer_too_few_right_records_10k_20k_300_26_august_24",
+  //   // Some("machine_lists/size4_bouncer_aligned_proven_only_10k_23_aug_24"),
+  //   None,
+  //   // Some("machine_lists/size4_bounce_proven_only_3k_23_aug_24"),
+  //   None,
+  //   None,
+  // );
 
+  run_named_machines_from_list(&MUSICAL_ANALYZER);
+  
   // let m = SmallBinMachine::from_compact_format("1RB---_1RC---_1RD1LD_1LD1RC");
   // run_machine(&m);
   // detect_quasihalt_of_lr_or_cycler(&m, 2, 4);

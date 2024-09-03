@@ -223,6 +223,7 @@ currently unsolved:
 two_stage bouncer 1RB0RC_1RC1LC_1LA1LD_1RA1LB
 counter 1RB1RC_0LC1LA_0LB1RD_1LB0RD
 three_stage bouncer 1RB0RD_1LC0LC_0RD1LB_1RB1RA
+four_stage bouncer 1RB1RD_1LC0LB_0RA1LB_1RC1RC
 translated bouncer with shadow 1RB---_1LC1RD_1LC1RB_0RC0RD
 midpoint bouncer 1RB0LC_1LC1RB_1LA0LD_0RB1RD
 cubic bouncer 

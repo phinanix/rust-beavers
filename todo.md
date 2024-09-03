@@ -14,10 +14,16 @@ TODOs
 
 ✓ run fmt
 ✓ fix tests
-* implement "golden master testing"
+✓ implement "golden master testing"
 
 * start implementing the musical analyzer / compression-based algorithm
 * for those machines that do QH, determine *when* they QH
 CouldDOs:
 ✓ for bouncers, start detection later / cut off the first few things to dodge beginning-effects
 
+Musical Analyzer
+✓ build zoology of ~10 machines to analyze
+✓ print transition sequence for those machines
+✓ make RLE encoding
+* make heuristics for what to compress
+* start making transition/rule gluing

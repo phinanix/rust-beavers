@@ -600,7 +600,10 @@ phase: A  (T, 1) |>T<| (F, 1) (T, 2*x)
 phase: D  (T, 1 + x) (F, 1) |>F<| (T, x)
 into:
 phase: D  (T, 1) (F, 1) |>F<| (T, 2*x)
- */
+
+note that tailEatingDragonSlow is ~the same as a cubic bouncer
+(and is indeed used as cubic_bouncer in MUSICAL_ANALYZER)
+*/
 const MACHINES: [(&str, &str); 10] = [
   ("bb2", "1RB1LB_1LA1RH"),
   ("bb3", "1RB1RH_0RC1RB_1LC1LA"),
@@ -613,6 +616,27 @@ const MACHINES: [(&str, &str); 10] = [
   ("tailEatingDragonSlow", "1RB1LA_1RC0RD_1LA1RH_0LA1RD"),
   ("ternaryCounter", "1RB0LC_1LA1RA_0RA0LD_1RH1LC"),
   ("4state_halter", "1RB1RH_1RC1RA_1RD1LB_1LD1RC"),
+];
+
+
+/*
+stuff to check: ternary counter
+tail eating dragon slow
+*/
+pub const MUSICAL_ANALYZER: [(&str, &str); 13] = [
+  ("bouncer_1", "1RB0RD_1LC1LC_1RA1LB_0LB1LC"),
+  ("bouncer_2", "1RB0LC_0LC1RA_1LH1LA"),
+  ("two_stage_bouncer", "1RB0RC_1RC1LC_1LA1LD_1RA1LB"),
+  ("three_stage_bouncer", "1RB0RD_1LC0LC_0RD1LB_1RB1RA"),
+  ("four_stage_bouncer", "1RB1RD_1LC0LB_0RA1LB_1RC1RC"),
+  ("translated_bouncer_with_shadow", "1RB---_1LC1RD_1LC1RB_0RC0RD"),
+  ("midpoint_bouncer", "1RB0LC_1LC1RB_1LA0LD_0RB1RD"),
+  ("fast_tail_eating_dragon", "1RB0LD_1LC0RA_0RD1LB_1RD1LA"),
+  ("cubic_bouncer", "1RB1LA_1RC0RD_1LA1RH_0LA1RD"),
+  ("counter_1", "1RB1RC_0LC1LA_0LB1RD_1LB0RD"),
+  ("counter_2", "0LB0RA_1LC1LH_1RA1LC"),
+  ("ternary_counter", "1RB0LC_1LA1RA_0RA0LD_1RH1LC"),
+  ("fibonacci_counter", "1RB0LC_0LA0RB_1RA1RD_1LA1RH"),
 ];
 
 pub fn get_machine(name: &str) -> SmallBinMachine {

@@ -433,3 +433,6 @@ requiring there to be 5 right records doesn't change anything so far.
 
 this solves 787 / 49453 = 1.6% of machines, so 1 in 62, so I was a little lucky to notice it by sampling random machines once I had sampled 40 and not seen it - I was 20% to miss it in a sample of 100, but 38% 
 to miss it in a sample of 60. 
+
+current holdouts file with the 48666: 
+ machine_lists/size4_bouncer_too_few_right_records_10k_20k_300_26_august_24 
