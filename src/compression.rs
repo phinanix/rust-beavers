@@ -1,4 +1,4 @@
-use std::{cmp::max_by_key, fmt::{Debug, Display, Pointer}};
+use std::{cmp::max_by_key, collections::{HashMap, HashSet}, fmt::{Debug, Display, Pointer}, hash::Hash};
 use either::Either::{self, Left, Right};
 use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
@@ -156,6 +156,17 @@ pub fn display_two_group_rle<P: Phase>(two_group_rle_hist: &[Either<(Group<(P, B
   }).collect()
 }
 
+pub fn display_two_chargroup_rle(two_chargroup_rle: &[Either<(Group<char>, u32), (Group<char>, u32)>]) -> String {
+  two_chargroup_rle.iter().map(|lr| match lr {
+    Left((g, num)) => display_char_group(g, *num), 
+    Right((g, num)) => {
+      let mut partial_ans = display_char_group(g, *num);
+      partial_ans = partial_ans.split_off(1);
+      format!(" *{}", partial_ans)
+    },
+  }).collect()
+}
+
 // pub fn display_partial_rle_gen<S: Display, T: Display>(partial_rle_hist: &[Either<S, (Group<T>, u32)>]) -> String {
 //   partial_rle_hist.iter().map(|i|display_maybe_rle_gen(i)).collect()
 // }
@@ -273,8 +284,166 @@ pub fn group_partial_rle<T: Debug + Copy>(seq: &[Either<T, (Group<T>, u32)>], gr
   out
 }
 
-pub fn rle_specific_subseq<T: Debug + Eq + Clone + Copy>(seq: &[Either<T, (Group<T>, u32)>], subseq: &Group<T>)
- -> Vec<Either<T, (Group<T>, u32)>>
+pub fn first_diff<T: Debug + Eq + Clone + Copy>(subseq: &Group<T>, offset: usize) -> usize {
+  // for idx in offset..subseq.0.len()
+  for idx in 0 .. subseq.0.len()-offset {
+    if subseq.0[idx] != subseq.0[idx + offset] {
+      return idx;
+    }
+  }
+  subseq.0.len()-offset
+}
+
+pub fn calc_letter_prefix<T: Debug + Eq + Clone + Copy>(
+  subseq: &Group<T>, 
+  valid_shortenings: &Vec<Vec<usize>>, 
+  t: T, 
+  prefix_len: usize
+) -> usize 
+{
+  if subseq.0[prefix_len] == t {
+    return prefix_len + 1;
+  } else {
+    for &shorter_len in valid_shortenings[prefix_len].iter() {
+      if subseq.0[shorter_len] == t {
+        return shorter_len + 1;
+      }
+    } 
+    return 0;
+  }
+}
+
+pub fn preprocess_subseq<T: Debug + Eq + Clone + Copy + Hash>(subseq: &Group<T>) -> HashMap<(T, usize), usize> {
+  let mut valid_shortenings = vec![];
+  for _idx in 0..subseq.0.len() {
+    valid_shortenings.push(vec![]);
+  }
+  for offset in 1..subseq.0.len() {
+    let first_diff = first_diff(subseq, offset); 
+    for prefix_len in 0..first_diff {
+      valid_shortenings[prefix_len+offset].push(prefix_len);
+    }
+  }
+
+  let mut all_ts = HashSet::new();
+  for &t in subseq.0.iter() {
+    all_ts.insert(t);
+  }
+
+  let mut table: HashMap<(T, usize), usize> = HashMap::new();
+  for &t in all_ts.iter() {
+    for prefix_len in 0..subseq.0.len() {
+      let ans = calc_letter_prefix(&subseq, &valid_shortenings, t, prefix_len);
+      table.insert((t, prefix_len), ans);
+    }
+  }
+  table
+}
+
+pub fn rle_specific_subseq<T: Debug + Eq + Clone + Copy + Hash>(seq: &[Either<T, (Group<T>, u32)>], subseq: &Group<T>)
+-> Vec<Either<T, (Group<T>, u32)>> {
+  let table: HashMap<(T, usize), usize> = preprocess_subseq(subseq);
+  let min_group_count = 3;
+
+  let mut idx_in_group: usize = 0; 
+  let mut group_count = 0;
+  let mut out: Vec<Either<T, (Group<T>, u32)>> = vec![];
+  
+  dbg!(subseq);
+
+  // invariant: inp_so_far = out+(subseq, group_count)+subseq[:idx_in_group]
+  for item in seq {
+    match item {
+      Left(t) => {
+        let new_idx_in_group = *table.get(&(*t, idx_in_group)).unwrap_or(&0);
+          // .unwrap_or_else(|| panic!("t {:?} idx_in_group {} subseq {:?}\nseq {:?}", 
+                    // t, idx_in_group, subseq, seq));
+
+        if new_idx_in_group < idx_in_group {
+          if group_count >= min_group_count {
+            out.push(Right((subseq.clone(), group_count)));
+          } else {
+            for _ in 0..group_count {
+              out.extend(subseq.0.iter().map(|&t| Left(t)))
+            }
+          }
+          group_count = 0; 
+
+          let diff = idx_in_group - new_idx_in_group;
+          for group_idx in 0..diff {
+            out.push(Left(subseq.0[group_idx]));
+          }
+          idx_in_group = new_idx_in_group;
+
+          out.push(Left(*t));
+        } else if new_idx_in_group == subseq.0.len() {
+          group_count += 1; 
+          idx_in_group = 0; 
+        } else if new_idx_in_group == idx_in_group+1 {
+          idx_in_group = new_idx_in_group;
+        } else {
+          assert_eq!(new_idx_in_group, 0);
+          assert_eq!(idx_in_group, 0);
+          if group_count > 0 {
+            if group_count >= min_group_count {
+              out.push(Right((subseq.clone(), group_count)));
+            } else {
+              for _ in 0..group_count {
+                out.extend(subseq.0.iter().map(|&t| Left(t)))
+              }
+            }
+            group_count = 0;   
+          }
+          assert_eq!(group_count, 0);
+          out.push(Left(*t))
+        }
+      },
+      Right(grp) => {
+        // we need to flush everything into the output buffer here
+
+        if group_count >= min_group_count {
+          out.push(Right((subseq.clone(), group_count)));
+        } else {
+          for _ in 0..group_count {
+            out.extend(subseq.0.iter().map(|&t| Left(t)))
+          }
+        }
+        group_count = 0;
+
+        for group_idx in 0..idx_in_group {
+          out.push(Left(subseq.0[group_idx]));
+        }
+        idx_in_group = 0;
+        
+        out.push(Right(grp.clone()));
+      },
+    }
+    dbg!(item, idx_in_group, group_count);
+    dbg!(&out);
+    println!();
+  }
+  // we need to flush everything into the output buffer here
+  // this is copied from the case "right" above
+  if group_count >= min_group_count {
+    out.push(Right((subseq.clone(), group_count)));
+  } else {
+    for _ in 0..group_count {
+      out.extend(subseq.0.iter().map(|&t| Left(t)))
+    }
+  }
+  // group_count = 0;
+
+  for group_idx in 0..idx_in_group {
+    out.push(Left(subseq.0[group_idx]));
+  }
+  // idx_in_group = 0;
+
+  out
+
+}
+
+pub fn rle_specific_subseq_old<T: Debug + Eq + Clone + Copy>(seq: &[Either<T, (Group<T>, u32)>], subseq: &Group<T>)
+-> Vec<Either<T, (Group<T>, u32)>>
 {
   let min_group_count = 3;
 
@@ -283,11 +452,12 @@ pub fn rle_specific_subseq<T: Debug + Eq + Clone + Copy>(seq: &[Either<T, (Group
   let mut group_count = 0;
   let mut out: Vec<Either<T, (Group<T>, u32)>> = vec![];
   let mut backlog = vec![];
+  dbg!(subseq);
   for item in seq {
     match item {
       Left(t) if t == &subseq.0[idx_in_group] => {
-          // we'll provisionally proceed to start making this into a group
-          // but we have to be able to unwind that if we fail, so note t 
+        // we'll provisionally proceed to start making this into a group
+        // but we have to be able to unwind that if we fail, so note t 
           // into our backlog
           backlog.push(t); 
           idx_in_group += 1; 
@@ -312,9 +482,27 @@ pub fn rle_specific_subseq<T: Debug + Eq + Clone + Copy>(seq: &[Either<T, (Group
         group_count = 0;
         backlog = vec![];
         // and now put in not_extendable itself
-        out.push(not_extendable.clone());
+        if let Left(t) = not_extendable && t == &subseq.0[idx_in_group] {
+          // note this is copied from above
+          backlog.push(t); 
+          idx_in_group += 1; 
+          if idx_in_group == subseq.0.len() {
+            idx_in_group = 0; 
+            group_count += 1; 
+            if group_count >= min_group_count {
+              // once we're above the min_group_count, we can clear the backlog
+              // when we finish a group, as we will in fact store the whole 
+              // group at that point
+              backlog = vec![];
+            }
+          }
+        } else {
+          out.push(not_extendable.clone());
+        }
       },
     }
+    // dbg!(item, idx_in_group, group_count);
+    // println!();
   }
   // we need to flush everything into the output buffer here
   if group_count >= min_group_count {
@@ -340,7 +528,8 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
   let mut partial_rle_hist = trans_hist.iter().map(|t|Left(*t)).collect_vec();
 
   for i in 1..=7 {
-    loop {
+    for j in 1..=10 {
+      dbg!(j);
       let grouped = group_partial_rle(&partial_rle_hist, i); 
       let grouped_rle = rle_partial_rle(&grouped);
       println!("grouping by {}: {}", i, display_two_group_rle(&grouped_rle));
@@ -362,7 +551,9 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
 
 #[cfg(test)]
 mod test {
-  use super::*;
+  use smallvec::ToSmallVec;
+
+use super::*;
 
   #[test]
   fn test_rle_encode() {
@@ -444,74 +635,27 @@ mod test {
     "###);
   }
 
+  fn make_subseq(s: &str) -> Group<char> {
+    Group(s.chars().collect())
+  }
+
   #[test]
   fn test_rle_specific_subseq() {
     let inp_str = "abcdddaddbadbddbdddddddd";
     let inp = inp_str.chars().map(|c|Left(c)).collect_vec();
     let subseq = Group(smallvec!['d']);
-    insta::assert_debug_snapshot!(rle_specific_subseq(&inp, &subseq), @r###"
-    [
-        Left(
-            'a',
-        ),
-        Left(
-            'b',
-        ),
-        Left(
-            'c',
-        ),
-        Right(
-            (
-                Group(
-                    [
-                        'd',
-                    ],
-                ),
-                3,
-            ),
-        ),
-        Left(
-            'a',
-        ),
-        Left(
-            'd',
-        ),
-        Left(
-            'd',
-        ),
-        Left(
-            'b',
-        ),
-        Left(
-            'a',
-        ),
-        Left(
-            'd',
-        ),
-        Left(
-            'b',
-        ),
-        Left(
-            'd',
-        ),
-        Left(
-            'd',
-        ),
-        Left(
-            'b',
-        ),
-        Right(
-            (
-                Group(
-                    [
-                        'd',
-                    ],
-                ),
-                8,
-            ),
-        ),
-    ]
-    "###);
+    let ans = rle_specific_subseq(&inp, &subseq);
+    let ans_string = display_partial_rle_str(&ans);
+    insta::assert_debug_snapshot!(ans_string, @r###""abc (d, 3) addbadbddb (d, 8) ""###);
+    
+    println!("sep ------------------------------------------------------------------------------");
+    let inp_str = "bCbcADc"; // ADcAdbC";
+    let subseq = Group(smallvec!['C', 'B']);
+    let inp = inp_str.chars().map(|c|Left(c)).collect_vec();
+    let ans = rle_specific_subseq(&inp, &subseq);
+    let ans_string = display_partial_rle_str(&ans);
+    assert_eq!(inp_str, ans_string);
+
     // let inp = "bCbcADcADcAdbCBCbcADcADcADcADcAdbCBCBCbcADcADcADcADcADcADcAdbCBCBCBCbcADcADcADcADcADcADcADcADcAdbCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCBCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCBCBCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADc";
     let inp_str = "bCbcADcADcAdbCBCbcADcADcADcADcAdbCBCBCbcADcADcADcADcADcADcAdbCBCBCBCbcADcADcADcADcADcADcADcADcAdbCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCBCBCBCbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdbCBCBCBCBCBCBCBC";
     let subseq_1 = Group(smallvec!['C', 'B']);
@@ -523,6 +667,47 @@ mod test {
     let final_string = display_partial_rle_str(&final_ans);
     insta::assert_debug_snapshot!(inter_string, @r###""bCbcADcADcAdbCBCbcADcADcADcADcAdbCBCBCbcADcADcADcADcADcADcAdb (CB, 3) CbcADcADcADcADcADcADcADcADcAdb (CB, 4) CbcADcADcADcADcADcADcADcADcADcADcAdb (CB, 5) CbcADcADcADcADcADcADcADcADcADcADcADcADcAdb (CB, 6) CbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdb (CB, 7) CbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdb (CB, 8) CbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdb (CB, 9) CbcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcADcAdb (CB, 7) C""###);
     insta::assert_debug_snapshot!(final_string, @r###""bCbcADcADcAdbCBCb (cAD, 4) cAdbCBCBCb (cAD, 6) cAdb (CB, 3) Cb (cAD, 8) cAdb (CB, 4) Cb (cAD, 10) cAdb (CB, 5) Cb (cAD, 12) cAdb (CB, 6) Cb (cAD, 14) cAdb (CB, 7) Cb (cAD, 16) cAdb (CB, 8) Cb (cAD, 18) cAdb (CB, 9) Cb (cAD, 20) cAdb (CB, 7) C""###);
+
+    // from fastTailEatingDragon, there's a bug where grouping doesn't happen
+    // let original_inp_str = "bCbcDaBAddDADAddDADaBaBaBabCbCbCbCbcDaBAddDADAddDADaBaBaBAddDADAddDADAddDADAddDADaBaBaBaBaBAddDADAddDADAddDADAddDADAddDADAddDADaBaBaBaBaBaBaBAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADaBaBaBaBaBaBaBaBaBabCbCbCbCbCbCbCbCbCbCbcDaBAddDADAddDADaBaBaBAddDADAddDADAddDADAddDADaBaBaBaBaBAddDADAddDADAddDADAddDADAddDADAddDADaBaBaBaBaBaBaBAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADaBaBaBaBaBaBaBaBaBAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADaBaBaBaBaBaBaBaBaBaBaBAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADaBaBaBaBaBaBaBaBaBaBaBaBaBAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBaBAddDADAddDADAddDADAddDADAddDA";
+    let inp_str = "BaBAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADAddDADaBaBaBaBaBaBaBaBaBaBaBaBa";
+    let inp = inp_str.chars().map(|c|Left(c)).collect_vec();
+    let grouped = group_partial_rle(&inp, 6); 
+    let grouped_rle: Vec<Either<(Group<char>, u32), (Group<char>, u32)>> = rle_partial_rle(&grouped);
+    println!("grouping by {}: {}", 6, display_two_chargroup_rle(&grouped_rle));
+    let subseq = make_subseq("DAddDA");
+    println!("\n\n\nstart wrong one ---------------------------------------------------\n");
+    let final_ans = rle_specific_subseq(&inp, &subseq);
+    let final_string = display_partial_rle_str(&final_ans);
+    println!("final str: {}", final_string);
+    insta::assert_debug_snapshot!(final_string, @r###""BaBAddDA (DAddDA, 11) DaBaBaBaBaBaBaBaBaBaBaBaBa""###);
+
+    /* I figured out the bug. the problem is if we are looking for DAddDA 
+      and we see "DA DAddDA", then we start on the first DA and then when we see D, 
+      that's not the third letter. so we give up but don't start trying to parse the string
+      again until the *next* letter, which is too late, that first D needs to be part of the 
+      DAddDA or it won't exist. 
+
+      it gets worse. if we just start over the parsing whenever it breaks, that isn't good enough
+      either I think, maybe? we're only ever parsing one string. 
+      substr: aBaa
+      inp_str: aB aBaa aBaa aBaa
+    */
+    let subseq = make_subseq("ddC");
+    let inp_str = "ddddCddCddC";
+    let inp = inp_str.chars().map(|c|Left(c)).collect_vec();
+    let ans = rle_specific_subseq(&inp, &subseq);
+    let ans_string = display_partial_rle_str(&ans);
+    assert_eq!(ans_string, "dd (ddC, 3) ");
+
+    let subseq = make_subseq("aBaa");
+    let inp_str = "aBaBaaaBaaaBaa";
+    let inp = inp_str.chars().map(|c|Left(c)).collect_vec();
+    let ans = rle_specific_subseq(&inp, &subseq);
+    let ans_string = display_partial_rle_str(&ans);
+    assert_eq!(ans_string, "aB (aBaa, 3)");
+    panic!();
+
   }
 
   #[test]

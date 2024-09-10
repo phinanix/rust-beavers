@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 #![feature(int_roundings)]
+#![feature(let_chains)]
 // #![feature(return_position_impl_trait_in_trait)]
 
 use std::collections::HashMap;
