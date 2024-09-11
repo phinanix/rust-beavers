@@ -317,8 +317,7 @@ pub fn chain_side<S: TapeSymbol>(
   let s_len: i32 = start.len().try_into().unwrap();
   let e_len: i32 = end.len().try_into().unwrap();
 
-  let (mut start_out, mut end_out, start_slice, end_slice) 
-  = match s_len - e_len {
+  let (mut start_out, mut end_out, start_slice, end_slice) = match s_len - e_len {
     1 => {
       let (start_s, start_avar) = start[0];
       (

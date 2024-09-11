@@ -496,7 +496,6 @@ mod test {
     assert_eq!(res, (State(1), ans));
   }
 
-
   fn remove_fs<S: TapeSymbol>(tape_half: &mut Vec<(S, u32)>) {
     if tape_half.len() > 0 {
       let (s_0, _) = tape_half[0];
@@ -526,9 +525,11 @@ mod test {
       MacroMachine::project_down(macro_state, macro_tape.clone());
     assert_eq!(normal_state, proj_macro_state, "step: {}", step);
     assert_eq!(
-      &tape_up_to_fs(normal_tape), &tape_up_to_fs(&proj_macro_tape),
+      &tape_up_to_fs(normal_tape),
+      &tape_up_to_fs(&proj_macro_tape),
       "step: {}\nmacro_tape: {}",
-      step, macro_tape
+      step,
+      macro_tape
     );
 
     let (new_macro_state, steps) = match macro_tape.step_extra_info(macro_state, macro_machine) {

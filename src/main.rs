@@ -803,7 +803,7 @@ fn main() {
   // );
 
   run_named_machines_from_list(&MUSICAL_ANALYZER);
-  
+
   // let m = SmallBinMachine::from_compact_format("1RB---_1RC---_1RD1LD_1LD1RC");
   // run_machine(&m);
   // detect_quasihalt_of_lr_or_cycler(&m, 2, 4);

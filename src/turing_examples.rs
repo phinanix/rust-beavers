@@ -618,7 +618,6 @@ const MACHINES: [(&str, &str); 10] = [
   ("4state_halter", "1RB1RH_1RC1RA_1RD1LB_1LD1RC"),
 ];
 
-
 /*
 stuff to check: ternary counter
 tail eating dragon slow
@@ -629,7 +628,10 @@ pub const MUSICAL_ANALYZER: [(&str, &str); 13] = [
   ("two_stage_bouncer", "1RB0RC_1RC1LC_1LA1LD_1RA1LB"),
   ("three_stage_bouncer", "1RB0RD_1LC0LC_0RD1LB_1RB1RA"),
   ("four_stage_bouncer", "1RB1RD_1LC0LB_0RA1LB_1RC1RC"),
-  ("translated_bouncer_with_shadow", "1RB---_1LC1RD_1LC1RB_0RC0RD"),
+  (
+    "translated_bouncer_with_shadow",
+    "1RB---_1LC1RD_1LC1RB_0RC0RD",
+  ),
   ("midpoint_bouncer", "1RB0LC_1LC1RB_1LA0LD_0RB1RD"),
   ("fast_tail_eating_dragon", "1RB0LD_1LC0RA_0RD1LB_1RD1LA"),
   ("cubic_bouncer", "1RB1LA_1RC0RD_1LA1RH_0LA1RD"),
