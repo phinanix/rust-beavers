@@ -1,0 +1,38 @@
+beep
+a copy of a lot of functions that exist in main that work with quasihalting instead of 
+halting
+
+brady
+
+chain
+implements a procedure which iterates a rule that can apply multiple times 
+in a row into a new rule that does it all in one shot
+
+compression
+detect sequences of repeated transitions
+eventually, detect and generalize sequences of repeated transitions and rules
+to prove facts about the machine
+
+linrecur
+
+macro_machines
+
+main
+contains a lot of script-like functions that orchestrate everything else
+
+parse
+
+rules
+very long file - includes a lot of things related to rules, but 
+primarily proving rules and then applying them to the tape
+
+simulate
+contains detect_rule for some reason
+
+tape
+
+turing_examples
+interesting examples of specific turing machines
+
+turing
+defines the turing machine definition everyone uses

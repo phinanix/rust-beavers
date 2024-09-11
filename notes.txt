@@ -452,3 +452,42 @@ but that requires that FT and TT are units we can RLE on the tape.
 I think what we do is we figure out what rule we want to make, and then we have
 some kind of set of units we can glue, and if we need to add to that to make the
 rule work, then we do. But it's definitely a little tricky. 
+
+The main question, indeed, is what do we do with the tape afterwards, where I think the 
+answer is some kind of heuristic thing. We have a list of tape atoms, and we compress them
+when we see them I guess, and then try to apply rules. Or possibly we try to apply rules, 
+and that tells us what to do with the tape; when to make re-alignments, etc. 
+
+so for this compression thing to work, we need a few pieces
+1. detect heuristically what rules to prove
+actually construct those rules in two steps 
+2. glue things together
+3. chain things 
+then we have some rules and we need to actually apply those to the tape / the machine, 
+and possibly separately detect when the machine is infinite
+4. apply rules to tapes
+5. (maybe) detect machine is infinite. 
+
+step 1 exists in a form that is usable so far. 
+step 2 doesn't exist at all and I need to write it, I think I ought write it next 
+step 3 sort of exists from Jun of 23 (>1y ago) but it isn't really quite the version 
+  of it that I would write this time, and it's unclear whether I ought reuse it or rewrite
+  my own. 
+step 4 exists and is (fingers crossed) largely usable as is. though the thing where the 
+  tape needs to be made of something other than bits or same-length sequences of bits is
+  tricky and might sink the plan to just reuse step 4. 
+step 5 probably will be derivative of step 4; it was in the previous implementation. but
+  is worth tracking that it might be useful to have separately if things shake out 
+  differently. 
+
+so for now let's write 2 and then see how bad 3 looks. 
+
+oh. there's a big problem, which is that the thing we want to glue fundamentally
+is a sequence of transitions, or a sequence of things that includes transitions, but 
+our current rules don't support "ending off the config", which they would need to. 
+
+my new guess is we just rewrite everything from scratch >>
+which is annoying but it seems pretty doable right :p
+I mean it's only 3 nontrivial things, which hopefully have some overlap 
+(in the part where they match things together), though maybe that will need to be 
+rewritten for each of them, I'm not sure. which would also be annoying but doable

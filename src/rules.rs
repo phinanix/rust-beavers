@@ -244,6 +244,7 @@ pub fn vec_u32_to_avar<S>(u32s: Vec<(S, u32)>) -> Vec<(S, AffineVar)> {
     .map(|(s, u32)| (s, AffineVar::constant(u32)))
     .collect()
 }
+
 impl<P, S> Config<P, S, AffineVar> {
   fn from_tape_state(
     state: P,

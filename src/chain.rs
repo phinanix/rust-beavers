@@ -97,12 +97,14 @@ pub fn chain_var(
   match start {
     AffineVar { n, a: 0, var: _var } => {
       if end.var_map.is_empty() {
+        // this case is like 5 -> 8
         if n == end.n {
           Some((start, end.clone()))
         } else {
           None
         }
       } else {
+        // this case is like 5 -> x+3
         match end.var_map.iter().exactly_one() {
           Ok((&end_var, &end_a)) => {
             let int_match = n.checked_sub(end.n)?;
@@ -122,6 +124,7 @@ pub fn chain_var(
     }
     AffineVar { n, a, var } => {
       if end.var_map.is_empty() {
+        // this case is like x+3 -> 5
         let int_match = end.n.checked_sub(n)?;
         if int_match % a == 0 {
           var_chain_map.add_static(var, (int_match / a).into())?;
@@ -130,6 +133,7 @@ pub fn chain_var(
           None
         }
       } else {
+        // this case is like x+3 -> y+2
         match end.var_map.iter().exactly_one() {
           Ok((&end_var, &end_a)) => {
             if var != end_var || a != end_a {
@@ -313,7 +317,8 @@ pub fn chain_side<S: TapeSymbol>(
   let s_len: i32 = start.len().try_into().unwrap();
   let e_len: i32 = end.len().try_into().unwrap();
 
-  let (mut start_out, mut end_out, start_slice, end_slice) = match s_len - e_len {
+  let (mut start_out, mut end_out, start_slice, end_slice) 
+  = match s_len - e_len {
     1 => {
       let (start_s, start_avar) = start[0];
       (
@@ -335,6 +340,7 @@ pub fn chain_side<S: TapeSymbol>(
     }
     _ => unreachable!("checked abs diff above"),
   };
+
   for (i, (&(s_sym, s_var), (e_sym, e_var))) in
     zip_eq(start[start_slice..].iter(), end[end_slice..].iter()).enumerate()
   {
