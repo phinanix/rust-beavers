@@ -436,3 +436,19 @@ to miss it in a sample of 60.
 
 current holdouts file with the 48666: 
  machine_lists/size4_bouncer_too_few_right_records_10k_20k_300_26_august_24 
+
+Rule gluing thoughts
+we need to figure out how to compress the tape, I had been neglecting this
+eg to glue the rule
+FT>T<
+goes to 
+  >T<TT
+we get the rule
+(FT, x) >T<
+goes to 
+        >T< (TT, x)
+but that requires that FT and TT are units we can RLE on the tape. 
+
+I think what we do is we figure out what rule we want to make, and then we have
+some kind of set of units we can glue, and if we need to add to that to make the
+rule work, then we do. But it's definitely a little tricky. 
