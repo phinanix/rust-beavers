@@ -6,6 +6,7 @@ use std::{
   collections::{HashMap, HashSet},
   fmt::{Debug, Display, Pointer},
   hash::Hash,
+  ops::{Add, AddAssign},
 };
 
 use crate::{
@@ -210,16 +211,42 @@ pub fn display_two_chargroup_rle(
 // }
 
 // pub fn display
-pub fn push_rle<T: Eq>(stack: &mut Vec<(T, u32)>, item: T) {
+pub fn push_rle<T: Eq, C: AddAssign + From<u32>>(stack: &mut Vec<(T, C)>, item: T) {
   match stack.last_mut() {
     None => {
-      stack.push((item, 1));
+      stack.push((item, 1.into()));
     }
     Some((t, count)) => {
       if item == *t {
-        *count += 1;
+        *count += 1.into();
       } else {
-        stack.push((item, 1));
+        stack.push((item, 1.into()));
+      }
+    }
+  }
+}
+
+pub fn append_rle<S: Eq + Clone, T: Add<Output = T> + Clone>(
+  stack: &mut Vec<(S, T)>,
+  items: &[(S, T)],
+) {
+  match stack.last_mut() {
+    None => {
+      for item in items {
+        stack.push(item.clone());
+      }
+    }
+    Some((s_last, t_last)) => {
+      if !items.is_empty() {
+        let (s_first, t_first) = items[0].clone();
+        if s_first == *s_last {
+          *t_last = t_last.clone() + t_first;
+        } else {
+          stack.push((s_first, t_first));
+        }
+        for item in &items[1..] {
+          stack.push(item.clone());
+        }
       }
     }
   }
@@ -587,10 +614,60 @@ pub struct CConfig<P, S, V> {
   pub right: Vec<(S, V)>,
 }
 
+impl<P: Display, S: Display, V: Display> Display for CConfig<P, S, V> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "phase: {}  ", self.state)?;
+    for (s, v) in self.left.iter() {
+      write!(f, "({}, {}) ", s, v)?;
+    }
+    if self.left.is_empty() {
+      write!(f, " ")?;
+    }
+    write!(f, "|>{}<|", self.head)?;
+    if self.right.is_empty() {
+      write!(f, " ")?;
+    }
+    for (s, v) in self.right.iter().rev() {
+      write!(f, " ({}, {})", s, v)?;
+    }
+    Ok(())
+  }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RuleEnd<P, S> {
   Center(CConfig<P, S, AVarSum>),
   Side(P, Dir, Vec<(S, AVarSum)>),
+}
+
+impl<P: Display, S: Display> Display for RuleEnd<P, S> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      RuleEnd::Center(config) => write!(f, "{}", config),
+      RuleEnd::Side(phase, Dir::L, right) => {
+        write!(f, "phase: {}  ", phase)?;
+        write!(f, "<|")?;
+        if right.is_empty() {
+          write!(f, " ")?;
+        }
+        for (s, v) in right.iter().rev() {
+          write!(f, " ({}, {})", s, v)?;
+        }
+        Ok(())
+      }
+      RuleEnd::Side(phase, Dir::R, left) => {
+        write!(f, "phase: {}  ", phase)?;
+        for (s, v) in left.iter() {
+          write!(f, "({}, {}) ", s, v)?;
+        }
+        if left.is_empty() {
+          write!(f, " ")?;
+        }
+        write!(f, "|> ")?;
+        Ok(())
+      }
+    }
+  }
 }
 
 impl<P: Copy, S> RuleEnd<P, S> {
@@ -608,6 +685,12 @@ impl<P: Copy, S> RuleEnd<P, S> {
 pub struct CRule<P, S> {
   pub start: CConfig<P, S, AffineVar>,
   pub end: RuleEnd<P, S>,
+}
+
+impl<P: Display, S: Display> Display for CRule<P, S> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}\ninto:\n{}", self.start, self.end)
+  }
 }
 
 pub fn trans_to_rule(machine: &SmallBinMachine, edge: Edge<State, Bit>) -> CRule<State, Bit> {
@@ -628,6 +711,8 @@ pub fn trans_to_rule(machine: &SmallBinMachine, edge: Edge<State, Bit>) -> CRule
   CRule { start, end }
 }
 
+//invariant: the vec is never empty (so usually you have an Option<Leftover>
+//and if it would have been empty it is None)
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Leftover<S> {
   Start(Vec<(S, AffineVar)>),
@@ -724,6 +809,12 @@ pub fn match_vecs<S: TapeSymbol>(
   end: &[(S, AVarSum)],
   start: &[(S, AffineVar)],
 ) -> Result<Option<Leftover<S>>, String> {
+  match (end.len(), start.len()) {
+    (0, 0) => return Ok(None),
+    (_, 0) => return Ok(Some(Leftover::End(end.to_vec()))),
+    (0, _) => return Ok(Some(Leftover::Start(start.to_vec()))),
+    (_, _) => (),
+  }
   // iter these two from back to front, but skipping the very front element
   // (of the shorter one)
   let pair_len = end.len().min(start.len());
@@ -780,17 +871,36 @@ fn get_ends<S: TapeSymbol>(
   (get_end(mb_leftover), get_end(mb_rightover))
 }
 
+pub fn pop_rle_avarsum<T: Copy>(stack: &mut Vec<(T, AVarSum)>) -> Option<T> {
+  let t = match stack.last_mut() {
+    None => return None,
+    Some((t, avarsum)) => {
+      if avarsum.n == 0 {
+        return None;
+      } else {
+        avarsum.n -= 1;
+        *t
+      }
+    }
+  };
+  let last_avs = &stack.last().unwrap().1;
+  if last_avs.n == 0 && last_avs.var_map.is_empty() {
+    stack.pop();
+  };
+  Some(t)
+}
+
 pub fn glue_match<P: Phase, S: TapeSymbol>(
-  end: RuleEnd<P, S>,
+  end: &RuleEnd<P, S>,
   CConfig {
     state: start_state,
     left: start_left,
     head: start_head,
     right: start_right,
-  }: CConfig<P, S, AffineVar>,
+  }: &CConfig<P, S, AffineVar>,
 ) -> Result<(Starts<S>, Ends<S>), String> {
   //first check intermediate states match
-  if end.get_phase() != start_state {
+  if end.get_phase() != *start_state {
     return Err("phase mismatch".to_owned());
   }
   match end {
@@ -812,64 +922,70 @@ pub fn glue_match<P: Phase, S: TapeSymbol>(
     }
     RuleEnd::Side(_end_state, Dir::L, end_tape) => {
       let right_over = match_vecs(&end_tape, &start_right)?;
-      todo!()
+      let mut left_over_vec = start_left.clone();
+      push_rle(&mut left_over_vec, *start_head);
+      let left_over = Some(Leftover::Start(left_over_vec));
+      let starts = get_starts(&left_over, &right_over);
+      let ends = get_ends(&left_over, &right_over);
+      Ok((starts, ends))
     }
     RuleEnd::Side(_end_state, Dir::R, end_tape) => {
       let left_over = match_vecs(&end_tape, &start_left)?;
-      todo!()
+      let mut right_over_vec = start_right.clone();
+      push_rle(&mut right_over_vec, *start_head);
+      let right_over = Some(Leftover::Start(right_over_vec));
+      let starts = get_starts(&left_over, &right_over);
+      let ends = get_ends(&left_over, &right_over);
+      Ok((starts, ends))
     }
   }
 }
 
-pub fn append_leftover<S: TapeSymbol, T>(
-  half_tape: Vec<(S, T)>,
+pub fn append_leftover<S: TapeSymbol, T: Add<Output = T> + Clone>(
+  half_tape: &[(S, T)],
   mb_leftover: Option<Vec<(S, T)>>,
 ) -> Vec<(S, T)> {
   match mb_leftover {
-    None => half_tape,
+    None => half_tape.to_vec(),
     Some(mut v) => {
-      v.extend(half_tape);
+      append_rle(&mut v, half_tape);
       v
     }
   }
 }
 
 pub fn append_starts<P: Phase, S: TapeSymbol>(
-  CConfig { state, left, head, right }: CConfig<P, S, AffineVar>,
+  CConfig { state, left, head, right }: &CConfig<P, S, AffineVar>,
   starts: Starts<S>,
 ) -> CConfig<P, S, AffineVar> {
   CConfig {
-    state,
+    state: *state,
     left: append_leftover(left, starts.0),
-    head,
+    head: *head,
     right: append_leftover(right, starts.1),
   }
 }
 
 pub fn append_ends<P: Phase, S: TapeSymbol>(
-  end: RuleEnd<P, S>,
+  end: &RuleEnd<P, S>,
   ends: Ends<S>,
 ) -> Result<RuleEnd<P, S>, String> {
   match end {
     RuleEnd::Center(CConfig { state, left, head, right }) => Ok(RuleEnd::Center(CConfig {
-      state,
+      state: *state,
       left: append_leftover(left, ends.0),
-      head,
+      head: *head,
       right: append_leftover(right, ends.1),
     })),
     RuleEnd::Side(state, Dir::L, v) => match ends.0 {
-      None => Ok(RuleEnd::Side(state, Dir::L, append_leftover(v, ends.1))),
+      None => Ok(RuleEnd::Side(*state, Dir::L, append_leftover(v, ends.1))),
       Some(mut lo) => {
-        let s = {
-          let (s, avarsum) = lo.last_mut().unwrap();
-          if avarsum.n == 0 {
-            return Err("couldn't sub one in appendend".to_owned());
-          }
-          avarsum.n -= 1;
-          s.clone()
+        let s = match pop_rle_avarsum(&mut lo) {
+          None => return Err("couldn't sub one in appendend".to_owned()),
+          Some(s) => s,
         };
         Ok(RuleEnd::Center(CConfig {
-          state,
+          state: *state,
           left: lo,
           head: s,
           right: append_leftover(v, ends.1),
@@ -877,18 +993,14 @@ pub fn append_ends<P: Phase, S: TapeSymbol>(
       }
     },
     RuleEnd::Side(state, Dir::R, v) => match ends.1 {
-      None => Ok(RuleEnd::Side(state, Dir::R, append_leftover(v, ends.0))),
+      None => Ok(RuleEnd::Side(*state, Dir::R, append_leftover(v, ends.0))),
       Some(mut lo) => {
-        let s = {
-          let (s, avarsum) = lo.last_mut().unwrap();
-          if avarsum.n == 0 {
-            return Err("couldn't sub one in appendend".to_owned());
-          }
-          avarsum.n -= 1;
-          s.clone()
+        let s = match pop_rle_avarsum(&mut lo) {
+          None => return Err("couldn't sub one in appendend".to_owned()),
+          Some(s) => s,
         };
         Ok(RuleEnd::Center(CConfig {
-          state,
+          state: *state,
           left: append_leftover(v, ends.0),
           head: s,
           right: lo,
@@ -899,16 +1011,61 @@ pub fn append_ends<P: Phase, S: TapeSymbol>(
 }
 
 pub fn glue_rules<P: Phase, S: TapeSymbol>(
-  rule1: CRule<P, S>,
-  rule2: CRule<P, S>,
+  rule1: &CRule<P, S>,
+  rule2: &CRule<P, S>,
 ) -> Result<CRule<P, S>, String> {
   // first, match rule1 end to rule2 start. this obtains some ~leftovers.
   // append the start-type leftovers to rule1 start to get out's start
   // and end-type to rule2 end to get out's end
-  let (starts, ends) = glue_match(rule1.end, rule2.start)?;
-  let start = append_starts(rule1.start, starts);
-  let end = append_ends(rule2.end, ends)?;
+  let (starts, ends) = glue_match(&rule1.end, &rule2.start)?;
+  // dbg!(&starts, &ends);
+  let start = append_starts(&rule1.start, starts);
+  let end = append_ends(&rule2.end, ends)?;
   Ok(CRule { start, end })
+}
+
+pub fn glue_transitions(
+  machine: &SmallBinMachine,
+  edges: Group<(State, Bit)>,
+  print: bool,
+) -> Result<CRule<State, Bit>, String> {
+  let mut rules = edges
+    .0
+    .into_iter()
+    .map(|(s, b)| trans_to_rule(machine, Edge(s, b)));
+  let mut cur_rule = match rules.next() {
+    None => {
+      if print {
+        println!("rules was len 0 :o");
+      }
+      return Err("rules was len 0?".to_owned());
+    }
+    Some(rule) => rule,
+  };
+  for rule in rules {
+    if print {
+      println!("cur rule:\n{}", cur_rule);
+      println!("gluing on:\n{}\n", rule);
+    }
+    match glue_rules(&cur_rule, &rule) {
+      Ok(glued_rule) => {
+        // if print {
+        //   println!("gluing succeeded:\n{}", glued_rule);
+        // }
+        cur_rule = glued_rule;
+      }
+      Err(s) => {
+        if print {
+          println!("gluing failed: {}", s)
+        }
+        return Err(s);
+      }
+    }
+  }
+  if print {
+    println!("gluing succeeded overall!\n{}", cur_rule)
+  }
+  Ok(cur_rule)
 }
 
 pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
@@ -933,6 +1090,14 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
         partial_rle_hist = rle_specific_subseq(&partial_rle_hist, &new_subseq);
         let partial_str = display_partial_rle_hist(&partial_rle_hist);
         println!("after grouping: {}", partial_str);
+        match glue_transitions(machine, new_subseq, true) {
+          Err(s) => println!("gluing failed: {}", s),
+          Ok(glued_rule) => {
+            //todo: display for CRule
+            println!("we succeeded at gluing! we got:\n{}", glued_rule);
+          }
+        };
+
         println!();
       } else {
         println!();

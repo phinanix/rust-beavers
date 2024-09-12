@@ -218,7 +218,7 @@ pub struct Config<P, S, V> {
   pub right: Vec<(S, V)>,
 }
 
-impl<P: Display, S: Display + Copy, V: Display> Display for Config<P, S, V> {
+impl<P: Display, S: Display, V: Display> Display for Config<P, S, V> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "phase: {}  ", self.state)?;
     for (s, v) in self.left.iter() {
