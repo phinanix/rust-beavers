@@ -1211,6 +1211,7 @@ impl Subbable for AVarSum {
   }
 }
 
+// these next two functions are unused lol
 fn process_tape_side<S: TapeSymbol>(side: &mut Vec<(S, SymbolVar)>) -> AVarSum {
   match side.get(0).map(|x| x.clone()) {
     Some((sym, sv)) if sym == S::empty() => {

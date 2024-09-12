@@ -12,7 +12,7 @@ use crate::{
   brady::get_rs_hist_for_machine,
   rules::{AVarSum, AffineVar},
   tape::ExpTape,
-  turing::{Bit, Phase, SmallBinMachine, TapeSymbol, Turing, AB},
+  turing::{Bit, Edge, Phase, SmallBinMachine, State, TapeSymbol, Trans, Turing, AB},
   Dir,
 };
 
@@ -579,23 +579,336 @@ pub fn select_next_subseq<T: Clone>(grouped_rle: &[Either<(T, u32), (T, u32)>]) 
 
 // much like Tape / ExpTape, the *last* thing in the Vec is the closest to the head,
 // for both left and right
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-struct CConfig<P, S, V> {
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone)]
+pub struct CConfig<P, S, V> {
   pub state: P,
   pub left: Vec<(S, V)>,
   pub head: S,
   pub right: Vec<(S, V)>,
 }
 
-enum RuleEnd<P, S> {
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum RuleEnd<P, S> {
   Center(CConfig<P, S, AVarSum>),
-  Side(Dir, Vec<(S, AVarSum)>),
+  Side(P, Dir, Vec<(S, AVarSum)>),
+}
+
+impl<P: Copy, S> RuleEnd<P, S> {
+  pub fn get_phase(&self) -> P {
+    match self {
+      RuleEnd::Center(CConfig { state, .. }) => *state,
+      RuleEnd::Side(state, ..) => *state,
+    }
+  }
 }
 
 // CRule for compression-rule since we're rewriting a lot of the rule stuff here
-struct CRule<P, S> {
+// TODO: this could be ord and hash but for now it isn't; fixable if needed
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct CRule<P, S> {
   pub start: CConfig<P, S, AffineVar>,
   pub end: RuleEnd<P, S>,
+}
+
+pub fn trans_to_rule(machine: &SmallBinMachine, edge: Edge<State, Bit>) -> CRule<State, Bit> {
+  let start = CConfig {
+    state: edge.0,
+    left: vec![],
+    head: edge.1,
+    right: vec![],
+  };
+  let trans = machine.step(edge).unwrap();
+  let (end_state, end_symbol, end_dir, trans_steps) = match trans {
+    Trans::Step { state, symbol, dir, steps } => (state, symbol, dir, steps),
+    _ => panic!("halt or inf trans"),
+  };
+  assert_eq!(trans_steps, 1);
+  let end = RuleEnd::Side(end_state, end_dir, vec![(end_symbol, AVarSum::constant(1))]);
+
+  CRule { start, end }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Leftover<S> {
+  Start(Vec<(S, AffineVar)>),
+  End(Vec<(S, AVarSum)>),
+}
+
+pub fn match_vars(
+  AVarSum { n: sum_n, var_map }: &AVarSum,
+  AffineVar { n: var_n, a, var: _ }: AffineVar,
+) -> Result<(), String> {
+  if a != 0 || !var_map.is_empty() {
+    return Err("gave up on variables".to_owned());
+  }
+  if *sum_n == var_n {
+    Ok(())
+  } else {
+    Err("nums didn't match".to_owned())
+  }
+}
+
+// if Err, returns string as usual
+// if Ok, and the two vars did not perfectly match, returns the appropriately
+// typed variable for Start or End that's leftover - so Left=Start, Right=End
+// which is also enforced by start has AffineVar and end has AVarSum
+pub fn match_end_vars(
+  AVarSum { n: sum_n, var_map }: &AVarSum,
+  AffineVar { n: var_n, a, var: _ }: AffineVar,
+) -> Result<Option<Either<AffineVar, AVarSum>>, String> {
+  if a != 0 || !var_map.is_empty() {
+    return Err("gave up on variables".to_owned());
+  }
+  match sum_n.cmp(&var_n) {
+    std::cmp::Ordering::Less => Ok(Some(Left(AffineVar::constant(var_n - sum_n)))),
+    std::cmp::Ordering::Equal => Ok(None),
+    std::cmp::Ordering::Greater => Ok(Some(Right(AVarSum::constant(sum_n - var_n)))),
+  }
+}
+
+pub fn get_leftover<S: TapeSymbol>(
+  end: &[(S, AVarSum)],
+  start: &[(S, AffineVar)],
+) -> Option<Leftover<S>> {
+  match end.len().cmp(&start.len()) {
+    std::cmp::Ordering::Less => {
+      let diff = start.len() - end.len();
+      let slice = &start[0..diff];
+      Some(Leftover::Start(slice.to_owned()))
+    }
+    std::cmp::Ordering::Equal => None,
+    std::cmp::Ordering::Greater => {
+      let diff = end.len() - start.len();
+      let slice = &end[0..diff];
+      Some(Leftover::End(slice.to_owned()))
+    }
+  }
+}
+
+fn append_end_var<S: TapeSymbol>(
+  mb_leftover: Option<Leftover<S>>,
+  end_var_sym: S,
+  end_var_match: Option<Either<AffineVar, AVarSum>>,
+) -> Result<Option<Leftover<S>>, String> {
+  match (mb_leftover, end_var_match) {
+    (_, None) => Ok(None),
+    (None, Some(var)) => match var {
+      Left(avar) => {
+        let new_leftover = vec![(end_var_sym, avar)];
+        Ok(Some(Leftover::Start(new_leftover)))
+      }
+      Right(avarsum) => {
+        let new_leftover = vec![(end_var_sym, avarsum)];
+        Ok(Some(Leftover::End(new_leftover)))
+      }
+    },
+    (Some(Leftover::Start(_)), Some(Right(_))) => Err("appended start and end".to_owned()),
+    (Some(Leftover::End(_)), Some(Left(_))) => Err("appended end and start".to_owned()),
+    (Some(Leftover::Start(mut lo_vec)), Some(Left(avar))) => {
+      lo_vec.push((end_var_sym, avar));
+      Ok(Some(Leftover::Start(lo_vec)))
+    }
+    (Some(Leftover::End(mut lo_vec)), Some(Right(avarsum))) => {
+      lo_vec.push((end_var_sym, avarsum));
+      Ok(Some(Leftover::End(lo_vec)))
+    }
+  }
+}
+
+// note with arbitrary tape compression the fact that we use == on S here could
+// cause problems - T (FT, x) won't match (TF, x) T, and (TT, x) won't match (T, 2x)
+// but we're going to stick to it for now; I think it can solve bouncers despite
+// this problem, or most bouncers? and we'll see how it goes from there once
+// a basic version is implemented
+pub fn match_vecs<S: TapeSymbol>(
+  end: &[(S, AVarSum)],
+  start: &[(S, AffineVar)],
+) -> Result<Option<Leftover<S>>, String> {
+  // iter these two from back to front, but skipping the very front element
+  // (of the shorter one)
+  let pair_len = end.len().min(start.len());
+  for offset in 1..pair_len {
+    let (end_sym, end_num) = &end[end.len() - offset];
+    let (start_sym, start_num) = &start[start.len() - offset];
+    if end_sym != start_sym {
+      return Err(format!("syms failed to match at offset {}", offset));
+    }
+    let _var_match = match_vars(end_num, *start_num)?;
+  }
+  // now handle the end of the shorter one
+  let (end_sym, end_num) = &end[end.len() - pair_len];
+  let (start_sym, start_num) = &start[start.len() - pair_len];
+  if end_sym != start_sym {
+    return Err(format!("syms failed to match at offset {}", pair_len));
+  }
+  let end_var_match = match_end_vars(end_num, *start_num)?;
+  let leftover = get_leftover(end, start);
+  let final_leftover = append_end_var(leftover, *end_sym, end_var_match)?;
+  Ok(final_leftover)
+}
+
+fn get_start<S: TapeSymbol>(mb_leftover: &Option<Leftover<S>>) -> Option<Vec<(S, AffineVar)>> {
+  match mb_leftover {
+    None => None,
+    Some(Leftover::End(_)) => None,
+    Some(Leftover::Start(v)) => Some(v.clone()),
+  }
+}
+
+type Starts<S> = (Option<Vec<(S, AffineVar)>>, Option<Vec<(S, AffineVar)>>);
+
+fn get_starts<S: TapeSymbol>(
+  mb_leftover: &Option<Leftover<S>>,
+  mb_rightover: &Option<Leftover<S>>,
+) -> Starts<S> {
+  (get_start(mb_leftover), get_start(mb_rightover))
+}
+
+fn get_end<S: TapeSymbol>(mb_leftover: &Option<Leftover<S>>) -> Option<Vec<(S, AVarSum)>> {
+  match mb_leftover {
+    None => None,
+    Some(Leftover::Start(_)) => None,
+    Some(Leftover::End(v)) => Some(v.clone()),
+  }
+}
+
+type Ends<S> = (Option<Vec<(S, AVarSum)>>, Option<Vec<(S, AVarSum)>>);
+fn get_ends<S: TapeSymbol>(
+  mb_leftover: &Option<Leftover<S>>,
+  mb_rightover: &Option<Leftover<S>>,
+) -> Ends<S> {
+  (get_end(mb_leftover), get_end(mb_rightover))
+}
+
+pub fn glue_match<P: Phase, S: TapeSymbol>(
+  end: RuleEnd<P, S>,
+  CConfig {
+    state: start_state,
+    left: start_left,
+    head: start_head,
+    right: start_right,
+  }: CConfig<P, S, AffineVar>,
+) -> Result<(Starts<S>, Ends<S>), String> {
+  //first check intermediate states match
+  if end.get_phase() != start_state {
+    return Err("phase mismatch".to_owned());
+  }
+  match end {
+    RuleEnd::Center(CConfig {
+      state: _end_state,
+      left: end_left,
+      head: end_head,
+      right: end_right,
+    }) => {
+      if end_head != start_head {
+        return Err("head mismatch".to_owned());
+      }
+      // now we need to match the left and match the right
+      let left_over = match_vecs(&end_left, &start_left)?;
+      let right_over = match_vecs(&end_right, &start_right)?;
+      let starts = get_starts(&left_over, &right_over);
+      let ends = get_ends(&left_over, &right_over);
+      Ok((starts, ends))
+    }
+    RuleEnd::Side(_end_state, Dir::L, end_tape) => {
+      let right_over = match_vecs(&end_tape, &start_right)?;
+      todo!()
+    }
+    RuleEnd::Side(_end_state, Dir::R, end_tape) => {
+      let left_over = match_vecs(&end_tape, &start_left)?;
+      todo!()
+    }
+  }
+}
+
+pub fn append_leftover<S: TapeSymbol, T>(
+  half_tape: Vec<(S, T)>,
+  mb_leftover: Option<Vec<(S, T)>>,
+) -> Vec<(S, T)> {
+  match mb_leftover {
+    None => half_tape,
+    Some(mut v) => {
+      v.extend(half_tape);
+      v
+    }
+  }
+}
+
+pub fn append_starts<P: Phase, S: TapeSymbol>(
+  CConfig { state, left, head, right }: CConfig<P, S, AffineVar>,
+  starts: Starts<S>,
+) -> CConfig<P, S, AffineVar> {
+  CConfig {
+    state,
+    left: append_leftover(left, starts.0),
+    head,
+    right: append_leftover(right, starts.1),
+  }
+}
+
+pub fn append_ends<P: Phase, S: TapeSymbol>(
+  end: RuleEnd<P, S>,
+  ends: Ends<S>,
+) -> Result<RuleEnd<P, S>, String> {
+  match end {
+    RuleEnd::Center(CConfig { state, left, head, right }) => Ok(RuleEnd::Center(CConfig {
+      state,
+      left: append_leftover(left, ends.0),
+      head,
+      right: append_leftover(right, ends.1),
+    })),
+    RuleEnd::Side(state, Dir::L, v) => match ends.0 {
+      None => Ok(RuleEnd::Side(state, Dir::L, append_leftover(v, ends.1))),
+      Some(mut lo) => {
+        let s = {
+          let (s, avarsum) = lo.last_mut().unwrap();
+          if avarsum.n == 0 {
+            return Err("couldn't sub one in appendend".to_owned());
+          }
+          avarsum.n -= 1;
+          s.clone()
+        };
+        Ok(RuleEnd::Center(CConfig {
+          state,
+          left: lo,
+          head: s,
+          right: append_leftover(v, ends.1),
+        }))
+      }
+    },
+    RuleEnd::Side(state, Dir::R, v) => match ends.1 {
+      None => Ok(RuleEnd::Side(state, Dir::R, append_leftover(v, ends.0))),
+      Some(mut lo) => {
+        let s = {
+          let (s, avarsum) = lo.last_mut().unwrap();
+          if avarsum.n == 0 {
+            return Err("couldn't sub one in appendend".to_owned());
+          }
+          avarsum.n -= 1;
+          s.clone()
+        };
+        Ok(RuleEnd::Center(CConfig {
+          state,
+          left: append_leftover(v, ends.0),
+          head: s,
+          right: lo,
+        }))
+      }
+    },
+  }
+}
+
+pub fn glue_rules<P: Phase, S: TapeSymbol>(
+  rule1: CRule<P, S>,
+  rule2: CRule<P, S>,
+) -> Result<CRule<P, S>, String> {
+  // first, match rule1 end to rule2 start. this obtains some ~leftovers.
+  // append the start-type leftovers to rule1 start to get out's start
+  // and end-type to rule2 end to get out's end
+  let (starts, ends) = glue_match(rule1.end, rule2.start)?;
+  let start = append_starts(rule1.start, starts);
+  let end = append_ends(rule2.end, ends)?;
+  Ok(CRule { start, end })
 }
 
 pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
