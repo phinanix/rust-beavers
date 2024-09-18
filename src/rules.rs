@@ -190,6 +190,16 @@ impl Display for AffineVar {
   }
 }
 
+pub trait SubEquations {
+  fn sub_equations(self, hm: &HashMap<Var, AffineVar>) -> Self;
+}
+
+impl SubEquations for AffineVar {
+  fn sub_equations(self, hm: &HashMap<Var, AffineVar>) -> Self {
+    AffineVar::sub_equations(&self, hm)
+  }
+}
+
 trait Subbable {
   // fn sub<C: TapeCount>(&self, x: C) -> C;
   // fn sub_map_maybe<C: TapeCount>(&self, hm: &HashMap<Var, C>) -> Option<C>;
@@ -1201,6 +1211,12 @@ impl AVarSum {
   }
 }
 
+impl SubEquations for AVarSum {
+  fn sub_equations(self, hm: &HashMap<Var, AffineVar>) -> Self {
+    AVarSum::sub_equations(self, hm)
+  }
+}
+
 impl Subbable for AVarSum {
   fn update_var(mut self, neg_map: &DefaultHashMap<Var, i32>) -> Self {
     for (v, a) in self.var_map.iter() {
@@ -1364,7 +1380,7 @@ fn package_rule<P, S: TapeSymbol>(
   }
 }
 
-trait GetVars {
+pub trait GetVars {
   fn get_vars(&self) -> impl Iterator<Item = Var> + '_;
 }
 
@@ -1384,7 +1400,7 @@ impl GetVars for AVarSum {
   }
 }
 
-fn add_vars_to_set<S, V: GetVars>(hs: &mut HashSet<Var>, stuff: &Vec<(S, V)>) {
+pub fn add_vars_to_set<S, V: GetVars>(hs: &mut HashSet<Var>, stuff: &Vec<(S, V)>) {
   for (_, av) in stuff.iter() {
     for v in V::get_vars(av) {
       hs.insert(v);

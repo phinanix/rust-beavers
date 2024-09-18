@@ -3,7 +3,7 @@ use std::cmp::Ordering::*;
 use std::collections::HashMap;
 
 use crate::{
-  rules::{get_newest_var, AVarSum, AffineVar, Config, Rule, SymbolVar, Var},
+  rules::{get_newest_var, AVarSum, AffineVar, Config, Rule, SubEquations, SymbolVar, Var},
   turing::{Phase, TapeSymbol},
 };
 
@@ -136,6 +136,7 @@ pub fn chain_var(
         // this case is like x+3 -> y+2
         match end.var_map.iter().exactly_one() {
           Ok((&end_var, &end_a)) => {
+            // in particular 2x+1 -> 2x+3
             if var != end_var || a != end_a {
               println!("tried to chain {} into {} and couldn't #2", start, end);
               return None;
@@ -357,6 +358,16 @@ pub fn chain_side<S: TapeSymbol>(
   Some((start_out, end_out))
 }
 
+pub fn sub_equations_vec<V: SubEquations, S>(
+  vec: Vec<(S, V)>,
+  hm: &HashMap<Var, AffineVar>,
+) -> Vec<(S, V)> {
+  vec
+    .into_iter()
+    .map(|(s, v)| (s, v.sub_equations(hm)))
+    .collect()
+}
+
 pub fn chain_rule<P: Phase, S: TapeSymbol>(
   rule @ Rule {
     start:
@@ -390,22 +401,12 @@ pub fn chain_rule<P: Phase, S: TapeSymbol>(
   let (mut right_start_out, mut right_end_out) =
     chain_side(right_start, right_end, chaining_var, &mut var_chain_map)?;
   let static_hm = var_chain_map.static_hm;
-  left_start_out = left_start_out
-    .into_iter()
-    .map(|(s, avar)| (s, avar.sub_equations(&static_hm)))
-    .collect();
-  right_start_out = right_start_out
-    .into_iter()
-    .map(|(s, avar)| (s, avar.sub_equations(&static_hm)))
-    .collect();
-  left_end_out = left_end_out
-    .into_iter()
-    .map(|(s, avarsum)| (s, avarsum.sub_equations(&static_hm)))
-    .collect();
-  right_end_out = right_end_out
-    .into_iter()
-    .map(|(s, avarsum)| (s, avarsum.sub_equations(&static_hm)))
-    .collect();
+  assert!(var_chain_map.lower_bound_hm.is_empty());
+  left_start_out = sub_equations_vec(left_start_out, &static_hm);
+  right_start_out = sub_equations_vec(right_start_out, &static_hm);
+  left_end_out = sub_equations_vec(left_end_out, &static_hm);
+  right_end_out = sub_equations_vec(right_end_out, &static_hm);
+
   let ans = Some(Rule {
     start: Config {
       state: *state_start,
