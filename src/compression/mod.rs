@@ -1026,7 +1026,6 @@ pub fn glue_rules<P: Phase, S: TapeSymbol>(
   // append the start-type leftovers to rule1 start to get out's start
   // and end-type to rule2 end to get out's end
   let (starts, ends) = glue_match(&rule1.end, &rule2.start)?;
-  // dbg!(&starts, &ends);
   let start = append_starts(&rule1.start, starts);
   let end = append_ends(&rule2.end, ends)?;
   Ok(CRule { start, end })
@@ -1292,13 +1291,105 @@ pub fn chain_var_end_leftover(
   }
 }
 
+#[derive(Debug, Clone)]
+pub struct MultiSet<S>(HashSet<Multi<S>>);
+
+impl<S: TapeSymbol> MultiSet<S> {
+  fn new() -> Self {
+    MultiSet(HashSet::new())
+  }
+
+  fn cyclic_shift(repeat: &Multi<S>, shift: usize) -> Multi<S> {
+    let mut out = smallvec![];
+    for s in &repeat[shift..repeat.len()] {
+      out.push(*s);
+    }
+    for s in &repeat[0..shift] {
+      out.push(*s);
+    }
+    out
+  }
+
+  // if a cyclic shift of repeat is already present in self, returns it
+  // and the starting position within repeat one must take to get it
+  fn get_repeat_cyclic_shift(&self, repeat: &Multi<S>) -> Option<(Multi<S>, usize)> {
+    for start_pos in 0..repeat.len() {
+      let shifted = Self::cyclic_shift(repeat, start_pos);
+      if self.0.contains(&shifted) {
+        return Some((shifted, start_pos));
+      }
+    }
+    None
+  }
+
+  pub fn push_multisym_rle(&self, stack: &mut Vec<(MultiSym<S>, AffineVar)>, sym: S) {
+    //todo: this could push in some clever multisymbol way, but for now it doesn't
+    push_rle(stack, MultiSym::One(sym));
+  }
+
+  fn get_new_repeat_avar(
+    &mut self,
+    mut new_repeat: Multi<S>,
+    chaining_var: Var,
+    dir: Dir,
+  ) -> Vec<(MultiSym<S>, AffineVar)> {
+    assert!(!new_repeat.is_empty());
+    if dir == Dir::R {
+      new_repeat.reverse();
+    }
+    let sym = if new_repeat.len() == 1 {
+      MultiSym::One(new_repeat[0])
+    } else {
+      match self.get_repeat_cyclic_shift(&new_repeat) {
+        None => {
+          self.0.insert(new_repeat.clone());
+          MultiSym::Multi(new_repeat)
+        }
+        Some((_, 0)) => {
+          // shift amount is 0
+          MultiSym::Multi(new_repeat)
+        }
+        //ans is [new_repeat[..shift_amount], (shifted, x-1), new_repeat[shift_amount..]]
+        Some((shifted, shift_amount)) => {
+          let mut out = vec![];
+          for s in &new_repeat[0..shift_amount] {
+            self.push_multisym_rle(&mut out, *s);
+          }
+          out.push((
+            MultiSym::Multi(shifted),
+            AffineVar { n: 0, a: 1, var: chaining_var },
+          ));
+          for s in &new_repeat[shift_amount..new_repeat.len()] {
+            self.push_multisym_rle(&mut out, *s);
+          }
+          if dir == Dir::R {
+            out.reverse();
+          }
+          return out;
+        }
+      }
+    };
+    vec![(sym, AffineVar { n: 1, a: 1, var: chaining_var })]
+  }
+
+  fn get_new_repeat_avs(
+    &mut self,
+    new_repeat: Multi<S>,
+    chaining_var: Var,
+    dir: Dir,
+  ) -> Vec<(MultiSym<S>, AVarSum)> {
+    let pairs = self.get_new_repeat_avar(new_repeat, chaining_var, dir);
+    pairs.into_iter().map(|(s, v)| (s, v.into())).collect()
+  }
+}
+
 pub fn chain_side<S: TapeSymbol>(
   start: &[(MultiSym<S>, AffineVar)],
   end: &[(MultiSym<S>, AVarSum)],
   chaining_var: Var,
   var_chain_map: &mut VarChainMap,
-  multi_set: &mut HashSet<Multi<S>>,
-  side_dir: Dir
+  multi_set: &mut MultiSet<S>,
+  side_dir: Dir,
 ) -> Result<(Vec<(MultiSym<S>, AffineVar)>, Vec<(MultiSym<S>, AVarSum)>), String> {
   let shorter = start.len().min(end.len());
   let (mut start_out, mut end_out) = (vec![], vec![]);
@@ -1333,15 +1424,11 @@ pub fn chain_side<S: TapeSymbol>(
       };
       let mut end_over = end[0..end.len() - shorter].to_vec();
       end_over.extend(vec_tail);
-      let mut new_repeat: Multi<S> = flatten_multi_avs(end_over)?;
-      if side_dir == Dir::R {
-        new_repeat.reverse();
-      }
-      multi_set.insert(new_repeat.clone());
-      end_out.push((
-        MultiSym::Multi(new_repeat),
-        AVarSum::from(AffineVar { n: 0, a: 1, var: chaining_var }),
-      ))
+      let new_repeat: Multi<S> = flatten_multi_avs(end_over)?;
+      // todo: encapsulate the next 4 lines of code, but also add more code
+      // that causes it to like, do smart things instead of dumb things
+      let end_bit = multi_set.get_new_repeat_avs(new_repeat, chaining_var, side_dir);
+      end_out.extend(end_bit);
     }
     Greater => {
       let vec_tail = match mb_leftover_sym {
@@ -1351,15 +1438,9 @@ pub fn chain_side<S: TapeSymbol>(
       };
       let mut start_over = start[0..start.len() - shorter].to_vec();
       start_over.extend(vec_tail);
-      let mut new_repeat: Multi<S> = flatten_multi_avar(start_over)?;
-      if side_dir == Dir::R {
-        new_repeat.reverse();
-      }
-      multi_set.insert(new_repeat.clone());
-      start_out.push((
-        MultiSym::Multi(new_repeat),
-        AffineVar { n: 0, a: 1, var: chaining_var },
-      ))
+      let new_repeat: Multi<S> = flatten_multi_avar(start_over)?;
+      let start_bit = multi_set.get_new_repeat_avar(new_repeat, chaining_var, side_dir);
+      start_out.extend(start_bit);
     }
   }
   start_out.extend(start_after_left);
@@ -1376,7 +1457,10 @@ pub fn chain_side<S: TapeSymbol>(
       }
       let (s_var_out, e_var_out) = match chain_var(var_chain_map, *s_var, e_var, chaining_var) {
         None => return Err(format!("vars didn't chain at position {}", i)),
-        Some(vs) => vs,
+        Some((s_var_out, e_var_out)) => (
+          s_var_out.sub_equation(chaining_var, AffineVar { n: 1, a: 1, var: chaining_var }),
+          e_var_out.sub_equation(chaining_var, AffineVar { n: 1, a: 1, var: chaining_var }),
+        ),
       };
       start_out.push((s_sym.clone(), s_var_out));
       end_out.push((e_sym.clone(), e_var_out));
@@ -1387,7 +1471,7 @@ pub fn chain_side<S: TapeSymbol>(
 
 pub fn chain_crule<P: Phase, S: TapeSymbol>(
   rule: &CRule<P, MultiSym<S>>,
-  multi_set: &mut HashSet<Multi<S>>,
+  multi_set: &mut MultiSet<S>,
 ) -> Result<CRule<P, MultiSym<S>>, String> {
   /*
     so rn we get this:
@@ -1413,6 +1497,12 @@ pub fn chain_crule<P: Phase, S: TapeSymbol>(
   which is also wrong
      */
   /*
+  so note that because we're a little insane, everywhere in this function, we are not
+  chaining a number of times equal to chaining_var, but instead equal to chaining_var+1
+  this is so we can write get_new_repeat_avar correctly.
+  in the RuleEnd::Side match, we increase chaining_var by one, but that's in *addition*
+  to the forgoing
+
   so this is pretty similar to chain_rule, and in fact we can reuse much of the
   code, but sadly we cannot reuse all of it.
 
@@ -1453,7 +1543,7 @@ pub fn chain_crule<P: Phase, S: TapeSymbol>(
         chaining_var,
         &mut var_chain_map,
         multi_set,
-        Dir::L, 
+        Dir::L,
       )?;
       let (mut right_start_out, mut right_end_out) = chain_side(
         &rule.start.right,
@@ -1493,7 +1583,7 @@ pub fn chain_crule<P: Phase, S: TapeSymbol>(
         chaining_var,
         &mut var_chain_map,
         multi_set,
-        Dir::R, 
+        Dir::R,
       )?;
       /* we need this, because we're planning to chain x+1 times, to deal with the
       leftover
@@ -1517,12 +1607,7 @@ pub fn chain_crule<P: Phase, S: TapeSymbol>(
       // TODO: this is where we would do things like check for cyclic shifts of
       // new_repeat, or ensure it doesn't satisfy R = X^n, but we're not doing that
       // right now
-      multi_set.insert(new_repeat.clone());
-      let mut left_start_out = vec![];
-      left_start_out.push((
-        MultiSym::Multi(new_repeat),
-        AffineVar { n: 0, a: 1, var: chaining_var },
-      ));
+      let mut left_start_out = multi_set.get_new_repeat_avar(new_repeat, chaining_var, Dir::L);
       left_start_out.extend(rule.start.left.clone());
       let ans = Ok(CRule {
         start: CConfig {
@@ -1562,17 +1647,11 @@ pub fn chain_crule<P: Phase, S: TapeSymbol>(
       left_end_out = sub_equations_vec(left_end_out, &static_hm);
       let mut right_over = rule.start.right.clone();
       push_rle(&mut right_over, rule.start.head.clone());
-      let mut new_repeat: Multi<S> = flatten_multi_avar(right_over)?;
+      let new_repeat: Multi<S> = flatten_multi_avar(right_over)?;
       // TODO: this is where we would do things like check for cyclic shifts of
       // new_repeat, or ensure it doesn't satisfy R = X^n, but we're not doing that
       // right now
-      new_repeat.reverse();
-      multi_set.insert(new_repeat.clone());
-      let mut right_start_out = vec![];
-      right_start_out.push((
-        MultiSym::Multi(new_repeat),
-        AffineVar { n: 0, a: 1, var: chaining_var },
-      ));
+      let mut right_start_out = multi_set.get_new_repeat_avar(new_repeat, chaining_var, Dir::R);
       right_start_out.extend(rule.start.right.clone());
       let ans = Ok(CRule {
         start: CConfig {
@@ -1607,7 +1686,7 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
   println!("trans_hist:\n{}\n", display_trans_hist(&trans_hist));
   let mut partial_rle_hist = trans_hist.iter().map(|t| Left(*t)).collect_vec();
 
-  let mut multi_set = HashSet::new();
+  let mut multi_set = MultiSet::new();
   for i in 1..=7 {
     loop {
       let grouped = group_partial_rle(&partial_rle_hist, i);
@@ -1642,9 +1721,15 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
 mod test {
   use smallvec::ToSmallVec;
 
-  use crate::{parse::{parse_config, parse_config_tape_side, parse_end_half_tape, parse_exact, parse_half_tape, parse_tape_side}, rules::Config};
+  use crate::{
+    parse::{
+      parse_config, parse_config_tape_side, parse_end_half_tape, parse_exact, parse_half_tape,
+      parse_tape_side,
+    },
+    rules::Config,
+  };
 
-use super::*;
+  use super::*;
 
   #[test]
   fn test_rle_encode() {
@@ -1836,20 +1921,32 @@ use super::*;
 
   #[test]
   fn test_chain_side() {
-    // these are in the Right Side Perspective 
+    // these are in the Right Side Perspective
     let start = multi_sym_vec(&parse_half_tape("(F, 1)"));
     let end = multi_sym_vec(&parse_end_half_tape("(F, 1) (T, 1)"));
     // dbg!(&start, &end);
-    let res = chain_side(&start, &end, Var(0), &mut VarChainMap::new(), &mut HashSet::new(), Dir::R);
-    // (F, 1) (T, x_0) 
+    let res = chain_side(
+      &start,
+      &end,
+      Var(0),
+      &mut VarChainMap::new(),
+      &mut MultiSet::new(),
+      Dir::R,
+    );
+    // (F, 1) (T, x_0)
     let end_ans = vec![
-      (MultiSym::Multi(smallvec![Bit(true)]), AVarSum::from(AffineVar {n : 0, a: 1, var: Var(0)})), 
-      (MultiSym::One(Bit(false)), 1.into())
+      (
+        MultiSym::One(Bit(true)),
+        AVarSum::from(AffineVar { n: 1, a: 1, var: Var(0) }),
+      ),
+      (MultiSym::One(Bit(false)), 1.into()),
     ];
     assert_eq!(res, Ok((start, end_ans)));
   }
 
-  fn config_to_cconfig<P, S, V>(Config { state, left, head, right }: Config<P, S, V>) -> CConfig<P, S, V> {
+  fn config_to_cconfig<P, S, V>(
+    Config { state, left, head, right }: Config<P, S, V>,
+  ) -> CConfig<P, S, V> {
     CConfig { state, left, head, right }
   }
 
@@ -1859,21 +1956,22 @@ use super::*;
     we succeeded at gluing! we got:
     phase: B   |>T<| (F, 1)
     into:
-    phase: B  (T, 2) |> 
+    phase: B  (T, 2) |>
     we succeeded at chaining! we got:
     phase: B   |>T<| (F, 1) (<FT>, 0 + 1*x_0)
     into:
-    phase: B  (<TT>, 1 + 1*x_0) |> 
+    phase: B  (<TT>, 1 + 1*x_0) |>
 
      */
     let start_str = "phase: B   |>T<| (F, 1)";
     let start = config_to_cconfig(parse_exact(parse_config(start_str)));
     let end_tape_str = "(T, 2)";
     let end = RuleEnd::Side(State(2), Dir::R, parse_end_half_tape(end_tape_str));
-    let rule = multi_sym_rule(&CRule {start, end});
-    let chained_rule = chain_crule(&rule, &mut HashSet::new()).unwrap();
+    let rule = multi_sym_rule(&CRule { start, end });
+    let chained_rule = chain_crule(&rule, &mut MultiSet::new()).unwrap();
     let chained_rule_str = format!("{}", chained_rule);
-    let ans_str = "phase: B   |>T<| (F, 1) (<TF>, 0 + 1*x_0)\ninto:\nphase: B  (<TT>, 1 + 1*x_0) |> ";
+    let ans_str =
+      "phase: B   |>T<| (F, 1) (<TF>, 1 + 1*x_0)\ninto:\nphase: B  (<TT>, 2 + 1*x_0) |> ";
     assert_eq!(chained_rule_str, ans_str);
   }
 }

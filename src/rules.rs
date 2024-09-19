@@ -1146,7 +1146,7 @@ impl AVarSum {
     AVarSum { n, var_map: defaulthashmap! {0} }
   }
 
-  fn sub_equation(mut self, lhs: Var, rhs: AffineVar) -> Self {
+  pub fn sub_equation(mut self, lhs: Var, rhs: AffineVar) -> Self {
     let &a = self.var_map.get(lhs);
     self.var_map.remove(&lhs);
     let to_add = rhs.mul_const(a);
