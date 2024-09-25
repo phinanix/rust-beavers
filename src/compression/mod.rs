@@ -164,15 +164,19 @@ pub fn display_stringnum(s: String, n: u32) -> String {
   format!(" ({}, {}) ", s, n)
 }
 
+pub fn display_mb_rule<P: Phase>(mb_rule: &Either<(P, Bit), (String, u32)>) -> String {
+  match mb_rule {
+    Left((p, b)) => display_trans(*p, *b).to_string(),
+    Right((s, n)) => display_stringnum(s.clone(), *n),
+  }
+}
+
 pub fn display_partial_rle_hist<P: Phase>(
   partial_rle_hist: &[Either<(P, Bit), (String, u32)>],
 ) -> String {
   partial_rle_hist
     .iter()
-    .map(|i| match i {
-      Left((p, b)) => display_trans(*p, *b).to_string(),
-      Right((s, n)) => display_stringnum(s.clone(), *n),
-    })
+    .map(|i| display_mb_rule(i))
     .collect()
 }
 
@@ -331,6 +335,23 @@ pub fn group_vec<T: Debug + Copy>(seq: &[T], group_size: u32) -> Vec<Group<T>> {
       cur_group_len = 0;
     }
   }
+  out
+}
+
+pub fn group_any<T: Clone>(seq: &[T], group_size: u32) -> Vec<Group<T>> {
+  let mut out = vec![];
+  let mut cur_group = Group(smallvec![]);
+  let mut cur_group_len = 0;
+  for item in seq {
+    cur_group.0.push(item.clone());
+    cur_group_len += 1;
+    if cur_group_len == group_size {
+      out.push(cur_group);
+      cur_group = Group(smallvec![]);
+      cur_group_len = 0;
+    }
+  }
+  out.push(cur_group);
   out
 }
 
@@ -1681,6 +1702,123 @@ pub fn chain_crule<P: Phase, S: TapeSymbol>(
 
 type ChainRule = CRule<State, MultiSym<Bit>>;
 
+type RuleName = String;
+
+#[derive(Debug, Clone)]
+pub struct RuleGroup(Group<Either<(State, Bit), (RuleName, u32)>>);
+
+impl RuleGroup {
+  fn check_same(RuleGroup(Group(sv1)): &Self, RuleGroup(Group(sv2)): &Self) -> bool {
+    if sv1.len() != sv2.len() {
+      return false;
+    }
+    for (item1, item2) in zip_eq(sv1, sv2) {
+      match (item1, item2) {
+        (Left(l1), Left(l2)) => {
+          if l1 != l2 {
+            return false;
+          }
+        }
+        (Right((rule_name1, _rule_num1)), Right((rule_name2, _rule_num2))) => {
+          if rule_name1 != rule_name2 {
+            return false;
+          }
+        }
+        (_, _) => return false,
+      }
+    }
+    return true;
+  }
+}
+
+impl Display for RuleGroup {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    for mb_rule in &self.0 .0 {
+      f.write_str(&display_mb_rule(mb_rule))?
+    }
+    Ok(())
+  }
+}
+
+// a RuleGroup uses certain rules in a certain order, which is the Vec<RuleName>
+// each time through the group, we use the rules at certain numbers, which is
+// the second vec. the length of the Vecs inside the second vec, is the same as
+// the length of the first vec. the length of the second vec, is the number of times
+// this group is RLE'd.
+#[derive(Debug, Clone)]
+pub struct RuleNums(Vec<RuleName>, Vec<Vec<u32>>);
+
+impl RuleNums {
+  // how do we handle the case where an individual rule is used more than once?
+  pub fn new(RuleGroup(Group(sv)): &RuleGroup) -> Self {
+    let mut name_vec = vec![];
+    let mut num_vec = vec![];
+    for item in sv {
+      match item {
+        Left(_) => (),
+        Right((rule_name, rule_num)) => {
+          name_vec.push(rule_name.clone());
+          num_vec.push(*rule_num);
+        }
+      }
+    }
+    Self(name_vec, vec![num_vec])
+  }
+
+  pub fn add_group(&mut self, RuleGroup(Group(sv)): &RuleGroup) {
+    let mut num_vec = vec![];
+    let mut name_idx = 0;
+    for item in sv {
+      match item {
+        Left(_) => (),
+        Right((rule_name, rule_num)) => {
+          assert_eq!(&self.0[name_idx], rule_name);
+          name_idx += 1;
+          num_vec.push(*rule_num);
+        }
+      }
+    }
+    self.1.push(num_vec);
+  }
+}
+
+impl Display for RuleNums {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.write_str("rules: ")?;
+    for rule_name in &self.0 {
+      write!(f, "{}, ", rule_name)?
+    }
+    f.write_str("\nnums:\n")?;
+    for nums_vec in &self.1 {
+      for num in nums_vec {
+        write!(f, "{}, ", num)?
+      }
+      f.write_str("\n")?
+    }
+    Ok(())
+  }
+}
+//output type: (group, times that group repeats, the rulenummap)
+//last of which tracks what nums were used over the repeat count
+pub fn rle_rule_hist(hist: &[RuleGroup]) -> Vec<(RuleGroup, u32, RuleNums)> {
+  let mut out: Vec<(RuleGroup, u32, RuleNums)> = vec![];
+  let mut cur_group = &hist[0];
+  let mut cur_group_size = 1;
+  let mut cur_rulenums = RuleNums::new(cur_group);
+  for group in &hist[1..] {
+    if RuleGroup::check_same(cur_group, group) {
+      cur_group_size += 1;
+      cur_rulenums.add_group(group);
+    } else {
+      out.push((cur_group.clone(), cur_group_size, cur_rulenums));
+      cur_group = group;
+      cur_group_size = 1;
+      cur_rulenums = RuleNums::new(cur_group);
+    }
+  }
+  out
+}
+
 pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
   let trans_hist_with_step =
     get_transition_hist_for_machine(machine, num_steps, false).unwrap_right();
@@ -1728,10 +1866,84 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
     }
   }
   // now we have partial_rle_hist, which is a list of Either<(State, Bit), (String, u32)>
-  // we want to RLE that whole list, ignoring rights and lefts, and ignoring the u32s present in the String
+  // we want to group-then-RLE that whole list, ignoring rights and lefts, and ignoring the u32s present in the String
   // in hopes of discovering rules that are higher than level 0 rules proven before
   // and then we want to glue+chain them, in a similar way to before, but now with
   // extra spiciness because there's lots of variables everywhere
+
+  // to figure out which rule to generalize, we take all group sizes up to some limit
+  // then we select the one which results in the largest group_num, and try abstracting
+  // (via glue + chain) that one
+  let mut hist = partial_rle_hist;
+  let max_group_size = 100;
+  let min_group_num = 5;
+
+  let mut max_so_far_group_size = 0;
+  let mut max_so_far_group_num = 1;
+  let mut max_so_far_group = None;
+  let mut max_so_far_rulenums = None;
+  for group_size in 1..=max_group_size {
+    let grouped_hist: Vec<RuleGroup> = group_any(&hist, group_size)
+      .into_iter()
+      .map(|x| RuleGroup(x))
+      .collect();
+    let rle_grouped_hist: Vec<(RuleGroup, u32, RuleNums)> = rle_rule_hist(&grouped_hist);
+    // let max_group_num = rle_grouped_hist.iter().map(|(_, n, _)| *n).max().unwrap();
+    let (max_group, max_group_num, max_group_rulenums) =
+      rle_grouped_hist.iter().max_by_key(|(_, n, _)| n).unwrap();
+    if *max_group_num > 1 {
+      if max_so_far_group_num == 1 || group_size % max_so_far_group_size != 0 {
+        println!(
+          "grouping {} produced max_group_num {} with group {}",
+          group_size, *max_group_num, max_group
+        );
+      }
+    }
+
+    if *max_group_num > max_so_far_group_num && *max_group_num > min_group_num {
+      max_so_far_group_size = group_size;
+      max_so_far_group_num = *max_group_num;
+      max_so_far_group = Some(max_group.clone());
+      max_so_far_rulenums = Some(max_group_rulenums.clone());
+    }
+  }
+  if let (Some(selected_group), Some(rulenums)) = (max_so_far_group, max_so_far_rulenums) {
+    println!(
+      "selected a group of size {} and num {} for gluechain:\n{}\nrulenums:\n{}",
+      max_so_far_group_size, max_so_far_group_num, selected_group, rulenums
+    );
+  } else {
+    println!("didn't find any group large enough")
+  }
+  /*
+  there's a decision point here, where there's two ways to go about the gluing
+
+  one is to go with the sort of "bottom up" approach - we want to glue R1 to R2
+  and get the maximally general result out of it.
+  the advantage of this is the information flow is very simple - we have a list
+  of rules and we just fold them up into one big rule.
+  the disadvantage is that what is "maximally general" is not well defined and
+  there are ~emergent interactions, where it isn't obvious what is "general
+  enough" to work in all cases, and it might require a lot of tuning to get the
+  thing to work in all cases instead of most of them.
+
+  the other is the more "top down" approach. the only hard part of gluing, is
+  gluing variables together. and we have a lot of examples of how the variables
+  are set - that's what the rulenums is. the algorithm here would be to first
+  look at the 2D tableau of numbers, and figure out (guess heuristically) what
+  rule generates them. that's a chunk of code to write, but I think it should be
+  easy-ish (famous last words). then, now that we know what the var(s) are in
+  each rule, we can specify exactly what the vars are as we glue, and the gluing
+  is easy, as we know always how each thing matches up - that's what the tableau
+  tells us.
+  the advantage of this is the gluing part is easy - there's no guesswork or
+  really any room for interpretation, as we've specified what every var ought to
+  be up front.
+  the disadvantage is that there is extra code to write to interpret the tableau,
+  and the information flow is a little more complex - the tableau is interpreted,
+  then the rules get specialized, then the rules get glued. but it's not *that*
+  complex, probably?
+   */
 }
 
 #[cfg(test)]

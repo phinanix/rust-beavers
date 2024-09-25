@@ -261,7 +261,7 @@ fn run_machine_compression_interactive(machine: &SmallBinMachine) {
 
   let num_steps = 500;
   Tape::simulate_from_start(machine, num_steps, true);
-  analyze_machine(machine, 1000);
+  analyze_machine(machine, 3000);
   println!("\njust ran machine: {}", machine.to_compact_format());
 }
 
