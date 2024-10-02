@@ -772,19 +772,53 @@ pub fn match_vars(
 // which is also enforced by start has AffineVar and end has AVarSum
 pub fn match_end_vars(
   AVarSum { n: sum_n, var_map }: &AVarSum,
-  AffineVar { n: var_n, a, var: _ }: AffineVar,
+  AffineVar { n: var_n, a, var }: AffineVar,
 ) -> Result<Option<Either<AffineVar, AVarSum>>, String> {
-  if a != 0 || !var_map.is_empty() {
-    return Err("gave up on variables".to_owned());
-  }
-  match sum_n.cmp(&var_n) {
-    std::cmp::Ordering::Less => Ok(Some(Left(AffineVar::constant(var_n - sum_n)))),
-    std::cmp::Ordering::Equal => Ok(None),
-    std::cmp::Ordering::Greater => Ok(Some(Right(AVarSum::constant(sum_n - var_n)))),
+  match (a, var_map.len()) {
+    (0, 0) => match sum_n.cmp(&var_n) {
+      Less => Ok(Some(Left(AffineVar::constant(var_n - sum_n)))),
+      Equal => Ok(None),
+      Greater => Ok(Some(Right(AVarSum::constant(sum_n - var_n)))),
+    },
+    (0, 1) => {
+      if *sum_n >= var_n {
+        //(3+x, 2) matches and leaves 1 + x
+        Ok(Some(Right(AVarSum {
+          n: sum_n - var_n,
+          var_map: var_map.clone(),
+        })))
+      } else {
+        //(2+x, 3) -> could match by setting x = x+1, but we aren't going that
+        // route just yet
+        Err("var and greater n diff sides; need a global var-tracker".to_owned())
+      }
+    }
+    (a, 0) => {
+      if var_n >= *sum_n {
+        Ok(Some(Left(AffineVar { n: var_n - sum_n, a, var })))
+      } else {
+        Err("var and greater n diff sides; need a global var-tracker".to_owned())
+      }
+    }
+    (a, 1) => {
+      let (&avs_var, &coeff) = var_map.iter().next().unwrap();
+      if var == avs_var && a == coeff {
+        // matching (x+1) vs (x+2) or similar, the vars disappear and it's the
+        // same as if they were never there, as above
+        match sum_n.cmp(&var_n) {
+          Less => Ok(Some(Left(AffineVar::constant(var_n - sum_n)))),
+          Equal => Ok(None),
+          Greater => Ok(Some(Right(AVarSum::constant(sum_n - var_n)))),
+        }
+      } else {
+        Err("gave up on matching var to var at end".to_owned())
+      }
+    }
+    (_, _) => Err("gave up on matching var to var at end".to_owned()),
   }
 }
 
-pub fn get_leftover<S: TapeSymbol>(
+pub fn get_leftover<S: Eq + Clone>(
   end: &[(S, AVarSum)],
   start: &[(S, AffineVar)],
 ) -> Option<Leftover<S>> {
@@ -803,7 +837,7 @@ pub fn get_leftover<S: TapeSymbol>(
   }
 }
 
-fn append_end_var<S: TapeSymbol>(
+fn append_end_var<S>(
   mb_leftover: Option<Leftover<S>>,
   end_var_sym: S,
   end_var_match: Option<Either<AffineVar, AVarSum>>,
@@ -838,7 +872,7 @@ fn append_end_var<S: TapeSymbol>(
 // but we're going to stick to it for now; I think it can solve bouncers despite
 // this problem, or most bouncers? and we'll see how it goes from there once
 // a basic version is implemented
-pub fn match_vecs<S: TapeSymbol>(
+pub fn match_vecs<S: Eq + Clone>(
   end: &[(S, AVarSum)],
   start: &[(S, AffineVar)],
 ) -> Result<Option<Leftover<S>>, String> {
@@ -867,11 +901,11 @@ pub fn match_vecs<S: TapeSymbol>(
   }
   let end_var_match = match_end_vars(end_num, *start_num)?;
   let leftover = get_leftover(end, start);
-  let final_leftover = append_end_var(leftover, *end_sym, end_var_match)?;
+  let final_leftover = append_end_var(leftover, end_sym.clone(), end_var_match)?;
   Ok(final_leftover)
 }
 
-fn get_start<S: TapeSymbol>(mb_leftover: &Option<Leftover<S>>) -> Option<Vec<(S, AffineVar)>> {
+fn get_start<S: Clone>(mb_leftover: &Option<Leftover<S>>) -> Option<Vec<(S, AffineVar)>> {
   match mb_leftover {
     None => None,
     Some(Leftover::End(_)) => None,
@@ -881,14 +915,14 @@ fn get_start<S: TapeSymbol>(mb_leftover: &Option<Leftover<S>>) -> Option<Vec<(S,
 
 type Starts<S> = (Option<Vec<(S, AffineVar)>>, Option<Vec<(S, AffineVar)>>);
 
-fn get_starts<S: TapeSymbol>(
+fn get_starts<S: Clone>(
   mb_leftover: &Option<Leftover<S>>,
   mb_rightover: &Option<Leftover<S>>,
 ) -> Starts<S> {
   (get_start(mb_leftover), get_start(mb_rightover))
 }
 
-fn get_end<S: TapeSymbol>(mb_leftover: &Option<Leftover<S>>) -> Option<Vec<(S, AVarSum)>> {
+fn get_end<S: Clone>(mb_leftover: &Option<Leftover<S>>) -> Option<Vec<(S, AVarSum)>> {
   match mb_leftover {
     None => None,
     Some(Leftover::Start(_)) => None,
@@ -897,14 +931,14 @@ fn get_end<S: TapeSymbol>(mb_leftover: &Option<Leftover<S>>) -> Option<Vec<(S, A
 }
 
 type Ends<S> = (Option<Vec<(S, AVarSum)>>, Option<Vec<(S, AVarSum)>>);
-fn get_ends<S: TapeSymbol>(
+fn get_ends<S: Clone>(
   mb_leftover: &Option<Leftover<S>>,
   mb_rightover: &Option<Leftover<S>>,
 ) -> Ends<S> {
   (get_end(mb_leftover), get_end(mb_rightover))
 }
 
-pub fn pop_rle_avarsum<T: Copy>(stack: &mut Vec<(T, AVarSum)>) -> Option<T> {
+pub fn pop_rle_avarsum<T: Clone>(stack: &mut Vec<(T, AVarSum)>) -> Option<T> {
   let t = match stack.last_mut() {
     None => return None,
     Some((t, avarsum)) => {
@@ -912,7 +946,7 @@ pub fn pop_rle_avarsum<T: Copy>(stack: &mut Vec<(T, AVarSum)>) -> Option<T> {
         return None;
       } else {
         avarsum.n -= 1;
-        *t
+        t.clone()
       }
     }
   };
@@ -923,7 +957,7 @@ pub fn pop_rle_avarsum<T: Copy>(stack: &mut Vec<(T, AVarSum)>) -> Option<T> {
   Some(t)
 }
 
-pub fn glue_match<P: Phase, S: TapeSymbol>(
+pub fn glue_match<P: Phase, S: Eq + Clone>(
   end: &RuleEnd<P, S>,
   CConfig {
     state: start_state,
@@ -956,7 +990,7 @@ pub fn glue_match<P: Phase, S: TapeSymbol>(
     RuleEnd::Side(_end_state, Dir::L, end_tape) => {
       let right_over = match_vecs(&end_tape, &start_right)?;
       let mut left_over_vec = start_left.clone();
-      push_rle(&mut left_over_vec, *start_head);
+      push_rle(&mut left_over_vec, start_head.clone());
       let left_over = Some(Leftover::Start(left_over_vec));
       let starts = get_starts(&left_over, &right_over);
       let ends = get_ends(&left_over, &right_over);
@@ -965,7 +999,7 @@ pub fn glue_match<P: Phase, S: TapeSymbol>(
     RuleEnd::Side(_end_state, Dir::R, end_tape) => {
       let left_over = match_vecs(&end_tape, &start_left)?;
       let mut right_over_vec = start_right.clone();
-      push_rle(&mut right_over_vec, *start_head);
+      push_rle(&mut right_over_vec, start_head.clone());
       let right_over = Some(Leftover::Start(right_over_vec));
       let starts = get_starts(&left_over, &right_over);
       let ends = get_ends(&left_over, &right_over);
@@ -974,7 +1008,7 @@ pub fn glue_match<P: Phase, S: TapeSymbol>(
   }
 }
 
-pub fn append_leftover<S: TapeSymbol, T: Add<Output = T> + Clone>(
+pub fn append_leftover<S: Eq + Clone, T: Add<Output = T> + Clone>(
   half_tape: &[(S, T)],
   mb_leftover: Option<Vec<(S, T)>>,
 ) -> Vec<(S, T)> {
@@ -987,40 +1021,47 @@ pub fn append_leftover<S: TapeSymbol, T: Add<Output = T> + Clone>(
   }
 }
 
-pub fn append_starts<P: Phase, S: TapeSymbol>(
+pub fn append_starts<P: Phase, S: Eq + Clone>(
   CConfig { state, left, head, right }: &CConfig<P, S, AffineVar>,
   starts: Starts<S>,
 ) -> CConfig<P, S, AffineVar> {
   CConfig {
     state: *state,
     left: append_leftover(left, starts.0),
-    head: *head,
+    head: head.clone(),
     right: append_leftover(right, starts.1),
   }
 }
 
-pub fn append_ends<P: Phase, S: TapeSymbol>(
-  end: &RuleEnd<P, S>,
-  ends: Ends<S>,
-) -> Result<RuleEnd<P, S>, String> {
+pub fn append_ends<P: Phase, S: Eq + Clone>(
+  end: &RuleEnd<P, MultiSym<S>>,
+  ends: Ends<MultiSym<S>>,
+) -> Result<RuleEnd<P, MultiSym<S>>, String> {
   match end {
     RuleEnd::Center(CConfig { state, left, head, right }) => Ok(RuleEnd::Center(CConfig {
       state: *state,
       left: append_leftover(left, ends.0),
-      head: *head,
+      head: head.clone(),
       right: append_leftover(right, ends.1),
     })),
     RuleEnd::Side(state, Dir::L, v) => match ends.0 {
       None => Ok(RuleEnd::Side(*state, Dir::L, append_leftover(v, ends.1))),
       Some(mut lo) => {
-        let s = match pop_rle_avarsum(&mut lo) {
+        let head_sym = match pop_rle_avarsum(&mut lo) {
           None => return Err("couldn't sub one in appendend".to_owned()),
-          Some(s) => s,
+          Some(MultiSym::One(s)) => s,
+          Some(MultiSym::Multi(mut sv)) => {
+            let head_sym = sv.pop().unwrap();
+            for sym in sv {
+              lo.push((MultiSym::One(sym), 1.into()))
+            }
+            head_sym
+          }
         };
         Ok(RuleEnd::Center(CConfig {
           state: *state,
           left: lo,
-          head: s,
+          head: MultiSym::One(head_sym),
           right: append_leftover(v, ends.1),
         }))
       }
@@ -1028,14 +1069,21 @@ pub fn append_ends<P: Phase, S: TapeSymbol>(
     RuleEnd::Side(state, Dir::R, v) => match ends.1 {
       None => Ok(RuleEnd::Side(*state, Dir::R, append_leftover(v, ends.0))),
       Some(mut lo) => {
-        let s = match pop_rle_avarsum(&mut lo) {
+        let head_sym = match pop_rle_avarsum(&mut lo) {
           None => return Err("couldn't sub one in appendend".to_owned()),
-          Some(s) => s,
+          Some(MultiSym::One(s)) => s,
+          Some(MultiSym::Multi(mut sv)) => {
+            let head_sym = sv.remove(0);
+            for sym in sv.into_iter().rev() {
+              lo.push((MultiSym::One(sym), 1.into()))
+            }
+            head_sym
+          }
         };
         Ok(RuleEnd::Center(CConfig {
           state: *state,
           left: append_leftover(v, ends.0),
-          head: s,
+          head: MultiSym::One(head_sym),
           right: lo,
         }))
       }
@@ -1043,10 +1091,10 @@ pub fn append_ends<P: Phase, S: TapeSymbol>(
   }
 }
 
-pub fn glue_rules<P: Phase, S: TapeSymbol>(
-  rule1: &CRule<P, S>,
-  rule2: &CRule<P, S>,
-) -> Result<CRule<P, S>, String> {
+pub fn glue_rules<P: Phase, S: Eq + Clone>(
+  rule1: &CRule<P, MultiSym<S>>,
+  rule2: &CRule<P, MultiSym<S>>,
+) -> Result<CRule<P, MultiSym<S>>, String> {
   // first, match rule1 end to rule2 start. this obtains some ~leftovers.
   // append the start-type leftovers to rule1 start to get out's start
   // and end-type to rule2 end to get out's end
@@ -1060,11 +1108,11 @@ pub fn glue_transitions(
   machine: &SmallBinMachine,
   edges: Group<(State, Bit)>,
   print: bool,
-) -> Result<CRule<State, Bit>, String> {
+) -> Result<CRule<State, MultiSym<Bit>>, String> {
   let mut rules = edges
     .0
     .into_iter()
-    .map(|(s, b)| trans_to_rule(machine, Edge(s, b)));
+    .map(|(s, b)| multi_sym_rule(&trans_to_rule(machine, Edge(s, b))));
   let mut cur_rule = match rules.next() {
     None => {
       if print {
@@ -1084,6 +1132,49 @@ pub fn glue_transitions(
         // if print {
         //   println!("gluing succeeded:\n{}", glued_rule);
         // }
+        cur_rule = glued_rule;
+      }
+      Err(s) => {
+        if print {
+          println!("gluing failed: {}", s)
+        }
+        return Err(s);
+      }
+    }
+  }
+  if print {
+    println!("gluing succeeded overall!\n{}", cur_rule)
+  }
+  Ok(cur_rule)
+}
+
+pub fn glue_rulegroup(
+  machine: &SmallBinMachine,
+  rulemap: &RuleMap,
+  RuleGroup(Group(sv)): &RuleGroup,
+  print: bool,
+) -> Result<ChainRule, String> {
+  if sv.len() == 0 {
+    if print {
+      println!("group was len 0!")
+    }
+    return Err("rules was len 0?".to_owned());
+  }
+  let mut cur_rule: ChainRule = match &sv[0] {
+    Left((s, b)) => multi_sym_rule(&trans_to_rule(machine, Edge(*s, *b))),
+    Right((rulename, _rulenum)) => rulemap.get(rulename).unwrap().clone(),
+  };
+  for trans_or_rule in &sv[1..] {
+    let next_rule: ChainRule = match trans_or_rule {
+      Left((s, b)) => multi_sym_rule(&trans_to_rule(machine, Edge(*s, *b))),
+      Right((rulename, _rulenum)) => rulemap.get(rulename).unwrap().clone(),
+    };
+    if print {
+      println!("cur rule:\n{}", cur_rule);
+      println!("gluing on:\n{}\n", next_rule);
+    }
+    match glue_rules(&cur_rule, &next_rule) {
+      Ok(glued_rule) => {
         cur_rule = glued_rule;
       }
       Err(s) => {
@@ -1819,6 +1910,8 @@ pub fn rle_rule_hist(hist: &[RuleGroup]) -> Vec<(RuleGroup, u32, RuleNums)> {
   out
 }
 
+type RuleMap = HashMap<String, ChainRule>;
+
 pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
   let trans_hist_with_step =
     get_transition_hist_for_machine(machine, num_steps, false).unwrap_right();
@@ -1828,7 +1921,7 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
     .map(|(_steps, p, b)| (p, b))
     .collect_vec();
   println!("trans_hist:\n{}\n", display_trans_hist(&trans_hist));
-  let mut rules_by_name: HashMap<String, ChainRule> = HashMap::new();
+  let mut rules_by_name: RuleMap = HashMap::new();
   let mut partial_rle_hist: Vec<Either<(State, Bit), (String, u32)>> =
     trans_hist.iter().map(|t| Left(*t)).collect_vec();
 
@@ -1846,7 +1939,7 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
           Err(s) => println!("gluing failed: {}", s),
           Ok(glued_rule) => {
             println!("we succeeded at gluing! we got:\n{}", glued_rule);
-            match chain_crule(&multi_sym_rule(&glued_rule), &mut multi_set) {
+            match chain_crule(&glued_rule, &mut multi_set) {
               Err(s) => println!("chaining failed: {}", s),
               Ok(chained_rule) => {
                 println!("we succeeded at chaining! we got:\n{}", chained_rule);
@@ -1912,6 +2005,13 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
       "selected a group of size {} and num {} for gluechain:\n{}\nrulenums:\n{}",
       max_so_far_group_size, max_so_far_group_num, selected_group, rulenums
     );
+    println!("now gluing group");
+    match glue_rulegroup(machine, &rules_by_name, &selected_group, true) {
+      Err(s) => println!("gluing failed {}", s),
+      Ok(glued_l1_rule) => {
+        println!("we found our first l1 rule:\n{}", glued_l1_rule);
+      }
+    }
   } else {
     println!("didn't find any group large enough")
   }
@@ -1943,6 +2043,107 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
   and the information flow is a little more complex - the tableau is interpreted,
   then the rules get specialized, then the rules get glued. but it's not *that*
   complex, probably?
+   */
+
+  /*
+  2 oct 24: we're going to start with the bottom up approach, because it is
+  easier to implement, you pretty much just throw the current thing at the
+  current glue code. I expect it might not work though, in which case we might
+  modify the glue code but we also might try the tableau approach.
+
+  also note that we should not create the symbol `TT` or `TTT` and fixing
+  that will make the gluing work slightly better.
+
+  okay. gluing doesn't work. there are several problems:
+  1 the <TTT> thing
+  2 symbols that don't match due to failures of compression, eg
+    (<TF>, x), T, F not matching against (<TF>, x+1) - the former should
+    not be generated
+  3 the head sometimes is ><TF>< which it should not be
+  4 we didn't glue (F, 1) to (F, x+1) at the end of the tape, but that
+    should work I think?
+
+  4 is fixed. we have a new problem:
+  5 on machine 5, the translated bouncer with shadow, we prove a rule that is
+    true, but not the one that is actually used by the machine, which we can tell
+    because the rule as is is not iterable in a way that proves the machine goes
+    forever. the problem is the thing where the variables are different between
+    different analyzed rules:
+
+    cur rule:
+    phase: D  (T, 1) (F, 0 + 1*x_0) |>F<| (F, 1)
+    into:
+    phase: D  (T, 2) |>T<| (T, 0 + 1*x_0)
+    gluing on:
+    phase: D   |>T<| (T, 1 + 1*x_0)
+    into:
+    phase: D  (F, 2 + 1*x_0) |>
+
+    gluing succeeded overall!
+    phase: D  (T, 1) (F, 0 + 1*x_0) |>F<| (F, 1) (T, 1)
+    into:
+    phase: D  (T, 2) (F, 2 + 1*x_0) |>
+
+    the rule "gluing on" should be applied with x_0 one smaller than
+    the rule "cur rule", but the current code has no way to know this :c
+    machine 8 has the same problem :c
+  6 machine 2 produces:
+       gluing failed: appended end and start
+    due to
+      cur rule:
+      phase: C  (F, 2) (<TTT>, 1 + 1*x_0) (T, 2) (F, 1) |>F<|
+      into:
+      phase: C   |>T<| (T, 1) (<TTT>, 2 + 1*x_0) (T, 1)
+      gluing on:
+      phase: C  (F, 1) |>T<| (T, 1 + 1*x_0)
+      into:
+      phase: C  (T, 2 + 1*x_0) (F, 1) |>
+    this specific case would be fixed by not creating <TTT>. is it possible to have this
+    problem in general? I think maybe, but if you rule out multi-syms that are repeats
+    of other multisyms, or cyclic shifts of other multisyms, then the only thing you can
+    have a problem with is cases where there are at least 2 multisyms running around.
+
+    I guess the key thing is, we need to match any 2 tapes that actually match, so in
+    particular, any tape, incl. one with variables, needs to only have 1 parse. so as
+    long as we enforce that, I think we're good.
+
+    so 6 is not a new problem, it's a subproblem of 1.
+
+    solved problem 3. remaining problems: 1, 2, 5
+    1 is TTT
+    2 is T, F, (<TF>, x)
+    5 is vars not being synced across glues
+
+    machines by which problem:
+    0: 1
+    1: 2
+    2: 1
+    3: 2
+    4: 2
+    5: 5
+    6: new bug! correctness bug
+    7: 2
+    8: 5
+
+    counts: 1: 2   2: 4   5: 2   plus one correctness bug :o
+
+    7 machine 6 correctness bug:
+      cur rule:
+      phase: C  (F, 2) (<TF>, 0 + 1*x_0) (T, 1) (F, 1) (T, 1) (<TT>, 1 + 1*x_0) (T, 2) |>T<| (F, 1)
+      into:
+      phase: B  (T, 1) (F, 1) |>T<| (<TF>, 1 + 1*x_0) (T, 2) (<TT>, 2 + 1*x_0)
+      gluing on:
+      phase: B   |>T<| (<TF>, 1 + 1*x_0)
+      into:
+      phase: B  (<TF>, 1 + 1*x_0) |>T<|
+
+      cur rule:
+      phase: C  (F, 2) (<TF>, 0 + 1*x_0) (T, 1) (F, 1) (T, 1) (<TT>, 1 + 1*x_0) (T, 2) |>T<| (F, 1)
+      into:
+      phase: B  (T, 1) (F, 1) (<TF>, 1 + 1*x_0) |>T<|
+      the TT at the end is just dropped :0
+
+
    */
 }
 
