@@ -843,7 +843,7 @@ fn append_end_var<S>(
   end_var_match: Option<Either<AffineVar, AVarSum>>,
 ) -> Result<Option<Leftover<S>>, String> {
   match (mb_leftover, end_var_match) {
-    (_, None) => Ok(None),
+    (mb_leftover, None) => Ok(mb_leftover),
     (None, Some(var)) => match var {
       Left(avar) => {
         let new_leftover = vec![(end_var_sym, avar)];
@@ -872,7 +872,7 @@ fn append_end_var<S>(
 // but we're going to stick to it for now; I think it can solve bouncers despite
 // this problem, or most bouncers? and we'll see how it goes from there once
 // a basic version is implemented
-pub fn match_vecs<S: Eq + Clone>(
+pub fn match_vecs<S: Eq + Clone + Debug>(
   end: &[(S, AVarSum)],
   start: &[(S, AffineVar)],
 ) -> Result<Option<Leftover<S>>, String> {
@@ -957,7 +957,7 @@ pub fn pop_rle_avarsum<T: Clone>(stack: &mut Vec<(T, AVarSum)>) -> Option<T> {
   Some(t)
 }
 
-pub fn glue_match<P: Phase, S: Eq + Clone>(
+pub fn glue_match<P: Phase, S: Eq + Clone + Debug>(
   end: &RuleEnd<P, S>,
   CConfig {
     state: start_state,
@@ -1091,7 +1091,7 @@ pub fn append_ends<P: Phase, S: Eq + Clone>(
   }
 }
 
-pub fn glue_rules<P: Phase, S: Eq + Clone>(
+pub fn glue_rules<P: Phase, S: Eq + Clone + Debug>(
   rule1: &CRule<P, MultiSym<S>>,
   rule2: &CRule<P, MultiSym<S>>,
 ) -> Result<CRule<P, MultiSym<S>>, String> {
@@ -1164,13 +1164,13 @@ pub fn glue_rulegroup(
     Left((s, b)) => multi_sym_rule(&trans_to_rule(machine, Edge(*s, *b))),
     Right((rulename, _rulenum)) => rulemap.get(rulename).unwrap().clone(),
   };
-  for trans_or_rule in &sv[1..] {
+  for (i, trans_or_rule) in sv[1..].iter().enumerate() {
     let next_rule: ChainRule = match trans_or_rule {
       Left((s, b)) => multi_sym_rule(&trans_to_rule(machine, Edge(*s, *b))),
       Right((rulename, _rulenum)) => rulemap.get(rulename).unwrap().clone(),
     };
     if print {
-      println!("cur rule:\n{}", cur_rule);
+      println!("i:{}\ncur rule:\n{}", i, cur_rule);
       println!("gluing on:\n{}\n", next_rule);
     }
     match glue_rules(&cur_rule, &next_rule) {
@@ -2126,6 +2126,8 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
     8: 5
 
     counts: 1: 2   2: 4   5: 2   plus one correctness bug :o
+    4 oct: correctness bug is fixed, and 6 is now type 1, so we have
+    1:3  2:4  5:2
 
     7 machine 6 correctness bug:
       cur rule:
@@ -2149,6 +2151,7 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
 
 #[cfg(test)]
 mod test {
+  use defaultmap::defaulthashmap;
   use smallvec::ToSmallVec;
 
   use crate::{
@@ -2381,6 +2384,28 @@ mod test {
     Config { state, left, head, right }: Config<P, S, V>,
   ) -> CConfig<P, S, V> {
     CConfig { state, left, head, right }
+  }
+
+  #[test]
+  fn test_match_vecs() {
+    let end = vec![
+      (
+        Bit(true),
+        AVarSum { n: 2, var_map: defaulthashmap! {0, Var(0) => 1 } },
+      ),
+      (Bit(false), AVarSum::constant(2)),
+      (
+        Bit(true),
+        AVarSum { n: 1, var_map: defaulthashmap! {0, Var(0) => 1 } },
+      ),
+    ];
+    let start = vec![(Bit(true), AffineVar { n: 1, a: 1, var: Var(0) })];
+    // end is (T, x+1), (F, 2), (T, x+2)
+    // start is (T, x+1)
+    // so leftover should be (F, 2), (T, x+2), but on 4 oct it is None
+    let ans = match_vecs(&end, &start);
+    let correct = Ok(Some(Leftover::End(end[0..=1].to_owned())));
+    assert_eq!(ans, correct);
   }
 
   #[test]
