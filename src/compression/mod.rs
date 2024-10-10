@@ -1443,6 +1443,27 @@ impl<S: TapeSymbol> MultiSet<S> {
     push_rle(stack, MultiSym::One(sym));
   }
 
+  // returns the shorter string which new_repeat is a multiple of, if any, and 
+  // how many times it is a multiple of that
+  fn check_multiple(&self, new_repeat: &Multi<S>) -> Option<(Multi<S>, usize)> {
+    for sub_len in 1..new_repeat.len() {
+      if new_repeat.len() % sub_len == 0 {
+        let base_slice = &new_repeat[0..sub_len];
+        let mut eq_so_far = true;
+        for incr in 1..new_repeat.len() / sub_len {
+          if &new_repeat[incr*sub_len..(incr+1)*sub_len] != base_slice {
+            eq_so_far = false;
+            break
+          }
+        }
+        if eq_so_far {
+          return Some((base_slice.to_owned().into(), new_repeat.len()/sub_len))
+        }
+      }
+    }
+    None
+  }
+
   fn get_new_repeat_avar(
     &mut self,
     mut new_repeat: Multi<S>,
@@ -1453,29 +1474,35 @@ impl<S: TapeSymbol> MultiSet<S> {
     if dir == Dir::R {
       new_repeat.reverse();
     }
-    let sym = if new_repeat.len() == 1 {
-      MultiSym::One(new_repeat[0])
+    // check if new_repeat is a multiple of something
+    let (base_repeat, base_count) = match self.check_multiple(&new_repeat) {
+      None => (new_repeat, 1),
+      Some((base_repeat, base_count)) => (base_repeat, base_count),
+    };
+    let var_amt: u32 = base_count.try_into().unwrap();
+    let sym = if base_repeat.len() == 1 {
+      MultiSym::One(base_repeat[0])
     } else {
-      match self.get_repeat_cyclic_shift(&new_repeat) {
+      match self.get_repeat_cyclic_shift(&base_repeat) {
         None => {
-          self.0.insert(new_repeat.clone());
-          MultiSym::Multi(new_repeat)
+          self.0.insert(base_repeat.clone());
+          MultiSym::Multi(base_repeat)
         }
         Some((_, 0)) => {
           // shift amount is 0
-          MultiSym::Multi(new_repeat)
+          MultiSym::Multi(base_repeat)
         }
-        //ans is [new_repeat[..shift_amount], (shifted, x-1), new_repeat[shift_amount..]]
+        //ans is [base_repeat[..shift_amount], (shifted, x-1), base_repeat[shift_amount..]]
         Some((shifted, shift_amount)) => {
           let mut out = vec![];
-          for s in &new_repeat[0..shift_amount] {
+          for s in &base_repeat[0..shift_amount] {
             self.push_multisym_rle(&mut out, *s);
           }
           out.push((
             MultiSym::Multi(shifted),
-            AffineVar { n: 0, a: 1, var: chaining_var },
+            AffineVar { n: 0, a: var_amt, var: chaining_var },
           ));
-          for s in &new_repeat[shift_amount..new_repeat.len()] {
+          for s in &base_repeat[shift_amount..base_repeat.len()] {
             self.push_multisym_rle(&mut out, *s);
           }
           if dir == Dir::R {
@@ -1485,7 +1512,8 @@ impl<S: TapeSymbol> MultiSet<S> {
         }
       }
     };
-    vec![(sym, AffineVar { n: 1, a: 1, var: chaining_var })]
+
+    vec![(sym, AffineVar { n: var_amt, a: var_amt, var: chaining_var })]
   }
 
   fn get_new_repeat_avs(
@@ -2144,6 +2172,34 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
       into:
       phase: B  (T, 1) (F, 1) (<TF>, 1 + 1*x_0) |>T<|
       the TT at the end is just dropped :0
+    fixed! it was a problem in append end var
+
+    time to fix #1 - the thing where a symbol can be a multiple of another symbol
+    machine 1 before
+      i:5
+      cur rule:
+      phase: B  (F, 2) (<TT>, 1 + 1*x_0) (T, 3) |>F<| 
+      into:
+      phase: D  (T, 1) (F, 1) |>T<| (T, 1) (<TT>, 1 + 1*x_0) (T, 2)
+      gluing on:
+      phase: D  (F, 1) |>T<| (T, 1 + 1*x_0)
+      into:
+      phase: D  (T, 2 + 1*x_0) (F, 1) |> 
+    machine 1 after 
+      i:5
+      cur rule:
+      phase: B  (F, 2) (T, 2 + 2*x_0) (T, 3) |>F<| 
+      into:
+      phase: D  (T, 1) (F, 1) |>T<| (T, 5 + 2*x_0)
+      gluing on:
+      phase: D  (F, 1) |>T<| (T, 1 + 1*x_0)
+      into:
+      phase: D  (T, 2 + 1*x_0) (F, 1) |> 
+    fix seems to work!
+    prev blocked machine 0, 2, 6
+    now 0 is blocked by 5 (vars) and 2 is blocked by vars and 6 is blocked by vars
+    so there are 4 machines blocked by 2 (compression) and 5 machines blocked by 5 (vars)
+
 
 
    */
