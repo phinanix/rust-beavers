@@ -1443,7 +1443,7 @@ impl<S: TapeSymbol> MultiSet<S> {
     push_rle(stack, MultiSym::One(sym));
   }
 
-  // returns the shorter string which new_repeat is a multiple of, if any, and 
+  // returns the shorter string which new_repeat is a multiple of, if any, and
   // how many times it is a multiple of that
   fn check_multiple(&self, new_repeat: &Multi<S>) -> Option<(Multi<S>, usize)> {
     for sub_len in 1..new_repeat.len() {
@@ -1451,13 +1451,13 @@ impl<S: TapeSymbol> MultiSet<S> {
         let base_slice = &new_repeat[0..sub_len];
         let mut eq_so_far = true;
         for incr in 1..new_repeat.len() / sub_len {
-          if &new_repeat[incr*sub_len..(incr+1)*sub_len] != base_slice {
+          if &new_repeat[incr * sub_len..(incr + 1) * sub_len] != base_slice {
             eq_so_far = false;
-            break
+            break;
           }
         }
         if eq_so_far {
-          return Some((base_slice.to_owned().into(), new_repeat.len()/sub_len))
+          return Some((base_slice.to_owned().into(), new_repeat.len() / sub_len));
         }
       }
     }
@@ -1474,26 +1474,31 @@ impl<S: TapeSymbol> MultiSet<S> {
     if dir == Dir::R {
       new_repeat.reverse();
     }
+    dbg!(&new_repeat);
     // check if new_repeat is a multiple of something
     let (base_repeat, base_count) = match self.check_multiple(&new_repeat) {
       None => (new_repeat, 1),
       Some((base_repeat, base_count)) => (base_repeat, base_count),
     };
     let var_amt: u32 = base_count.try_into().unwrap();
+    dbg!(&base_repeat);
     let sym = if base_repeat.len() == 1 {
       MultiSym::One(base_repeat[0])
     } else {
       match self.get_repeat_cyclic_shift(&base_repeat) {
         None => {
+          dbg!("not present");
           self.0.insert(base_repeat.clone());
           MultiSym::Multi(base_repeat)
         }
         Some((_, 0)) => {
+          dbg!("present at 0");
           // shift amount is 0
           MultiSym::Multi(base_repeat)
         }
         //ans is [base_repeat[..shift_amount], (shifted, x-1), base_repeat[shift_amount..]]
         Some((shifted, shift_amount)) => {
+          dbg!(format!("present shifted {} {:?}", shift_amount, &shifted));
           let mut out = vec![];
           for s in &base_repeat[0..shift_amount] {
             self.push_multisym_rle(&mut out, *s);
@@ -1525,6 +1530,105 @@ impl<S: TapeSymbol> MultiSet<S> {
     let pairs = self.get_new_repeat_avar(new_repeat, chaining_var, dir);
     pairs.into_iter().map(|(s, v)| (s, v.into())).collect()
   }
+}
+
+pub fn extend_compressed<S: TapeSymbol>(
+  half_tape: &mut Vec<(MultiSym<S>, AffineVar)>,
+  mut new_vec: Vec<(MultiSym<S>, AffineVar)>,
+  dir: Dir,
+) {
+  /*
+  goal is to append new_vec to half_tape without violating compression
+  at a high level we need to check whether the last compressed thing in half_tape
+  becomes non-maximal
+  specific alg:
+  1. find the last thing in half_tape
+  2. check its length and that the length spans the "break"
+  3a. parse out the number of copies of the repeat that exist (can be >1)
+  3b. (todo in future) check whether there is a second multi of the same repeat to concatenate
+  4. increment the last-repeat by the appropriate amount
+  5. delete all the copies that exist
+  6. extend the vector by the remaining amount
+   */
+  if half_tape.len() > 0 && new_vec.len() > 0 {
+    if half_tape[half_tape.len() - 1].0 == new_vec[0].0 {}
+    //   ((MultiSym::One(s1), _), (MultiSym::One(s2), _)) => todo!(),
+    //   _ => (),
+    // }
+  }
+  let mut mb_last_repeat = None;
+  for i in (0..half_tape.len()).rev() {
+    if let (MultiSym::Multi(sv), av) = half_tape[i].clone() {
+      mb_last_repeat = Some((i, sv, av));
+      break;
+    }
+  }
+  dbg!(&mb_last_repeat);
+  let (last_repeat_pos, last_repeat_sym, last_repeat_avar) = match mb_last_repeat {
+    None => {
+      half_tape.extend(new_vec);
+      return;
+    }
+    Some((last_repeat_pos, last_repeat_sym, last_repeat_avar)) => {
+      (last_repeat_pos, last_repeat_sym, last_repeat_avar)
+    }
+  };
+  // (TF, x) T | F
+  // 0 + 2 >= 2 ✓
+  if last_repeat_pos + last_repeat_sym.len() < half_tape.len() {
+    half_tape.extend(new_vec);
+    return;
+  }
+
+  let mut copies_found: u16 = 0;
+  let mut pos_in_copy = 0;
+  let mut pos_in_vec = last_repeat_pos + 1;
+  loop {
+    let item = if pos_in_vec >= half_tape.len() {
+      let idx = pos_in_vec - half_tape.len();
+      &new_vec[idx]
+    } else {
+      &half_tape[pos_in_vec]
+    };
+    match item {
+      (MultiSym::One(s), AffineVar { n: 1, a: 0, var: _ }) => {
+        if *s != last_repeat_sym[pos_in_copy] {
+          break;
+        }
+      }
+      (_, _) => break,
+    }
+    pos_in_copy += 1;
+    if pos_in_copy == last_repeat_sym.len() {
+      pos_in_copy = 0;
+      copies_found += 1;
+    }
+    pos_in_vec += 1;
+    if pos_in_vec == half_tape.len() + new_vec.len() {
+      break;
+    }
+  }
+  if copies_found == 0 {
+    half_tape.extend(new_vec);
+    return;
+  }
+  // step 4: increment the avar by the appropriate amount
+  half_tape[last_repeat_pos].1 += u32::from(copies_found).into();
+  // step 5: delete the copies that exist
+  // step 6: extend the vector with the remaining symbols
+  // we can combine these two things.
+  // we want to delete everything in half_tape after last_repeat_pos
+  // then we want to extend half_tape with everything after the point that got eaten
+  // the point that got eaten is copies_found * copy.len() - (len stuff after last_repeat_pos)
+  let len_first_vec_stuff = half_tape.len() - (last_repeat_pos + 1);
+  half_tape.truncate(last_repeat_pos + 1);
+  let second_vec_start_point =
+    (usize::from(copies_found) * last_repeat_sym.len()) - len_first_vec_stuff;
+  half_tape.extend(
+    new_vec[second_vec_start_point..new_vec.len()]
+      .into_iter()
+      .cloned(),
+  );
 }
 
 pub fn chain_side<S: TapeSymbol>(
@@ -1587,6 +1691,7 @@ pub fn chain_side<S: TapeSymbol>(
       start_out.extend(start_bit);
     }
   }
+  // todo: we can maybe violate compression here but I'm not sure
   start_out.extend(start_after_left);
   end_out.extend(end_after_left);
   if shorter >= 1 {
@@ -1606,6 +1711,8 @@ pub fn chain_side<S: TapeSymbol>(
           e_var_out.sub_equation(chaining_var, AffineVar { n: 1, a: 1, var: chaining_var }),
         ),
       };
+      //todo: we can maybe violate compression here but I'm not sure
+      // I think we can't, because I think these symbols are all the same?
       start_out.push((s_sym.clone(), s_var_out));
       end_out.push((e_sym.clone(), e_var_out));
     }
@@ -1746,13 +1853,15 @@ pub fn chain_crule<P: Phase, S: TapeSymbol>(
       right_start_out = sub_equations_vec(right_start_out, &static_hm);
       right_end_out = sub_equations_vec(right_end_out, &static_hm);
       let mut left_over = rule.start.left.clone();
+      dbg!(&left_over);
       push_rle(&mut left_over, rule.start.head.clone());
       let new_repeat: Multi<S> = flatten_multi_avar(left_over)?;
-      // TODO: this is where we would do things like check for cyclic shifts of
-      // new_repeat, or ensure it doesn't satisfy R = X^n, but we're not doing that
-      // right now
+      dbg!(&new_repeat);
       let mut left_start_out = multi_set.get_new_repeat_avar(new_repeat, chaining_var, Dir::L);
-      left_start_out.extend(rule.start.left.clone());
+      dbg!(&left_start_out);
+      // TODO: extending below can cause there to be a non-compressed thingy
+      extend_compressed(&mut left_start_out, rule.start.left.clone(), Dir::L);
+      // left_start_out.extend(rule.start.left.clone());
       let ans = Ok(CRule {
         start: CConfig {
           state: rule.start.state,
@@ -1792,11 +1901,10 @@ pub fn chain_crule<P: Phase, S: TapeSymbol>(
       let mut right_over = rule.start.right.clone();
       push_rle(&mut right_over, rule.start.head.clone());
       let new_repeat: Multi<S> = flatten_multi_avar(right_over)?;
-      // TODO: this is where we would do things like check for cyclic shifts of
-      // new_repeat, or ensure it doesn't satisfy R = X^n, but we're not doing that
-      // right now
       let mut right_start_out = multi_set.get_new_repeat_avar(new_repeat, chaining_var, Dir::R);
-      right_start_out.extend(rule.start.right.clone());
+      // TODO: extending below can cause there to be a non-compressed thingy
+      extend_compressed(&mut right_start_out, rule.start.right.clone(), Dir::R);
+      // right_start_out.extend(rule.start.right.clone());
       let ans = Ok(CRule {
         start: CConfig {
           state: rule.start.state,
@@ -2178,28 +2286,50 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
     machine 1 before
       i:5
       cur rule:
-      phase: B  (F, 2) (<TT>, 1 + 1*x_0) (T, 3) |>F<| 
+      phase: B  (F, 2) (<TT>, 1 + 1*x_0) (T, 3) |>F<|
       into:
       phase: D  (T, 1) (F, 1) |>T<| (T, 1) (<TT>, 1 + 1*x_0) (T, 2)
       gluing on:
       phase: D  (F, 1) |>T<| (T, 1 + 1*x_0)
       into:
-      phase: D  (T, 2 + 1*x_0) (F, 1) |> 
-    machine 1 after 
+      phase: D  (T, 2 + 1*x_0) (F, 1) |>
+    machine 1 after
       i:5
       cur rule:
-      phase: B  (F, 2) (T, 2 + 2*x_0) (T, 3) |>F<| 
+      phase: B  (F, 2) (T, 2 + 2*x_0) (T, 3) |>F<|
       into:
       phase: D  (T, 1) (F, 1) |>T<| (T, 5 + 2*x_0)
       gluing on:
       phase: D  (F, 1) |>T<| (T, 1 + 1*x_0)
       into:
-      phase: D  (T, 2 + 1*x_0) (F, 1) |> 
+      phase: D  (T, 2 + 1*x_0) (F, 1) |>
     fix seems to work!
     prev blocked machine 0, 2, 6
     now 0 is blocked by 5 (vars) and 2 is blocked by vars and 6 is blocked by vars
     so there are 4 machines blocked by 2 (compression) and 5 machines blocked by 5 (vars)
+    2: 1,3,4,7   5: 0,2,5,6,8
 
+    solving #2: tape is not always fully compressed
+    so the question is, how do we end up with tapes that are not fully compressed?
+    machine 1
+    chaining a L0 rule produces a rule that does not conform
+    partly due to splitting
+    AC - endside
+    machine 3
+    chaining L0
+    partly due to a cyclic shift
+    Cb - endside
+    machine 4
+    L0
+    cyclic shift
+    ADc - endside
+    machine 7
+    L0
+    it looks like a cyclic shift but that doesn't make sense!
+    ah it does - it's cyclic shifted the beginning to match the end output.
+    Ba - endside
+    so it can occur due to cyclic shift or due to splitting, and only occurs on
+    an endside
 
 
    */
