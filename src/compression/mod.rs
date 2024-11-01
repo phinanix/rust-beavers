@@ -754,15 +754,25 @@ pub enum Leftover<S> {
 
 pub fn match_vars(
   AVarSum { n: sum_n, var_map }: &AVarSum,
-  AffineVar { n: var_n, a, var: _ }: AffineVar,
+  AffineVar { n, a, var }: AffineVar,
 ) -> Result<(), String> {
-  if a != 0 || !var_map.is_empty() {
-    return Err("gave up on variables".to_owned());
-  }
-  if *sum_n == var_n {
-    Ok(())
+  if a == 0 && var_map.is_empty() {
+    if *sum_n == n {
+      Ok(())
+    } else {
+      Err("nums didn't match".to_owned())
+    }
   } else {
-    Err("nums didn't match".to_owned())
+    match var_map.iter().exactly_one() {
+      Ok((sum_var, sum_a)) => {
+        if var == *sum_var && a == *sum_a && n == *sum_n {
+          Ok(())
+        } else {
+          Err("vars were exactly_one but didn't match".to_owned())
+        }
+      },
+      Err(_) => Err("gave up on variables".to_owned()),
+    }
   }
 }
 
@@ -1537,7 +1547,7 @@ pub fn extend_compressed<S: TapeSymbol>(
   mut new_vec: Vec<(MultiSym<S>, AffineVar)>,
   dir: Dir,
 ) {
-  
+  dbg!(&half_tape, &new_vec);
   /*
   goal is to append new_vec to half_tape without violating compression
   at a high level we need to check whether the last compressed thing in half_tape
@@ -1576,7 +1586,7 @@ pub fn extend_compressed<S: TapeSymbol>(
     }
   }
   dbg!(&mb_last_repeat);
-  let (last_repeat_pos, last_repeat_sym, last_repeat_avar) = match mb_last_repeat {
+  let (last_repeat_pos, mut last_repeat_sym, last_repeat_avar) = match mb_last_repeat {
     None => {
       half_tape.extend(new_vec);
       return;
@@ -1585,6 +1595,9 @@ pub fn extend_compressed<S: TapeSymbol>(
       (last_repeat_pos, last_repeat_sym, last_repeat_avar)
     }
   };
+  if dir == Dir::R {
+    last_repeat_sym.reverse();
+  }
   // (TF, x) T | F
   // 0 + 2 >= 2 ✓
   if last_repeat_pos + last_repeat_sym.len() < half_tape.len() {
@@ -1595,25 +1608,32 @@ pub fn extend_compressed<S: TapeSymbol>(
   let mut copies_found: u16 = 0;
   let mut pos_in_copy = 0;
   let mut pos_in_vec = last_repeat_pos + 1;
+  let mut pos_in_vec_last_copy_found = None; // a tuple of (pos_in_vec, pos_in_multi)
   loop {
+    println!("loop {} {} {}", copies_found, pos_in_copy, pos_in_vec);
     let item = if pos_in_vec >= half_tape.len() {
       let idx = pos_in_vec - half_tape.len();
       &new_vec[idx]
     } else {
       &half_tape[pos_in_vec]
     };
+    println!("item {:?}", item);
     match item {
-      (MultiSym::One(s), AffineVar { n: 1, a: 0, var: _ }) => {
-        if *s != last_repeat_sym[pos_in_copy] {
-          break;
+      (MultiSym::One(s), AffineVar { n, a: 0, var: _ }) => {
+        for pos_in_multi in 0..*n {
+          if *s != last_repeat_sym[pos_in_copy] {
+            break;
+          }
+          pos_in_copy += 1;
+          if pos_in_copy == last_repeat_sym.len() {
+            pos_in_copy = 0;
+            copies_found += 1;
+            pos_in_vec_last_copy_found = Some((pos_in_vec, pos_in_multi));
+            dbg!((pos_in_vec, pos_in_multi));
+          }
         }
       }
       (_, _) => break,
-    }
-    pos_in_copy += 1;
-    if pos_in_copy == last_repeat_sym.len() {
-      pos_in_copy = 0;
-      copies_found += 1;
     }
     pos_in_vec += 1;
     if pos_in_vec == half_tape.len() + new_vec.len() {
@@ -1632,10 +1652,22 @@ pub fn extend_compressed<S: TapeSymbol>(
   // we want to delete everything in half_tape after last_repeat_pos
   // then we want to extend half_tape with everything after the point that got eaten
   // the point that got eaten is copies_found * copy.len() - (len stuff after last_repeat_pos)
+  // always works because if copies_found > 0, pos_in_vec_last_copy_found is Some
+  let (last_pos_in_vec, last_pos_in_multi) = pos_in_vec_last_copy_found.unwrap(); 
+  // last_pos_in_vec is where a thing was consumed. so second_vec_start_point is either the same as 
+  // last_pos_in_vec, if not the whole thing was consumed, or one more, if the whole thing was consumed
+  let second_vec_idx = last_pos_in_vec.checked_sub(half_tape.len()).unwrap();
+  let second_vec_start_point = if half_tape[second_vec_idx].1.n == last_pos_in_multi + 1 {
+    second_vec_idx + 1
+  } else {
+    second_vec_idx
+  };
   let len_first_vec_stuff = half_tape.len() - (last_repeat_pos + 1);
   half_tape.truncate(last_repeat_pos + 1);
-  let second_vec_start_point =
-    (usize::from(copies_found) * last_repeat_sym.len()) - len_first_vec_stuff;
+
+  let old_second_vec_start_point =
+  (usize::from(copies_found) * last_repeat_sym.len()) - len_first_vec_stuff;
+  dbg!(second_vec_idx, old_second_vec_start_point, second_vec_start_point);
   half_tape.extend(
     new_vec[second_vec_start_point..new_vec.len()]
       .into_iter()
@@ -2351,7 +2383,19 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
     machine 4 ADc still has a compression problem for some reason! look into it
     machine 7 Ba still has a compression problem also :o
 
+    solved some more compression issues
+    machine 4 ADc now compresses correctly, though it gives up on matching x+1 to x+1 - oops!
+    machine 7 Ba also compresses correctly and it also gives up on matching x+1 to x+1 lol
 
+    now x+1 can match x+1, and in general two vars which are exactly identical can match
+    machine 4 now encounters a head mismatch which is spicy but I imagine is problem 5?
+    machine 7 finds a rule! eg 401 -> 483
+    401 B ... >T< (T, 12)
+    483 B ... >T< (T, 10)
+    and the rule is correct !!
+    machines correctly find 1 L1 rule: 1, 7
+    machine 4 is indeed issue 5, though it also has the compression-during-gluing issue, 
+    so perhaps we fix that next
    */
 }
 
