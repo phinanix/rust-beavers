@@ -968,14 +968,14 @@ pub fn pop_rle_avarsum<T: Clone>(stack: &mut Vec<(T, AVarSum)>) -> Option<T> {
 }
 
 pub fn glue_match<P: Phase, S: Eq + Clone + Debug>(
-  end: &RuleEnd<P, S>,
+  end: &RuleEnd<P, MultiSym<S>>,
   CConfig {
     state: start_state,
     left: start_left,
     head: start_head,
     right: start_right,
-  }: &CConfig<P, S, AffineVar>,
-) -> Result<(Starts<S>, Ends<S>), String> {
+  }: &CConfig<P, MultiSym<S>, AffineVar>,
+) -> Result<(Starts<MultiSym<S>>, Ends<MultiSym<S>>), String> {
   //first check intermediate states match
   if end.get_phase() != *start_state {
     return Err("phase mismatch".to_owned());
@@ -1009,7 +1009,9 @@ pub fn glue_match<P: Phase, S: Eq + Clone + Debug>(
     RuleEnd::Side(_end_state, Dir::R, end_tape) => {
       let left_over = match_vecs(&end_tape, &start_left)?;
       let mut right_over_vec = start_right.clone();
-      push_rle(&mut right_over_vec, start_head.clone());
+      // dbg!(&right_over_vec);
+      extend_compressed(&mut right_over_vec, vec![(start_head.clone(), 1.into())], Dir::R);
+      // dbg!(&right_over_vec);
       let right_over = Some(Leftover::Start(right_over_vec));
       let starts = get_starts(&left_over, &right_over);
       let ends = get_ends(&left_over, &right_over);
@@ -1018,44 +1020,46 @@ pub fn glue_match<P: Phase, S: Eq + Clone + Debug>(
   }
 }
 
-pub fn append_leftover<S: Eq + Clone, T: Add<Output = T> + Clone>(
-  half_tape: &[(S, T)],
-  mb_leftover: Option<Vec<(S, T)>>,
-) -> Vec<(S, T)> {
+pub fn append_leftover<S: Debug + Eq + Clone, V: VarLike>(
+  half_tape: &[(MultiSym<S>, V)],
+  mb_leftover: Option<Vec<(MultiSym<S>, V)>>,
+  dir: Dir,
+) -> Vec<(MultiSym<S>, V)> {
+  let ht = half_tape.to_vec();
   match mb_leftover {
-    None => half_tape.to_vec(),
+    None => ht,
     Some(mut v) => {
-      append_rle(&mut v, half_tape);
+      extend_compressed(&mut v, ht, dir);
       v
     }
   }
 }
 
-pub fn append_starts<P: Phase, S: Eq + Clone>(
-  CConfig { state, left, head, right }: &CConfig<P, S, AffineVar>,
-  starts: Starts<S>,
-) -> CConfig<P, S, AffineVar> {
+pub fn append_starts<P: Phase, S: Debug + Eq + Clone>(
+  CConfig { state, left, head, right }: &CConfig<P, MultiSym<S>, AffineVar>,
+  starts: Starts<MultiSym<S>>,
+) -> CConfig<P, MultiSym<S>, AffineVar> {
   CConfig {
     state: *state,
-    left: append_leftover(left, starts.0),
+    left: append_leftover(left, starts.0, Dir::L),
     head: head.clone(),
-    right: append_leftover(right, starts.1),
+    right: append_leftover(right, starts.1, Dir::R),
   }
 }
 
-pub fn append_ends<P: Phase, S: Eq + Clone>(
+pub fn append_ends<P: Phase, S: Debug + Eq + Clone>(
   end: &RuleEnd<P, MultiSym<S>>,
   ends: Ends<MultiSym<S>>,
 ) -> Result<RuleEnd<P, MultiSym<S>>, String> {
   match end {
     RuleEnd::Center(CConfig { state, left, head, right }) => Ok(RuleEnd::Center(CConfig {
       state: *state,
-      left: append_leftover(left, ends.0),
+      left: append_leftover(left, ends.0, Dir::L),
       head: head.clone(),
-      right: append_leftover(right, ends.1),
+      right: append_leftover(right, ends.1, Dir::R),
     })),
     RuleEnd::Side(state, Dir::L, v) => match ends.0 {
-      None => Ok(RuleEnd::Side(*state, Dir::L, append_leftover(v, ends.1))),
+      None => Ok(RuleEnd::Side(*state, Dir::L, append_leftover(v, ends.1, Dir::R))),
       Some(mut lo) => {
         let head_sym = match pop_rle_avarsum(&mut lo) {
           None => return Err("couldn't sub one in appendend".to_owned()),
@@ -1072,12 +1076,12 @@ pub fn append_ends<P: Phase, S: Eq + Clone>(
           state: *state,
           left: lo,
           head: MultiSym::One(head_sym),
-          right: append_leftover(v, ends.1),
+          right: append_leftover(v, ends.1, Dir::R),
         }))
       }
     },
     RuleEnd::Side(state, Dir::R, v) => match ends.1 {
-      None => Ok(RuleEnd::Side(*state, Dir::R, append_leftover(v, ends.0))),
+      None => Ok(RuleEnd::Side(*state, Dir::R, append_leftover(v, ends.0, Dir::L))),
       Some(mut lo) => {
         let head_sym = match pop_rle_avarsum(&mut lo) {
           None => return Err("couldn't sub one in appendend".to_owned()),
@@ -1092,7 +1096,7 @@ pub fn append_ends<P: Phase, S: Eq + Clone>(
         };
         Ok(RuleEnd::Center(CConfig {
           state: *state,
-          left: append_leftover(v, ends.0),
+          left: append_leftover(v, ends.0, Dir::R),
           head: MultiSym::One(head_sym),
           right: lo,
         }))
@@ -1109,6 +1113,7 @@ pub fn glue_rules<P: Phase, S: Eq + Clone + Debug>(
   // append the start-type leftovers to rule1 start to get out's start
   // and end-type to rule2 end to get out's end
   let (starts, ends) = glue_match(&rule1.end, &rule2.start)?;
+  dbg!(&starts, &ends);
   let start = append_starts(&rule1.start, starts);
   let end = append_ends(&rule2.end, ends)?;
   Ok(CRule { start, end })
@@ -1542,12 +1547,37 @@ impl<S: TapeSymbol> MultiSet<S> {
   }
 }
 
-pub fn extend_compressed<S: TapeSymbol>(
-  half_tape: &mut Vec<(MultiSym<S>, AffineVar)>,
-  mut new_vec: Vec<(MultiSym<S>, AffineVar)>,
+pub trait VarLike: Debug + Clone + Add + AddAssign + From<u32> {
+  fn has_var(&self) -> bool;
+  fn get_const(&self) -> u32;
+}
+
+impl VarLike for AffineVar {
+    fn has_var(&self) -> bool {
+        self.a > 0
+    }
+
+    fn get_const(&self) -> u32 {
+        self.n
+    }
+}
+
+impl VarLike for AVarSum {
+    fn has_var(&self) -> bool {
+        self.var_map.len() > 0
+    }
+
+    fn get_const(&self) -> u32 {
+        self.n
+    }
+}
+
+pub fn extend_compressed<S: Debug + Eq + Clone, V: VarLike>(
+  half_tape: &mut Vec<(MultiSym<S>, V)>,
+  mut new_vec: Vec<(MultiSym<S>, V)>,
   dir: Dir,
 ) {
-  dbg!(&half_tape, &new_vec);
+  // dbg!(&half_tape, &new_vec);
   /*
   goal is to append new_vec to half_tape without violating compression
   at a high level we need to check whether the last compressed thing in half_tape
@@ -1568,15 +1598,19 @@ pub fn extend_compressed<S: TapeSymbol>(
   if half_tape.len() > 0 && new_vec.len() > 0 {
     let last_ind = half_tape.len() - 1;
     if half_tape[last_ind].0 == new_vec[0].0 {
-      if half_tape[half_tape.len() - 1].1.a > 0 && new_vec[0].1.a > 0 {
+      if half_tape[half_tape.len() - 1].1.has_var() && new_vec[0].1.has_var() {
         panic!("can't add two vars!")
       }
       let (_sym, var) = new_vec.remove(0); 
       half_tape[last_ind].1 += var; 
     }
-    //   ((MultiSym::One(s1), _), (MultiSym::One(s2), _)) => todo!(),
-    //   _ => (),
-    // }
+  }
+  if new_vec.len() == 0 {
+    return;
+  }
+  if half_tape.len() == 0 {
+    half_tape.extend(new_vec);
+    return;
   }
   let mut mb_last_repeat = None;
   for i in (0..half_tape.len()).rev() {
@@ -1586,7 +1620,7 @@ pub fn extend_compressed<S: TapeSymbol>(
     }
   }
   dbg!(&mb_last_repeat);
-  let (last_repeat_pos, mut last_repeat_sym, last_repeat_avar) = match mb_last_repeat {
+  let (last_repeat_pos, mut last_repeat_sym, _last_repeat_avar) = match mb_last_repeat {
     None => {
       half_tape.extend(new_vec);
       return;
@@ -1619,8 +1653,9 @@ pub fn extend_compressed<S: TapeSymbol>(
     };
     println!("item {:?}", item);
     match item {
-      (MultiSym::One(s), AffineVar { n, a: 0, var: _ }) => {
-        for pos_in_multi in 0..*n {
+      (MultiSym::One(s), v) if !v.has_var() => {
+        let n = v.get_const();
+        for pos_in_multi in 0..n {
           if *s != last_repeat_sym[pos_in_copy] {
             break;
           }
@@ -1657,7 +1692,7 @@ pub fn extend_compressed<S: TapeSymbol>(
   // last_pos_in_vec is where a thing was consumed. so second_vec_start_point is either the same as 
   // last_pos_in_vec, if not the whole thing was consumed, or one more, if the whole thing was consumed
   let second_vec_idx = last_pos_in_vec.checked_sub(half_tape.len()).unwrap();
-  let second_vec_start_point = if half_tape[second_vec_idx].1.n == last_pos_in_multi + 1 {
+  let second_vec_start_point = if half_tape[second_vec_idx].1.get_const() == last_pos_in_multi + 1 {
     second_vec_idx + 1
   } else {
     second_vec_idx
@@ -2396,6 +2431,10 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
     machines correctly find 1 L1 rule: 1, 7
     machine 4 is indeed issue 5, though it also has the compression-during-gluing issue, 
     so perhaps we fix that next
+
+    example machine with that issue: machine 1. it has this issue at i:3. I assume it's essentially because
+    sometimes we append stuff to the sides of the rules, without checking they are in fact validly compressed
+    afterwards. but time to investigate. 
    */
 }
 
