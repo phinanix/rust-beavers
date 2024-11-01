@@ -2435,6 +2435,21 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
     example machine with that issue: machine 1. it has this issue at i:3. I assume it's essentially because
     sometimes we append stuff to the sides of the rules, without checking they are in fact validly compressed
     afterwards. but time to investigate. 
+
+    
+    sigh. we have a correctness bug. machine 1 used to produce rule
+
+    phase: A   |>F<| (T, 1) (F, 1) (<TF>, 1 + 1*x_0) (F, 1)
+    into:
+    phase: A  <| (<TF>, 2 + 1*x_0) (T, 1) (F, 1)
+
+    but now produces
+
+    phase: A   |>F<| (T, 1) (<TF>, 2 + 1*x_0) (F, 1)
+    into:
+    phase: A  <| (<TF>, 2 + 1*x_0) (T, 1) (F, 1)
+
+    which is wrong
    */
 }
 
