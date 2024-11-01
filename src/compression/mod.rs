@@ -1537,6 +1537,7 @@ pub fn extend_compressed<S: TapeSymbol>(
   mut new_vec: Vec<(MultiSym<S>, AffineVar)>,
   dir: Dir,
 ) {
+  
   /*
   goal is to append new_vec to half_tape without violating compression
   at a high level we need to check whether the last compressed thing in half_tape
@@ -1550,8 +1551,19 @@ pub fn extend_compressed<S: TapeSymbol>(
   5. delete all the copies that exist
   6. extend the vector by the remaining amount
    */
+
+
+  // right here we have to check if the last thing in half_tape and the first 
+  // thing in new_vec are identical symbols and combine them
   if half_tape.len() > 0 && new_vec.len() > 0 {
-    if half_tape[half_tape.len() - 1].0 == new_vec[0].0 {}
+    let last_ind = half_tape.len() - 1;
+    if half_tape[last_ind].0 == new_vec[0].0 {
+      if half_tape[half_tape.len() - 1].1.a > 0 && new_vec[0].1.a > 0 {
+        panic!("can't add two vars!")
+      }
+      let (_sym, var) = new_vec.remove(0); 
+      half_tape[last_ind].1 += var; 
+    }
     //   ((MultiSym::One(s1), _), (MultiSym::One(s2), _)) => todo!(),
     //   _ => (),
     // }
@@ -2330,6 +2342,14 @@ pub fn analyze_machine(machine: &SmallBinMachine, num_steps: u32) {
     Ba - endside
     so it can occur due to cyclic shift or due to splitting, and only occurs on
     an endside
+
+    1 Nov 24
+    we have now solved some of the compression issues
+    machine 1 now works! It fails to compress some stuff while gluing, but it works anyway
+    probably the gluing-failure-to-compress is good to fix though
+    machine 3 now has problem 5
+    machine 4 ADc still has a compression problem for some reason! look into it
+    machine 7 Ba still has a compression problem also :o
 
 
    */
